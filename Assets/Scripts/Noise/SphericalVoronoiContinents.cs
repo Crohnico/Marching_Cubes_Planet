@@ -7,26 +7,38 @@ namespace MarchingCubesPlanet.Noise
     {
         private readonly Vector3[] centers;
         private readonly bool[] landCells;
+        private readonly float[] landElevations;
 
-        public SphericalVoronoiContinents(int seed, int cellCount, int landCellCount)
+        public SphericalVoronoiContinents(
+            int seed,
+            int cellCount,
+            int landCellCount,
+            float landMinElevation,
+            float landMaxElevation,
+            AnimationCurve landElevationCurve)
         {
             int safeCellCount = Mathf.Max(1, cellCount);
             LandCellCount = Mathf.Clamp(landCellCount, 0, safeCellCount);
+            MinLandElevation = Mathf.Max(0f, Mathf.Min(landMinElevation, landMaxElevation));
+            MaxLandElevation = Mathf.Max(MinLandElevation, Mathf.Max(landMinElevation, landMaxElevation));
 
             centers = new Vector3[safeCellCount];
             landCells = new bool[safeCellCount];
+            landElevations = new float[safeCellCount];
 
             GenerateCenters(seed);
             SelectLandCells(seed);
+            GenerateLandElevations(seed, landElevationCurve);
         }
 
         public int CellCount => centers.Length;
         public int LandCellCount { get; }
+        public float MinLandElevation { get; }
+        public float MaxLandElevation { get; }
 
         public ContinentSample Sample(
             Vector3 localPosition,
             float referenceRadius,
-            float landElevation,
             float oceanDepth,
             float edgeBlend,
             AnimationCurve blendCurve)
@@ -37,8 +49,8 @@ namespace MarchingCubesPlanet.Noise
 
             FindClosestCells(direction, out int nearestIndex, out int secondIndex, out float nearestDot, out float secondDot);
 
-            float nearestOffset = GetCellRadiusOffset(nearestIndex, referenceRadius, landElevation, oceanDepth);
-            float secondOffset = GetCellRadiusOffset(secondIndex, referenceRadius, landElevation, oceanDepth);
+            float nearestOffset = GetCellRadiusOffset(nearestIndex, referenceRadius, oceanDepth);
+            float secondOffset = GetCellRadiusOffset(secondIndex, referenceRadius, oceanDepth);
             float interiorBlend = CalculateInteriorBlend(nearestDot - secondDot, edgeBlend, blendCurve);
             float boundaryOffset = (nearestOffset + secondOffset) * 0.5f;
             float radiusOffset = Mathf.Lerp(boundaryOffset, nearestOffset, interiorBlend);
@@ -48,6 +60,7 @@ namespace MarchingCubesPlanet.Noise
                 landCells[nearestIndex],
                 nearestIndex,
                 secondIndex,
+                landElevations[nearestIndex],
                 interiorBlend);
         }
 
@@ -78,6 +91,27 @@ namespace MarchingCubesPlanet.Noise
             for (int i = 0; i < LandCellCount; i++)
             {
                 landCells[indices[i]] = true;
+            }
+        }
+
+        private void GenerateLandElevations(int seed, AnimationCurve landElevationCurve)
+        {
+            System.Random random = new System.Random(MixSeed(seed, 0x26cb5d35));
+            for (int i = 0; i < landElevations.Length; i++)
+            {
+                if (!landCells[i])
+                {
+                    landElevations[i] = 0f;
+                    continue;
+                }
+
+                float t = (float)random.NextDouble();
+                if (landElevationCurve != null && landElevationCurve.length > 0)
+                {
+                    t = Mathf.Clamp01(landElevationCurve.Evaluate(t));
+                }
+
+                landElevations[i] = Mathf.Lerp(MinLandElevation, MaxLandElevation, t);
             }
         }
 
@@ -114,11 +148,11 @@ namespace MarchingCubesPlanet.Noise
             }
         }
 
-        private float GetCellRadiusOffset(int cellIndex, float referenceRadius, float landElevation, float oceanDepth)
+        private float GetCellRadiusOffset(int cellIndex, float referenceRadius, float oceanDepth)
         {
             float safeRadius = Mathf.Max(0f, referenceRadius);
             return landCells[cellIndex]
-                ? safeRadius * Mathf.Max(0f, landElevation)
+                ? safeRadius * landElevations[cellIndex]
                 : -safeRadius * Mathf.Max(0f, oceanDepth);
         }
 
@@ -164,12 +198,19 @@ namespace MarchingCubesPlanet.Noise
 
     public readonly struct ContinentSample
     {
-        public ContinentSample(float radiusOffset, bool isLandCell, int cellIndex, int neighborCellIndex, float interiorBlend)
+        public ContinentSample(
+            float radiusOffset,
+            bool isLandCell,
+            int cellIndex,
+            int neighborCellIndex,
+            float cellElevation,
+            float interiorBlend)
         {
             RadiusOffset = radiusOffset;
             IsLandCell = isLandCell;
             CellIndex = cellIndex;
             NeighborCellIndex = neighborCellIndex;
+            CellElevation = cellElevation;
             InteriorBlend = interiorBlend;
         }
 
@@ -178,6 +219,7 @@ namespace MarchingCubesPlanet.Noise
         public bool IsOceanCell => !IsLandCell;
         public int CellIndex { get; }
         public int NeighborCellIndex { get; }
+        public float CellElevation { get; }
         public float InteriorBlend { get; }
     }
 }
