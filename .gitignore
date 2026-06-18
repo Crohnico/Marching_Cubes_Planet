@@ -1,0 +1,48 @@
+# Unity generated folders
+/Library/
+/Temp/
+/Obj/
+/obj/
+/Build/
+/Builds/
+/Logs/
+/UserSettings/
+/MemoryCaptures/
+/Recordings/
+/ProfilerCaptures/
+
+# Unity generated solution and project files
+*.csproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# IDE folders
+/.vs/
+/.vscode/
+/.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Crash reports
+sysinfo.txt
+
+# Unity package manager cache / local tarballs
+/Assets/AssetStoreTools*
+*.unitypackage
+
+# Rider
+*.DotSettings.user
