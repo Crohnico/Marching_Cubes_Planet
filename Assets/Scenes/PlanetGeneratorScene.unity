@@ -441,7 +441,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 888565991}
-  - component: {fileID: 888565988}
   - component: {fileID: 888565992}
   - component: {fileID: 888565993}
   m_Layer: 0
@@ -451,33 +450,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &888565988
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 888565987}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c97c9cb73740fe64d91491c03c60b152, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GenTest
-  numChunks: 10
-  numPointsPerAxis: 35
-  boundsSize: 500
-  isoLevel: 0
-  useFlatShading: 0
-  noiseScale: 0.75
-  noiseHeightMultiplier: 0.075
-  blurMap: 1
-  blurRadius: 3
-  meshCompute: {fileID: 7200000, guid: a673d46038c7549d0ab1ffa38907c8c2, type: 3}
-  densityCompute: {fileID: 7200000, guid: fdcbc69751eaad74faeb564239fdeb4c, type: 3}
-  blurCompute: {fileID: 7200000, guid: a1dfefa5af6fea6428bec38832b86d07, type: 3}
-  material: {fileID: 2100000, guid: b8e3496436244a8a9ecb657377f06a41, type: 2}
-  rawDensityTexture: {fileID: 0}
-  processedDensityTexture: {fileID: 0}
 --- !u!4 &888565991
 Transform:
   m_ObjectHideFlags: 0
@@ -506,7 +478,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.Generators.MarchingCubesSphereGenerator
   radius: 1500
-  cubesPerAxis: 10
+  cubesPerAxis: 12
   generateOnAwake: 1
   globalLod: 5
   useMainCameraChunkLodTest: 0
@@ -514,7 +486,7 @@ MonoBehaviour:
   mainCameraLod5Distance: 5000
   mainCameraLodRefreshInterval: 0.25
   mainCameraLodMoveThreshold: 25
-  noiseSeed: 12897
+  noiseSeed: 13476
   noiseProfile: {fileID: 11400000, guid: cf5459ef1dff6f847b6d87faf1d65e1b, type: 2}
   useContinents: 1
   voronoiCellCount: 56
@@ -593,35 +565,38 @@ MonoBehaviour:
 
     Continents Enabled: True
 
-    Voronoi Cells/Land Cells: 16 / 10
+    Voronoi Cells/Land Cells: 56 / 43
 
     Land
     Elevation Min/Max: 0,0150 / 0,1270
 
-    Seed: 12897
+    Lowland/Peak Height Above Sea: 25,00
+    / 150,00
 
-    Max Profile Offset:
-    379,5000
+    Seed: 13476
 
-    Max Continent Offset: 190,5000
+    Profile Mountain Budget: 125,0000
 
-    Radius Offset Min/Max: -473,2737
-    / 417,7198
+    Raw Continent
+    Offset Max: 190,5000
 
-    Field Min/Max: -1608,0050 / 2362,9320
+    Radius Offset Min/Max: -240,0000 / 149,5061
 
-    Chunks/Sampled Cubes:
-    1000 / 1000
+    Field
+    Min/Max: -1577,3060 / 1466,1440
 
-    Camera Test LOD5/LOD6 Chunks: 0 / 0
+    Chunks/Sampled Cubes: 32768 / 32768
 
-    Camera Test Auto Refresh/Move
-    Threshold: False / 25,0
+    Camera
+    Test LOD5/LOD6 Chunks: 0 / 0
 
-    Terrain Meshes/Triangles/Removed: 1 / 1664 / 0
+    Camera Test Auto Refresh/Move Threshold: False
+    / 25,0
 
-    Ocean
-    Meshes/Triangles/Removed: 1 / 1512 / 0
+    Terrain Meshes/Triangles/Removed: 1 / 25936 / 0
+
+    Ocean Meshes/Triangles/Removed:
+    1 / 23952 / 0
 
     Renderer Shadows: Off, Receive False'
   generatedRoot: {fileID: 0}
@@ -649,7 +624,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1473064287}
-  - component: {fileID: 1473064286}
   - component: {fileID: 1473064285}
   - component: {fileID: 1473064284}
   m_Layer: 0
@@ -687,7 +661,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.Generators.MarchingCubesSphereGenerator
   radius: 500
-  cubesPerAxis: 10
+  cubesPerAxis: 12
   generateOnAwake: 1
   globalLod: 5
   useMainCameraChunkLodTest: 0
@@ -698,8 +672,8 @@ MonoBehaviour:
   noiseSeed: 12527
   noiseProfile: {fileID: 11400000, guid: 9945923622a32244f93ff3f095fe79bf, type: 2}
   useContinents: 1
-  voronoiCellCount: 16
-  landCellCount: 10
+  voronoiCellCount: 56
+  landCellCount: 43
   landMinElevation: 0.015
   landMaxElevation: 0.127
   landElevationCurve:
@@ -806,33 +780,6 @@ MonoBehaviour:
 
     Renderer Shadows: Off, Receive False'
   generatedRoot: {fileID: 0}
---- !u!114 &1473064286
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1473064283}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c97c9cb73740fe64d91491c03c60b152, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GenTest
-  numChunks: 10
-  numPointsPerAxis: 35
-  boundsSize: 500
-  isoLevel: 0
-  useFlatShading: 0
-  noiseScale: 0.75
-  noiseHeightMultiplier: 0.075
-  blurMap: 1
-  blurRadius: 3
-  meshCompute: {fileID: 7200000, guid: a673d46038c7549d0ab1ffa38907c8c2, type: 3}
-  densityCompute: {fileID: 7200000, guid: fdcbc69751eaad74faeb564239fdeb4c, type: 3}
-  blurCompute: {fileID: 7200000, guid: a1dfefa5af6fea6428bec38832b86d07, type: 3}
-  material: {fileID: 2100000, guid: b8e3496436244a8a9ecb657377f06a41, type: 2}
-  rawDensityTexture: {fileID: 0}
-  processedDensityTexture: {fileID: 0}
 --- !u!4 &1473064287
 Transform:
   m_ObjectHideFlags: 0

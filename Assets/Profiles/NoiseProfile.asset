@@ -13,5 +13,5 @@ MonoBehaviour:
   m_Name: NoiseProfile
   m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.Noise.NoiseProfile
   enabledNoise: 1
-  amplitude: 0.253
-  frequency: 1
+  amplitude: 0.308
+  frequency: 2
