@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a257bf530dc928845849fd4985748e47, type: 3}
+  m_Name: VoxelEngineConfig
+  m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.VoxelEngine.Data.VoxelEngineConfig
+  chunkSize: {x: 16, y: 16, z: 16}
+  activeChunkRadius: 16
+  highDetailMaxChunkDistance: 1
+  mediumDetailMaxChunkDistance: 3
+  highDetailCellSize: 1
+  mediumDetailCellSize: 4
+  lowDetailCellSize: 8
+  defaultCellSize: 16
+  debugSphereCenter: {x: 16, y: 16, z: 16}
+  debugSphereRadius: 14
+  isoLevel: 0

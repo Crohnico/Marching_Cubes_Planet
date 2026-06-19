@@ -432,7 +432,7 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &888565987
+--- !u!1 &1723249795
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -440,182 +440,67 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 888565991}
-  - component: {fileID: 888565992}
-  - component: {fileID: 888565993}
+  - component: {fileID: 1723249798}
+  - component: {fileID: 1723249797}
+  - component: {fileID: 1723249796}
   m_Layer: 0
-  m_Name: Planet
+  m_Name: Voxel Sphere Engine
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!4 &888565991
+--- !u!114 &1723249796
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1723249795}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 54439b6d7387692458e9203bd101011a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.VoxelEngine.Runtime.VoxelSphereGenerator
+  chunkManager: {fileID: 1723249797}
+  centerOverride: {fileID: 0}
+  center: {x: 18, y: 18, z: 18}
+  radius: 36
+  isoLevel: 0
+--- !u!114 &1723249797
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1723249795}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 16479debd3ae1ff49b23ef1dfc40d66d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.VoxelEngine.Runtime.VoxelChunkManager
+  config: {fileID: 11400000, guid: 32b514a84acaa3e46b4ec4da86f6bddb, type: 2}
+  playerChunkTracker: {fileID: 2099919848}
+  sphereGenerator: {fileID: 1723249796}
+  fallbackAnchor: {fileID: 2099919847}
+  material: {fileID: 2100000, guid: b8e3496436244a8a9ecb657377f06a41, type: 2}
+  generateOnEnable: 1
+--- !u!4 &1723249798
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 888565987}
+  m_GameObject: {fileID: 1723249795}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.6577066, y: 0.0110780485, z: 0.5521932, w: 0.5122324}
-  m_LocalPosition: {x: -62, y: -71, z: 1082}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 41.419, y: -280.34, z: -230.698}
---- !u!114 &888565992
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 888565987}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b537799b17b18db438ae89ea01c98e97, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.Generators.MarchingCubesSphereGenerator
-  radius: 1500
-  cubesPerAxis: 12
-  generateOnAwake: 1
-  globalLod: 5
-  useMainCameraChunkLodTest: 0
-  autoRegenerateMainCameraChunkLodTest: 0
-  mainCameraLod5Distance: 5000
-  mainCameraLodRefreshInterval: 0.25
-  mainCameraLodMoveThreshold: 25
-  noiseSeed: 13476
-  noiseProfile: {fileID: 11400000, guid: cf5459ef1dff6f847b6d87faf1d65e1b, type: 2}
-  useContinents: 1
-  voronoiCellCount: 56
-  landCellCount: 43
-  landMinElevation: 0.015
-  landMaxElevation: 0.127
-  landElevationCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 0
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    - serializedVersion: 3
-      time: 1
-      value: 1
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  oceanDepth: 0.16
-  minimumOceanDepth: 0.03
-  continentEdgeBlend: 0.16
-  continentBlendCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 0
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    - serializedVersion: 3
-      time: 1
-      value: 1
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  terrainMaterial: {fileID: 2100000, guid: b8e3496436244a8a9ecb657377f06a41, type: 2}
-  seaLevelAtlasV: 0.337
-  generateOcean: 1
-  oceanMaterial: {fileID: 2100000, guid: db4838b550f348d593fc4a0abb2167dc, type: 2}
-  generatedShadowCastingMode: 0
-  generatedReceiveShadows: 0
-  drawGridGizmos: 0
-  drawSphereGizmo: 0
-  logGenerationReport: 0
-  lastGenerationReport: 'Profile: NoiseProfile
-
-    Global LOD: LOD5 (chunk span
-    1, triangle target 1,00)
-
-    LOD Mode: Marching Cubes
-
-    Surface Noise Enabled:
-    True
-
-    Continents Enabled: True
-
-    Voronoi Cells/Land Cells: 56 / 43
-
-    Land
-    Elevation Min/Max: 0,0150 / 0,1270
-
-    Lowland/Peak Height Above Sea: 25,00
-    / 150,00
-
-    Seed: 13476
-
-    Profile Mountain Budget: 125,0000
-
-    Raw Continent
-    Offset Max: 190,5000
-
-    Radius Offset Min/Max: -240,0000 / 149,5061
-
-    Field
-    Min/Max: -1577,3060 / 1466,1440
-
-    Chunks/Sampled Cubes: 32768 / 32768
-
-    Camera
-    Test LOD5/LOD6 Chunks: 0 / 0
-
-    Camera Test Auto Refresh/Move Threshold: False
-    / 25,0
-
-    Terrain Meshes/Triangles/Removed: 1 / 25936 / 0
-
-    Ocean Meshes/Triangles/Removed:
-    1 / 23952 / 0
-
-    Renderer Shadows: Off, Receive False'
-  generatedRoot: {fileID: 0}
---- !u!114 &888565993
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 888565987}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b140a606ec68e2b4b92bf098311ae937, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CuerpoCeleste
-  velocidadRotacion: 1
-  centroOrbita: {fileID: 0}
-  velocidadOrbita: 20
---- !u!1 &1473064283
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2099919846
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -623,178 +508,60 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 1473064287}
-  - component: {fileID: 1473064285}
-  - component: {fileID: 1473064284}
+  - component: {fileID: 2099919847}
+  - component: {fileID: 2099919848}
+  - component: {fileID: 2099919849}
   m_Layer: 0
-  m_Name: Planet (1)
+  m_Name: Voxel Demo Player
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1473064284
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1473064283}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b140a606ec68e2b4b92bf098311ae937, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CuerpoCeleste
-  velocidadRotacion: 3
-  centroOrbita: {fileID: 888565991}
-  velocidadOrbita: 3
---- !u!114 &1473064285
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1473064283}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b537799b17b18db438ae89ea01c98e97, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.Generators.MarchingCubesSphereGenerator
-  radius: 500
-  cubesPerAxis: 12
-  generateOnAwake: 1
-  globalLod: 5
-  useMainCameraChunkLodTest: 0
-  autoRegenerateMainCameraChunkLodTest: 0
-  mainCameraLod5Distance: 5000
-  mainCameraLodRefreshInterval: 0.25
-  mainCameraLodMoveThreshold: 25
-  noiseSeed: 12527
-  noiseProfile: {fileID: 11400000, guid: 9945923622a32244f93ff3f095fe79bf, type: 2}
-  useContinents: 1
-  voronoiCellCount: 56
-  landCellCount: 43
-  landMinElevation: 0.015
-  landMaxElevation: 0.127
-  landElevationCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 0
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    - serializedVersion: 3
-      time: 1
-      value: 1
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  oceanDepth: 0.16
-  minimumOceanDepth: 0.03
-  continentEdgeBlend: 0.16
-  continentBlendCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 0
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    - serializedVersion: 3
-      time: 1
-      value: 1
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  terrainMaterial: {fileID: 2100000, guid: b8e3496436244a8a9ecb657377f06a41, type: 2}
-  seaLevelAtlasV: 0.05
-  generateOcean: 0
-  oceanMaterial: {fileID: 2100000, guid: db4838b550f348d593fc4a0abb2167dc, type: 2}
-  generatedShadowCastingMode: 0
-  generatedReceiveShadows: 0
-  drawGridGizmos: 0
-  drawSphereGizmo: 0
-  logGenerationReport: 0
-  lastGenerationReport: 'Profile: NoiseProfile 1
-
-    Global LOD: LOD5 (chunk span
-    1, triangle target 1,00)
-
-    LOD Mode: Marching Cubes
-
-    Surface Noise Enabled:
-    True
-
-    Continents Enabled: True
-
-    Voronoi Cells/Land Cells: 16 / 10
-
-    Land
-    Elevation Min/Max: 0,0150 / 0,1270
-
-    Seed: 12527
-
-    Max Profile Offset:
-    129,5000
-
-    Max Continent Offset: 63,5000
-
-    Radius Offset Min/Max: -165,7892
-    / 119,6567
-
-    Field Min/Max: -487,2628 / 860,0159
-
-    Chunks/Sampled Cubes:
-    1000 / 1000
-
-    Camera Test LOD5/LOD6 Chunks: 0 / 0
-
-    Camera Test Auto Refresh/Move
-    Threshold: False / 25,0
-
-    Terrain Meshes/Triangles/Removed: 1 / 1568 / 0
-
-    Ocean
-    Meshes/Triangles/Removed: 0 / 0 / 0
-
-    Renderer Shadows: Off, Receive False'
-  generatedRoot: {fileID: 0}
---- !u!4 &1473064287
+--- !u!4 &2099919847
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1473064283}
+  m_GameObject: {fileID: 2099919846}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.65772694, y: 0.035614394, z: 0.5521815, w: -0.51109934}
-  m_LocalPosition: {x: 1647, y: -71, z: -1612}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 41.419, y: -280.34, z: -230.698}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2099919848
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2099919846}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6016e4b652dc0fa469d71cafeae8a902, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.VoxelEngine.Runtime.PlayerChunkTracker
+  config: {fileID: 11400000, guid: 32b514a84acaa3e46b4ec4da86f6bddb, type: 2}
+  target: {fileID: 2099919847}
+--- !u!114 &2099919849
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2099919846}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7fbe43d6dd814c9428b9abf5e4f5e8c1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.VoxelEngine.Runtime.VoxelDemoPlayerMover
+  moveSpeed: 12
+  verticalSpeed: 8
+  useUnscaledTime: 0
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -802,5 +569,5 @@ SceneRoots:
   - {fileID: 330585546}
   - {fileID: 410087041}
   - {fileID: 832575519}
-  - {fileID: 888565991}
-  - {fileID: 1473064287}
+  - {fileID: 2099919847}
+  - {fileID: 1723249798}
