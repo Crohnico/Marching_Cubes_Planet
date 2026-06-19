@@ -1,3 +1,4 @@
+using System;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -8,12 +9,15 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
     {
         [SerializeField] private Vector3Int chunkSize = new Vector3Int(32, 32, 32);
         [SerializeField, Min(0)] private int activeChunkRadius = 4;
-        [SerializeField, Min(0)] private int highDetailMaxChunkDistance = 1;
-        [SerializeField, Min(0)] private int mediumDetailMaxChunkDistance = 3;
-        [SerializeField, Min(1)] private int highDetailCellSize = 1;
-        [SerializeField, Min(1)] private int mediumDetailCellSize = 4;
-        [SerializeField, Min(1)] private int lowDetailCellSize = 16;
-        [SerializeField, Min(1)] private int defaultCellSize = 1;
+        [SerializeField] private VoxelLodLevel[] lodLevels =
+        {
+            new VoxelLodLevel(1, 1),
+            new VoxelLodLevel(3, 4),
+            new VoxelLodLevel(5, 8),
+            new VoxelLodLevel(7, 16),
+            new VoxelLodLevel(8, 32)
+        };
+        [SerializeField, Min(1)] private int defaultCellSize = 32;
         [SerializeField] private Vector3 debugSphereCenter = new Vector3(16f, 16f, 16f);
         [SerializeField, Min(0.01f)] private float debugSphereRadius = 14f;
         [SerializeField] private float isoLevel;
@@ -31,17 +35,22 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
 
         public int GetCellSizeForChunkDistance(int chunkDistance)
         {
-            if (chunkDistance <= highDetailMaxChunkDistance)
+            if (lodLevels == null || lodLevels.Length == 0)
             {
-                return NormalizeCellSize(highDetailCellSize);
+                return DefaultCellSize;
             }
 
-            if (chunkDistance <= mediumDetailMaxChunkDistance)
+            int normalizedDistance = math.max(0, chunkDistance);
+            for (int i = 0; i < lodLevels.Length; i++)
             {
-                return NormalizeCellSize(mediumDetailCellSize);
+                VoxelLodLevel level = lodLevels[i];
+                if (normalizedDistance <= level.maxChunkDistance)
+                {
+                    return NormalizeCellSize(level.cellSize);
+                }
             }
 
-            return NormalizeCellSize(lowDetailCellSize);
+            return NormalizeCellSize(lodLevels[lodLevels.Length - 1].cellSize);
         }
 
         private void OnValidate()
@@ -51,13 +60,33 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
                 Mathf.Max(1, chunkSize.y),
                 Mathf.Max(1, chunkSize.z));
             activeChunkRadius = Mathf.Max(0, activeChunkRadius);
-            highDetailMaxChunkDistance = Mathf.Max(0, highDetailMaxChunkDistance);
-            mediumDetailMaxChunkDistance = Mathf.Max(highDetailMaxChunkDistance, mediumDetailMaxChunkDistance);
-            highDetailCellSize = NormalizeCellSize(highDetailCellSize);
-            mediumDetailCellSize = NormalizeCellSize(mediumDetailCellSize);
-            lowDetailCellSize = NormalizeCellSize(lowDetailCellSize);
-            defaultCellSize = Mathf.Max(1, defaultCellSize);
+            ValidateLodLevels();
+            defaultCellSize = NormalizeCellSize(defaultCellSize);
             debugSphereRadius = Mathf.Max(0.01f, debugSphereRadius);
+        }
+
+        private void ValidateLodLevels()
+        {
+            if (lodLevels == null || lodLevels.Length == 0)
+            {
+                lodLevels = new[]
+                {
+                    new VoxelLodLevel(1, 1),
+                    new VoxelLodLevel(3, 4),
+                    new VoxelLodLevel(5, 8),
+                    new VoxelLodLevel(7, 16),
+                    new VoxelLodLevel(activeChunkRadius, 32)
+                };
+            }
+
+            for (int i = 0; i < lodLevels.Length; i++)
+            {
+                lodLevels[i] = new VoxelLodLevel(
+                    Mathf.Max(0, lodLevels[i].maxChunkDistance),
+                    NormalizeCellSize(lodLevels[i].cellSize));
+            }
+
+            Array.Sort(lodLevels, (a, b) => a.maxChunkDistance.CompareTo(b.maxChunkDistance));
         }
 
         private int NormalizeCellSize(int requestedSize)
@@ -77,6 +106,19 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
             }
 
             return 1;
+        }
+
+        [Serializable]
+        public struct VoxelLodLevel
+        {
+            [Min(0)] public int maxChunkDistance;
+            [Min(1)] public int cellSize;
+
+            public VoxelLodLevel(int maxChunkDistance, int cellSize)
+            {
+                this.maxChunkDistance = maxChunkDistance;
+                this.cellSize = cellSize;
+            }
         }
     }
 }

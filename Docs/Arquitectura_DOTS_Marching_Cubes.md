@@ -508,6 +508,29 @@ Salida:
 
 Despues del Job, el hilo principal copia esos buffers al `Mesh` de Unity.
 
+### Render agregado
+
+Cada chunk conserva su mesh individual como dato de runtime, pero no crea un `MeshRenderer` propio. El `VoxelChunkManager` mantiene un unico `MeshFilter`/`MeshRenderer` con un mesh combinado y un solo material.
+
+Regla:
+
+- El build de chunk produce una mesh local individual.
+- El manager conserva esa mesh por chunk para poder cambiar LOD, hacer culling o reemplazar solo ese chunk.
+- El renderer visible es un mesh combinado en el objeto padre.
+- Cuando un chunk se genera, cambia de LOD, desaparece o cambia el cono de render, el mesh combinado se reconstruye con los chunks visibles.
+
+Esto reduce batches y mantiene la individualidad logica de cada chunk.
+
+### Cono de render
+
+El manager puede filtrar que chunks entran en el mesh combinado usando un frustum/cono de vision:
+
+- Si hay una `Camera` de culling asignada, se usan sus planos de frustum.
+- Si no hay camara asignada pero existe `Camera.main`, se usa `Camera.main`.
+- Si no hay camara, se usa un cono rectangular definido por un `Transform`, FOV vertical, aspect ratio y distancia maxima.
+
+El chunk se testea con su `Bounds` de chunk completo. Esta prueba decide si la mesh individual del chunk entra o no en el mesh combinado. No destruye la mesh del chunk ni altera su estado de generacion.
+
 ## Configuracion del motor voxel
 
 El motor voxel debe tener un archivo de configuracion propio. No queremos que valores estructurales como el tamano de chunk queden repartidos por scripts.
@@ -669,6 +692,33 @@ void EnsureChunkState(int3 chunkCoord, int desiredCellSize)
 
 Esto es clave para ahorrar calculo: al cambiar de chunk el player/anchor, el manager puede recalcular el conjunto deseado, pero solo deben regenerarse los chunks nuevos, los chunks que cambien de LOD/`size`, o los chunks marcados como dirty. Todo lo demas se queda quieto.
 
+### Propagacion de cambios de chunk
+
+Los cambios de resolucion no deben aplicarse destruyendo y regenerando todos los chunks en el mismo frame. El manager mantiene:
+
+- Chunks activos visibles.
+- Estados deseados por chunk.
+- Cola de builds pendientes.
+- Builds en vuelo con sus `JobHandle`.
+
+Cuando cambia el LOD deseado de un chunk, el chunk viejo sigue visible. El manager encola el nuevo estado y arranca un numero limitado de builds por frame. Cuando los Jobs del chunk terminan, el hilo principal construye la `Mesh`, cambia el chunk visible por el nuevo y destruye el anterior.
+
+Si mientras un build esta en vuelo el estado deseado cambia otra vez, ese resultado se descarta al terminar y se encola el estado nuevo. Asi evitamos swaps obsoletos y tambien evitamos cortar la visibilidad de un chunk antes de tener su reemplazo preparado.
+
+La cola de builds se ordena por cercania al chunk activo. El entorno inmediato del jugador se genera primero y los anillos exteriores se van propagando despues. A igualdad de distancia se prioriza el `cellSize` mas fino y luego el orden de llegada.
+
+La propagacion trabaja en paquetes configurables:
+
+- `maxChunkBuildsStartedPerFrame`: cuantos builds nuevos puede arrancar el manager por frame.
+- `maxConcurrentChunkBuilds`: cuantos builds pueden estar en vuelo a la vez para no disparar memoria.
+- `maxChunkSwapsPerFrame`: cuantas meshes terminadas puede hacer visibles por frame.
+
+Los swaps terminados tambien se priorizan por cercania al jugador, para que el trabajo que se hace visible siga la misma logica que el trabajo que se arranca.
+
+Al entrar en Play Mode, la primera generacion puede completarse de forma sincronica para evitar ver el mundo aparecer por paquetes desde cero. A partir de ahi, los cambios provocados por movimiento, LOD o dirty flags se propagan con la cola incremental.
+
+En modo editor, los botones de generacion completan la cola de forma sincronica para conservar el flujo manual de inspector.
+
 ### Chunks declarados vivos
 
 El radio activo no crea el universo. Solo filtra chunks ya declarados por objetos o sistemas que tienen datos en esa zona.
@@ -686,11 +736,20 @@ Esto permite que un universo conceptual de `1000 x 10000 x 1000` chunks tenga so
 
 ### Regla inicial de LOD
 
-- `distance <= 1`: LOD 0, `VoxelCell.size = 1`.
-- `distance <= 3`: LOD 1, `VoxelCell.size = 4`.
-- `distance > 3`: LOD 2, `VoxelCell.size = 16`.
+El LOD se configura en `VoxelEngineConfig` como una tabla ordenada por distancia de chunk. Cada entrada define:
 
-Esta regla es deliberadamente simple para empezar. Mas adelante se puede ajustar por rendimiento, frustum, o velocidad de la entidad que active chunks.
+- `maxChunkDistance`: distancia maxima inclusiva desde el chunk activo.
+- `cellSize`: tamano de `VoxelCell` para ese tramo.
+
+Configuracion inicial para chunk `32`:
+
+- `distance <= 1`: `VoxelCell.size = 1`.
+- `distance <= 3`: `VoxelCell.size = 4`.
+- `distance <= 5`: `VoxelCell.size = 8`.
+- `distance <= 7`: `VoxelCell.size = 16`.
+- `distance > 7`: `VoxelCell.size = 32`, o el ultimo `cellSize` configurado.
+
+La tabla se normaliza para que cada `cellSize` divida exactamente el tamano de chunk. Para chunk `32`, los tamanos principales son `1, 2, 4, 8, 16, 32`; la configuracion por defecto usa `1, 4, 8, 16, 32`.
 
 Importante: estos valores no cambian la unidad minima del juego. La unidad minima sigue siendo `1u x 1u x 1u`; el `size` de `VoxelCell` indica cuantas unidades minimas agrupa la celda generada.
 

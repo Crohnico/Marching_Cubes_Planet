@@ -27,17 +27,49 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [SerializeField] private Transform fallbackAnchor;
         [SerializeField] private Material material;
         [SerializeField] private bool generateOnEnable = true;
+        [SerializeField] private bool completeInitialBuildSynchronously = true;
+        [SerializeField] private bool enableViewConeCulling = true;
+        [SerializeField] private Camera renderCullingCamera;
+        [SerializeField] private Transform renderCullingAnchor;
+        [SerializeField, Range(1f, 179f)] private float renderConeVerticalFov = 70f;
+        [SerializeField, Min(0.1f)] private float renderConeAspect = 1.7777778f;
+        [SerializeField, Min(1f)] private float renderConeFarDistance = 1024f;
+        [SerializeField, Min(0f)] private float renderConePositionUpdateThreshold = 8f;
+        [SerializeField, Range(0f, 30f)] private float renderConeAngleUpdateThreshold = 2f;
+        [SerializeField, Min(1)] private int maxChunkBuildsStartedPerFrame = 8;
+        [SerializeField, Min(1)] private int maxChunkSwapsPerFrame = 16;
+        [SerializeField, Min(1)] private int maxConcurrentChunkBuilds = 32;
 
         private readonly Dictionary<int3, VoxelChunkState> activeChunks = new Dictionary<int3, VoxelChunkState>();
         private readonly Dictionary<int3, int> declaredChunkRefCounts = new Dictionary<int3, int>();
+        private readonly Dictionary<int3, DesiredChunkState> desiredChunkStates = new Dictionary<int3, DesiredChunkState>();
+        private readonly Dictionary<int3, PendingChunkBuild> pendingChunkBuilds = new Dictionary<int3, PendingChunkBuild>();
         private readonly HashSet<int3> declaredChunks = new HashSet<int3>();
         private readonly HashSet<int3> desiredChunks = new HashSet<int3>();
+        private readonly HashSet<int3> queuedChunkBuilds = new HashSet<int3>();
+        private readonly List<QueuedChunkBuild> chunkBuildQueue = new List<QueuedChunkBuild>();
+        private readonly List<int3> scratchChunkCoords = new List<int3>();
+        private readonly List<CombineInstance> combineInstances = new List<CombineInstance>();
+        private int3 priorityCenterChunk;
+        private int queuedBuildSequence;
+        private bool chunkBuildQueueNeedsSort;
+        private bool completedInitialSynchronousBuild;
+        private bool combinedMeshDirty = true;
+        private MeshFilter combinedMeshFilter;
+        private MeshRenderer combinedMeshRenderer;
+        private Mesh combinedMesh;
+        private readonly Plane[] renderFrustumPlanes = new Plane[6];
+        private Vector3 lastRenderCullingPosition;
+        private Quaternion lastRenderCullingRotation = Quaternion.identity;
+        private bool hasLastRenderCullingPose;
         private MarchingCubesCaseTable caseTable;
 
         private void OnEnable()
         {
             EnsureConfig();
             EnsureCaseTable();
+            EnsureCombinedRenderer();
+            completedInitialSynchronousBuild = false;
 
             if (playerChunkTracker != null)
             {
@@ -54,6 +86,23 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             TryGetComponent(out sphereGenerator);
             fallbackAnchor = transform;
+        }
+
+        private void OnValidate()
+        {
+            renderConeAspect = Mathf.Max(0.1f, renderConeAspect);
+            renderConeFarDistance = Mathf.Max(1f, renderConeFarDistance);
+            renderConePositionUpdateThreshold = Mathf.Max(0f, renderConePositionUpdateThreshold);
+            maxChunkBuildsStartedPerFrame = Mathf.Max(1, maxChunkBuildsStartedPerFrame);
+            maxChunkSwapsPerFrame = Mathf.Max(1, maxChunkSwapsPerFrame);
+            maxConcurrentChunkBuilds = Mathf.Max(1, maxConcurrentChunkBuilds);
+        }
+
+        private void Update()
+        {
+            CompleteReadyChunkBuilds();
+            ProcessChunkBuildQueue();
+            UpdateCombinedMeshForView();
         }
 
         public void Configure(
@@ -76,6 +125,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             ClearChunks();
+            DestroyCombinedMesh();
             if (caseTable.IsCreated)
             {
                 caseTable.Dispose();
@@ -90,6 +140,15 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             RefreshDeclaredChunks();
             int3 centerChunk = GetCurrentCenterChunk();
             RebuildDesiredChunkSet(centerChunk);
+            bool shouldCompleteSynchronously = !Application.isPlaying
+                || (completeInitialBuildSynchronously && !completedInitialSynchronousBuild);
+            if (shouldCompleteSynchronously)
+            {
+                CompleteAllQueuedChunkBuilds();
+            }
+
+            completedInitialSynchronousBuild = true;
+            UpdateCombinedMesh(true);
         }
 
         [ContextMenu("Generate")]
@@ -162,7 +221,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         public GameObject GetChunkObjectOrNull(int3 chunkCoord)
         {
             return activeChunks.TryGetValue(chunkCoord, out VoxelChunkState state)
-                ? state.gameObject
+                ? state.owner
                 : null;
         }
 
@@ -174,7 +233,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void RebuildDesiredChunkSet(int3 centerChunk)
         {
+            priorityCenterChunk = centerChunk;
             desiredChunks.Clear();
+            desiredChunkStates.Clear();
 
             int activeRadius = config.ActiveChunkRadius;
             foreach (int3 chunkCoord in declaredChunks)
@@ -187,142 +248,343 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 }
 
                 int cellSize = config.GetCellSizeForChunkDistance(distance);
+                BoundaryRefinement boundaryRefinement = GetBoundaryRefinement(chunkCoord, centerChunk, cellSize, activeRadius);
+                DesiredChunkState desiredState = new DesiredChunkState(cellSize, boundaryRefinement);
                 desiredChunks.Add(chunkCoord);
-                EnsureChunkState(chunkCoord, cellSize, GetBoundaryRefinement(chunkCoord, centerChunk, cellSize, activeRadius));
+                desiredChunkStates[chunkCoord] = desiredState;
+                EnqueueChunkState(chunkCoord, desiredState);
             }
 
             RemoveUndesiredChunks();
+            ReprioritizeChunkBuildQueue();
         }
 
-        private void EnsureChunkState(int3 chunkCoord, int desiredCellSize, BoundaryRefinement desiredBoundaryRefinement)
+        private void EnqueueChunkState(int3 chunkCoord, DesiredChunkState desiredState)
         {
-            if (IsChunkReady(chunkCoord, desiredCellSize, desiredBoundaryRefinement))
+            if (IsChunkReady(chunkCoord, desiredState))
             {
                 return;
             }
 
-            if (activeChunks.TryGetValue(chunkCoord, out VoxelChunkState oldState))
+            if (queuedChunkBuilds.Add(chunkCoord))
             {
-                DestroyChunk(oldState);
-                activeChunks.Remove(chunkCoord);
+                chunkBuildQueue.Add(new QueuedChunkBuild(
+                    chunkCoord,
+                    GetChunkDistance(chunkCoord - priorityCenterChunk),
+                    desiredState.cellSize,
+                    queuedBuildSequence++));
+                chunkBuildQueueNeedsSort = true;
             }
-
-            activeChunks.Add(chunkCoord, GenerateChunk(chunkCoord, desiredCellSize, desiredBoundaryRefinement));
         }
 
-        private bool IsChunkReady(int3 chunkCoord, int desiredCellSize, BoundaryRefinement desiredBoundaryRefinement)
+        private bool IsChunkReady(int3 chunkCoord, DesiredChunkState desiredState)
         {
             return activeChunks.TryGetValue(chunkCoord, out VoxelChunkState state)
                 && state.generated
                 && !state.dirty
-                && state.cellSize == desiredCellSize
-                && state.boundaryRefinement.Equals(desiredBoundaryRefinement);
+                && state.cellSize == desiredState.cellSize
+                && state.boundaryRefinement.Equals(desiredState.boundaryRefinement);
         }
 
-        private VoxelChunkState GenerateChunk(int3 chunkCoord, int cellSize, BoundaryRefinement boundaryRefinement)
+        private void ProcessChunkBuildQueue()
+        {
+            SortChunkBuildQueueIfNeeded();
+
+            int startedBuilds = 0;
+            int attempts = chunkBuildQueue.Count;
+            while (startedBuilds < maxChunkBuildsStartedPerFrame
+                && pendingChunkBuilds.Count < maxConcurrentChunkBuilds
+                && attempts > 0
+                && chunkBuildQueue.Count > 0)
+            {
+                attempts--;
+                int queuedBuildIndex = chunkBuildQueue.Count - 1;
+                QueuedChunkBuild queuedBuild = chunkBuildQueue[queuedBuildIndex];
+                chunkBuildQueue.RemoveAt(queuedBuildIndex);
+                int3 chunkCoord = queuedBuild.chunkCoord;
+                queuedChunkBuilds.Remove(chunkCoord);
+
+                if (!desiredChunkStates.TryGetValue(chunkCoord, out DesiredChunkState desiredState))
+                {
+                    continue;
+                }
+
+                if (IsChunkReady(chunkCoord, desiredState))
+                {
+                    continue;
+                }
+
+                if (pendingChunkBuilds.ContainsKey(chunkCoord))
+                {
+                    if (queuedChunkBuilds.Add(chunkCoord))
+                    {
+                        chunkBuildQueue.Add(new QueuedChunkBuild(
+                        chunkCoord,
+                        GetChunkDistance(chunkCoord - priorityCenterChunk),
+                        desiredState.cellSize,
+                        queuedBuild.sequence));
+                        chunkBuildQueueNeedsSort = true;
+                    }
+
+                    continue;
+                }
+
+                pendingChunkBuilds.Add(chunkCoord, StartChunkBuild(chunkCoord, desiredState));
+                startedBuilds++;
+            }
+        }
+
+        private void CompleteReadyChunkBuilds()
+        {
+            scratchChunkCoords.Clear();
+            foreach (KeyValuePair<int3, PendingChunkBuild> pair in pendingChunkBuilds)
+            {
+                if (pair.Value.jobHandle.IsCompleted)
+                {
+                    scratchChunkCoords.Add(pair.Key);
+                }
+            }
+
+            scratchChunkCoords.Sort(CompareChunkCoordsByPriority);
+            int swapCount = math.min(maxChunkSwapsPerFrame, scratchChunkCoords.Count);
+            for (int i = 0; i < swapCount; i++)
+            {
+                int3 chunkCoord = scratchChunkCoords[i];
+                PendingChunkBuild pendingBuild = pendingChunkBuilds[chunkCoord];
+                pendingChunkBuilds.Remove(chunkCoord);
+                CompleteChunkBuild(pendingBuild);
+            }
+        }
+
+        private void CompleteAllQueuedChunkBuilds()
+        {
+            while (chunkBuildQueue.Count > 0 || pendingChunkBuilds.Count > 0)
+            {
+                ProcessChunkBuildQueue();
+                CompleteAllPendingChunkBuilds();
+            }
+        }
+
+        private void ReprioritizeChunkBuildQueue()
+        {
+            for (int i = chunkBuildQueue.Count - 1; i >= 0; i--)
+            {
+                QueuedChunkBuild queuedBuild = chunkBuildQueue[i];
+                if (!desiredChunkStates.TryGetValue(queuedBuild.chunkCoord, out DesiredChunkState desiredState)
+                    || IsChunkReady(queuedBuild.chunkCoord, desiredState))
+                {
+                    queuedChunkBuilds.Remove(queuedBuild.chunkCoord);
+                    chunkBuildQueue.RemoveAt(i);
+                    continue;
+                }
+
+                queuedBuild.distanceToPriorityCenter = GetChunkDistance(queuedBuild.chunkCoord - priorityCenterChunk);
+                queuedBuild.cellSize = desiredState.cellSize;
+                chunkBuildQueue[i] = queuedBuild;
+            }
+
+            SortChunkBuildQueue();
+            chunkBuildQueueNeedsSort = false;
+        }
+
+        private void SortChunkBuildQueue()
+        {
+            chunkBuildQueue.Sort(CompareQueuedChunkBuilds);
+        }
+
+        private void SortChunkBuildQueueIfNeeded()
+        {
+            if (!chunkBuildQueueNeedsSort)
+            {
+                return;
+            }
+
+            SortChunkBuildQueue();
+            chunkBuildQueueNeedsSort = false;
+        }
+
+        private int CompareChunkCoordsByPriority(int3 a, int3 b)
+        {
+            int distanceComparison = GetChunkDistance(a - priorityCenterChunk).CompareTo(GetChunkDistance(b - priorityCenterChunk));
+            if (distanceComparison != 0)
+            {
+                return distanceComparison;
+            }
+
+            return CompareInt3(a, b);
+        }
+
+        private static int CompareQueuedChunkBuilds(QueuedChunkBuild a, QueuedChunkBuild b)
+        {
+            int distanceComparison = b.distanceToPriorityCenter.CompareTo(a.distanceToPriorityCenter);
+            if (distanceComparison != 0)
+            {
+                return distanceComparison;
+            }
+
+            int cellSizeComparison = b.cellSize.CompareTo(a.cellSize);
+            if (cellSizeComparison != 0)
+            {
+                return cellSizeComparison;
+            }
+
+            return b.sequence.CompareTo(a.sequence);
+        }
+
+        private static int CompareInt3(int3 a, int3 b)
+        {
+            int xComparison = a.x.CompareTo(b.x);
+            if (xComparison != 0)
+            {
+                return xComparison;
+            }
+
+            int yComparison = a.y.CompareTo(b.y);
+            if (yComparison != 0)
+            {
+                return yComparison;
+            }
+
+            return a.z.CompareTo(b.z);
+        }
+
+        private void CompleteAllPendingChunkBuilds()
+        {
+            scratchChunkCoords.Clear();
+            foreach (int3 chunkCoord in pendingChunkBuilds.Keys)
+            {
+                scratchChunkCoords.Add(chunkCoord);
+            }
+
+            for (int i = 0; i < scratchChunkCoords.Count; i++)
+            {
+                int3 chunkCoord = scratchChunkCoords[i];
+                PendingChunkBuild pendingBuild = pendingChunkBuilds[chunkCoord];
+                pendingChunkBuilds.Remove(chunkCoord);
+                CompleteChunkBuild(pendingBuild);
+            }
+        }
+
+        private PendingChunkBuild StartChunkBuild(int3 chunkCoord, DesiredChunkState desiredState)
         {
             int3 chunkSize = config.ChunkSize;
             int3 chunkOrigin = VoxelChunkUtility.GetChunkOrigin(chunkCoord, chunkSize);
-            List<VoxelCellBuildRequest> cellRequests = BuildCellRequests(chunkOrigin, chunkSize, cellSize, boundaryRefinement);
+            List<VoxelCellBuildRequest> cellRequests = BuildCellRequests(chunkOrigin, chunkSize, desiredState.cellSize, desiredState.boundaryRefinement);
             int cellCount = cellRequests.Count;
 
-            NativeArray<VoxelCellBuildRequest> requests = new NativeArray<VoxelCellBuildRequest>(cellCount, Allocator.TempJob);
-            NativeArray<VoxelCell> cells = new NativeArray<VoxelCell>(cellCount, Allocator.TempJob);
-            NativeArray<byte> cornersByUnitCell = new NativeArray<byte>(GetChunkUnitCellCount(chunkSize), Allocator.TempJob);
-            NativeList<float3> vertices = new NativeList<float3>(cellCount * MaxVerticesPerCell, Allocator.TempJob);
-            NativeList<int> indices = new NativeList<int>(cellCount * MaxVerticesPerCell, Allocator.TempJob);
+            NativeArray<VoxelCellBuildRequest> requests = new NativeArray<VoxelCellBuildRequest>(cellCount, Allocator.Persistent);
+            NativeArray<VoxelCell> cells = new NativeArray<VoxelCell>(cellCount, Allocator.Persistent);
+            NativeArray<byte> cornersByUnitCell = new NativeArray<byte>(GetChunkUnitCellCount(chunkSize), Allocator.Persistent);
+            NativeList<float3> vertices = new NativeList<float3>(cellCount * MaxVerticesPerCell, Allocator.Persistent);
+            NativeList<int> indices = new NativeList<int>(cellCount * MaxVerticesPerCell, Allocator.Persistent);
             ScalarFieldSettings scalarField = GetScalarFieldSettings();
+
+            for (int i = 0; i < cellRequests.Count; i++)
+            {
+                requests[i] = cellRequests[i];
+            }
+
+            EvaluateVoxelCellsJob evaluateJob = new EvaluateVoxelCellsJob
+            {
+                scalarField = scalarField,
+                requests = requests,
+                cells = cells
+            };
+
+            JobHandle evaluateHandle = evaluateJob.Schedule(cellCount, 64);
+
+            BuildVoxelCellLookupJob lookupJob = new BuildVoxelCellLookupJob
+            {
+                cells = cells,
+                chunkOrigin = chunkOrigin,
+                chunkSize = chunkSize,
+                cornersByUnitCell = cornersByUnitCell
+            };
+
+            JobHandle lookupHandle = lookupJob.Schedule(evaluateHandle);
+
+            GenerateChunkMeshJob meshJob = new GenerateChunkMeshJob
+            {
+                cells = cells,
+                cornersByUnitCell = cornersByUnitCell,
+                cornerIndexAFromEdge = caseTable.cornerIndexAFromEdge,
+                cornerIndexBFromEdge = caseTable.cornerIndexBFromEdge,
+                triangulation = caseTable.triangulation,
+                chunkOrigin = chunkOrigin,
+                chunkSize = chunkSize,
+                declaredNeighborSides = GetDeclaredNeighborSides(chunkCoord),
+                scalarField = scalarField,
+                vertices = vertices,
+                indices = indices
+            };
+
+            return new PendingChunkBuild
+            {
+                chunkCoord = chunkCoord,
+                cellSize = desiredState.cellSize,
+                boundaryRefinement = desiredState.boundaryRefinement,
+                chunkOrigin = chunkOrigin,
+                requests = requests,
+                cells = cells,
+                cornersByUnitCell = cornersByUnitCell,
+                vertices = vertices,
+                indices = indices,
+                jobHandle = meshJob.Schedule(lookupHandle)
+            };
+        }
+
+        private void CompleteChunkBuild(PendingChunkBuild pendingBuild)
+        {
+            pendingBuild.jobHandle.Complete();
 
             try
             {
-                for (int i = 0; i < cellRequests.Count; i++)
+                DesiredChunkState completedState = new DesiredChunkState(pendingBuild.cellSize, pendingBuild.boundaryRefinement);
+                bool isStillDesired = desiredChunkStates.TryGetValue(pendingBuild.chunkCoord, out DesiredChunkState desiredState)
+                    && desiredState.Equals(completedState);
+                if (!isStillDesired)
                 {
-                    requests[i] = cellRequests[i];
+                    EnqueueChunkStateIfStillDesired(pendingBuild.chunkCoord);
+                    return;
                 }
 
-                EvaluateVoxelCellsJob evaluateJob = new EvaluateVoxelCellsJob
+                Mesh mesh = BuildMesh(BuildChunkName(pendingBuild.chunkCoord, pendingBuild.cellSize), pendingBuild.vertices, pendingBuild.indices);
+
+                VoxelChunkState nextState = new VoxelChunkState
                 {
-                    scalarField = scalarField,
-                    requests = requests,
-                    cells = cells
-                };
-
-                JobHandle evaluateHandle = evaluateJob.Schedule(cellCount, 64);
-
-                BuildVoxelCellLookupJob lookupJob = new BuildVoxelCellLookupJob
-                {
-                    cells = cells,
-                    chunkOrigin = chunkOrigin,
-                    chunkSize = chunkSize,
-                    cornersByUnitCell = cornersByUnitCell
-                };
-
-                JobHandle lookupHandle = lookupJob.Schedule(evaluateHandle);
-
-                GenerateChunkMeshJob meshJob = new GenerateChunkMeshJob
-                {
-                    cells = cells,
-                    cornersByUnitCell = cornersByUnitCell,
-                    cornerIndexAFromEdge = caseTable.cornerIndexAFromEdge,
-                    cornerIndexBFromEdge = caseTable.cornerIndexBFromEdge,
-                    triangulation = caseTable.triangulation,
-                    chunkOrigin = chunkOrigin,
-                    chunkSize = chunkSize,
-                    declaredNeighborSides = GetDeclaredNeighborSides(chunkCoord),
-                    scalarField = scalarField,
-                    vertices = vertices,
-                    indices = indices
-                };
-
-                meshJob.Schedule(lookupHandle).Complete();
-
-                GameObject chunkObject = new GameObject(BuildChunkName(chunkCoord, cellSize));
-                chunkObject.transform.SetParent(transform, false);
-                chunkObject.transform.position = new Vector3(chunkOrigin.x, chunkOrigin.y, chunkOrigin.z);
-
-                Mesh mesh = BuildMesh(chunkObject.name, vertices, indices);
-                MeshFilter meshFilter = chunkObject.AddComponent<MeshFilter>();
-                MeshRenderer meshRenderer = chunkObject.AddComponent<MeshRenderer>();
-                meshFilter.sharedMesh = mesh;
-                meshRenderer.sharedMaterial = material;
-
-                return new VoxelChunkState
-                {
-                    chunkCoord = chunkCoord,
-                    cellSize = cellSize,
-                    boundaryRefinement = boundaryRefinement,
-                    gameObject = chunkObject,
+                    chunkCoord = pendingBuild.chunkCoord,
+                    cellSize = pendingBuild.cellSize,
+                    boundaryRefinement = pendingBuild.boundaryRefinement,
+                    owner = gameObject,
                     mesh = mesh,
+                    chunkOrigin = pendingBuild.chunkOrigin,
+                    chunkBounds = BuildChunkBounds(pendingBuild.chunkOrigin, config.ChunkSize),
                     generated = true,
                     dirty = false
                 };
+
+                if (activeChunks.TryGetValue(pendingBuild.chunkCoord, out VoxelChunkState oldState))
+                {
+                    DestroyChunk(oldState);
+                    activeChunks[pendingBuild.chunkCoord] = nextState;
+                    MarkCombinedMeshDirty();
+                    return;
+                }
+
+                activeChunks.Add(pendingBuild.chunkCoord, nextState);
+                MarkCombinedMeshDirty();
             }
             finally
             {
-                if (requests.IsCreated)
-                {
-                    requests.Dispose();
-                }
+                DisposePendingChunkBuild(pendingBuild);
+            }
+        }
 
-                if (cells.IsCreated)
-                {
-                    cells.Dispose();
-                }
-
-                if (cornersByUnitCell.IsCreated)
-                {
-                    cornersByUnitCell.Dispose();
-                }
-
-                if (vertices.IsCreated)
-                {
-                    vertices.Dispose();
-                }
-
-                if (indices.IsCreated)
-                {
-                    indices.Dispose();
-                }
+        private void EnqueueChunkStateIfStillDesired(int3 chunkCoord)
+        {
+            if (desiredChunkStates.TryGetValue(chunkCoord, out DesiredChunkState desiredState))
+            {
+                EnqueueChunkState(chunkCoord, desiredState);
             }
         }
 
@@ -565,6 +827,227 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             return mesh;
         }
 
+        private void EnsureCombinedRenderer()
+        {
+            if (combinedMeshFilter == null && !TryGetComponent(out combinedMeshFilter))
+            {
+                combinedMeshFilter = gameObject.AddComponent<MeshFilter>();
+            }
+
+            if (combinedMeshRenderer == null && !TryGetComponent(out combinedMeshRenderer))
+            {
+                combinedMeshRenderer = gameObject.AddComponent<MeshRenderer>();
+            }
+
+            if (combinedMesh == null)
+            {
+                combinedMesh = new Mesh
+                {
+                    name = "VoxelCombinedMesh",
+                    indexFormat = IndexFormat.UInt32
+                };
+                combinedMesh.MarkDynamic();
+            }
+
+            combinedMeshFilter.sharedMesh = combinedMesh;
+            combinedMeshRenderer.sharedMaterial = material;
+        }
+
+        private void UpdateCombinedMeshForView()
+        {
+            if (!combinedMeshDirty && !HasRenderCullingPoseChanged())
+            {
+                return;
+            }
+
+            UpdateCombinedMesh(false);
+        }
+
+        private void UpdateCombinedMesh(bool force)
+        {
+            if (!force && !combinedMeshDirty && !HasRenderCullingPoseChanged())
+            {
+                return;
+            }
+
+            EnsureCombinedRenderer();
+            CaptureRenderCullingPose();
+
+            combineInstances.Clear();
+            int vertexCount = 0;
+            foreach (VoxelChunkState state in activeChunks.Values)
+            {
+                if (!state.generated || state.mesh == null || state.mesh.vertexCount == 0)
+                {
+                    continue;
+                }
+
+                if (!ShouldRenderChunk(state))
+                {
+                    continue;
+                }
+
+                vertexCount += state.mesh.vertexCount;
+                combineInstances.Add(new CombineInstance
+                {
+                    mesh = state.mesh,
+                    transform = transform.worldToLocalMatrix * Matrix4x4.Translate(ToVector3(state.chunkOrigin))
+                });
+            }
+
+            combinedMesh.Clear();
+            combinedMesh.indexFormat = vertexCount > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16;
+            if (combineInstances.Count > 0)
+            {
+                combinedMesh.CombineMeshes(combineInstances.ToArray(), true, true, false);
+                combinedMesh.RecalculateBounds();
+            }
+
+            combinedMeshFilter.sharedMesh = combinedMesh;
+            combinedMeshRenderer.sharedMaterial = material;
+            combinedMeshDirty = false;
+        }
+
+        private bool ShouldRenderChunk(VoxelChunkState state)
+        {
+            if (!enableViewConeCulling)
+            {
+                return true;
+            }
+
+            Camera cullingCamera = ResolveRenderCullingCamera();
+            if (cullingCamera != null)
+            {
+                GeometryUtility.CalculateFrustumPlanes(cullingCamera, renderFrustumPlanes);
+                return GeometryUtility.TestPlanesAABB(renderFrustumPlanes, state.chunkBounds);
+            }
+
+            Transform cullingTransform = ResolveRenderCullingTransform();
+            return cullingTransform == null || IsBoundsInsideRenderCone(state.chunkBounds, cullingTransform);
+        }
+
+        private Camera ResolveRenderCullingCamera()
+        {
+            if (renderCullingCamera != null)
+            {
+                return renderCullingCamera;
+            }
+
+            return Camera.main;
+        }
+
+        private Transform ResolveRenderCullingTransform()
+        {
+            if (renderCullingAnchor != null)
+            {
+                return renderCullingAnchor;
+            }
+
+            Camera cullingCamera = ResolveRenderCullingCamera();
+            if (cullingCamera != null)
+            {
+                return cullingCamera.transform;
+            }
+
+            return fallbackAnchor != null ? fallbackAnchor : transform;
+        }
+
+        private bool IsBoundsInsideRenderCone(Bounds bounds, Transform cullingTransform)
+        {
+            Vector3 localCenter = Quaternion.Inverse(cullingTransform.rotation) * (bounds.center - cullingTransform.position);
+            float radius = bounds.extents.magnitude;
+            if (localCenter.z < -radius || localCenter.z > renderConeFarDistance + radius)
+            {
+                return false;
+            }
+
+            float depth = Mathf.Max(0f, localCenter.z);
+            float verticalTan = Mathf.Tan(renderConeVerticalFov * 0.5f * Mathf.Deg2Rad);
+            float horizontalTan = verticalTan * renderConeAspect;
+            return Mathf.Abs(localCenter.x) <= depth * horizontalTan + radius
+                && Mathf.Abs(localCenter.y) <= depth * verticalTan + radius;
+        }
+
+        private bool HasRenderCullingPoseChanged()
+        {
+            if (!enableViewConeCulling)
+            {
+                return false;
+            }
+
+            Transform cullingTransform = ResolveRenderCullingTransform();
+            if (cullingTransform == null)
+            {
+                return false;
+            }
+
+            if (!hasLastRenderCullingPose)
+            {
+                return true;
+            }
+
+            float positionThreshold = renderConePositionUpdateThreshold;
+            bool positionChanged = (cullingTransform.position - lastRenderCullingPosition).sqrMagnitude >= positionThreshold * positionThreshold;
+            bool rotationChanged = Quaternion.Angle(lastRenderCullingRotation, cullingTransform.rotation) >= renderConeAngleUpdateThreshold;
+            return positionChanged || rotationChanged;
+        }
+
+        private void CaptureRenderCullingPose()
+        {
+            Transform cullingTransform = ResolveRenderCullingTransform();
+            if (cullingTransform == null)
+            {
+                hasLastRenderCullingPose = false;
+                return;
+            }
+
+            lastRenderCullingPosition = cullingTransform.position;
+            lastRenderCullingRotation = cullingTransform.rotation;
+            hasLastRenderCullingPose = true;
+        }
+
+        private void MarkCombinedMeshDirty()
+        {
+            combinedMeshDirty = true;
+        }
+
+        private void ClearCombinedMesh()
+        {
+            if (combinedMesh != null)
+            {
+                combinedMesh.Clear();
+            }
+
+            combinedMeshDirty = true;
+        }
+
+        private void DestroyCombinedMesh()
+        {
+            if (combinedMeshFilter != null)
+            {
+                combinedMeshFilter.sharedMesh = null;
+            }
+
+            if (combinedMesh != null)
+            {
+                DestroyUnityObject(combinedMesh);
+                combinedMesh = null;
+            }
+
+            combinedMeshDirty = true;
+        }
+
+        private static Bounds BuildChunkBounds(int3 chunkOrigin, int3 chunkSize)
+        {
+            Vector3 size = ToVector3(chunkSize);
+            return new Bounds(ToVector3(chunkOrigin) + size * 0.5f, size);
+        }
+
+        private static Vector3 ToVector3(int3 value)
+        {
+            return new Vector3(value.x, value.y, value.z);
+        }
+
         private void RemoveUndesiredChunks()
         {
             List<int3> chunksToRemove = new List<int3>();
@@ -581,11 +1064,18 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 int3 chunkCoord = chunksToRemove[i];
                 DestroyChunk(activeChunks[chunkCoord]);
                 activeChunks.Remove(chunkCoord);
+                MarkCombinedMeshDirty();
             }
         }
 
         private void ClearChunks()
         {
+            CompleteAndDisposePendingChunkBuilds();
+            chunkBuildQueue.Clear();
+            queuedChunkBuilds.Clear();
+            queuedBuildSequence = 0;
+            chunkBuildQueueNeedsSort = false;
+
             foreach (VoxelChunkState state in activeChunks.Values)
             {
                 DestroyChunk(state);
@@ -593,6 +1083,47 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             activeChunks.Clear();
             desiredChunks.Clear();
+            desiredChunkStates.Clear();
+            ClearCombinedMesh();
+        }
+
+        private void CompleteAndDisposePendingChunkBuilds()
+        {
+            foreach (PendingChunkBuild pendingBuild in pendingChunkBuilds.Values)
+            {
+                pendingBuild.jobHandle.Complete();
+                DisposePendingChunkBuild(pendingBuild);
+            }
+
+            pendingChunkBuilds.Clear();
+        }
+
+        private static void DisposePendingChunkBuild(PendingChunkBuild pendingBuild)
+        {
+            if (pendingBuild.requests.IsCreated)
+            {
+                pendingBuild.requests.Dispose();
+            }
+
+            if (pendingBuild.cells.IsCreated)
+            {
+                pendingBuild.cells.Dispose();
+            }
+
+            if (pendingBuild.cornersByUnitCell.IsCreated)
+            {
+                pendingBuild.cornersByUnitCell.Dispose();
+            }
+
+            if (pendingBuild.vertices.IsCreated)
+            {
+                pendingBuild.vertices.Dispose();
+            }
+
+            if (pendingBuild.indices.IsCreated)
+            {
+                pendingBuild.indices.Dispose();
+            }
         }
 
         private void RefreshDeclaredChunks()
@@ -623,11 +1154,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             if (state.mesh != null)
             {
                 DestroyUnityObject(state.mesh);
-            }
-
-            if (state.gameObject != null)
-            {
-                DestroyUnityObject(state.gameObject);
             }
         }
 
@@ -685,10 +1211,60 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             public int3 chunkCoord;
             public int cellSize;
             public BoundaryRefinement boundaryRefinement;
-            public GameObject gameObject;
+            public GameObject owner;
             public Mesh mesh;
+            public int3 chunkOrigin;
+            public Bounds chunkBounds;
             public bool generated;
             public bool dirty;
+        }
+
+        private struct QueuedChunkBuild
+        {
+            public int3 chunkCoord;
+            public int distanceToPriorityCenter;
+            public int cellSize;
+            public int sequence;
+
+            public QueuedChunkBuild(int3 chunkCoord, int distanceToPriorityCenter, int cellSize, int sequence)
+            {
+                this.chunkCoord = chunkCoord;
+                this.distanceToPriorityCenter = distanceToPriorityCenter;
+                this.cellSize = cellSize;
+                this.sequence = sequence;
+            }
+        }
+
+        private struct DesiredChunkState
+        {
+            public int cellSize;
+            public BoundaryRefinement boundaryRefinement;
+
+            public DesiredChunkState(int cellSize, BoundaryRefinement boundaryRefinement)
+            {
+                this.cellSize = cellSize;
+                this.boundaryRefinement = boundaryRefinement;
+            }
+
+            public bool Equals(DesiredChunkState other)
+            {
+                return cellSize == other.cellSize
+                    && boundaryRefinement.Equals(other.boundaryRefinement);
+            }
+        }
+
+        private sealed class PendingChunkBuild
+        {
+            public int3 chunkCoord;
+            public int cellSize;
+            public BoundaryRefinement boundaryRefinement;
+            public int3 chunkOrigin;
+            public NativeArray<VoxelCellBuildRequest> requests;
+            public NativeArray<VoxelCell> cells;
+            public NativeArray<byte> cornersByUnitCell;
+            public NativeList<float3> vertices;
+            public NativeList<int> indices;
+            public JobHandle jobHandle;
         }
 
         private struct BoundaryRefinement
