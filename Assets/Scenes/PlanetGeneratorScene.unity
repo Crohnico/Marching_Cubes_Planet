@@ -178,6 +178,12 @@ MonoBehaviour:
   generateOnEnable: 1
   completeInitialBuildSynchronously: 1
   useChunkCullingForRendering: 1
+  usePlanetActionRadius: 1
+  useChunkCullingForBuildQueue: 1
+  useSegmentedCombinedMeshesNearPlanet: 1
+  nearCombinedMeshBucketCount: 32
+  maxCombinedMeshBucketsRebuiltPerFrame: 2
+  farHemisphereRefreshAngle: 5
   useRadialLayerCulling: 1
   neverLayerCullChunkDistance: 3
   maxChunkBuildsStartedPerFrame: 32
@@ -698,6 +704,12 @@ MonoBehaviour:
   generateOnEnable: 1
   completeInitialBuildSynchronously: 1
   useChunkCullingForRendering: 1
+  usePlanetActionRadius: 1
+  useChunkCullingForBuildQueue: 1
+  useSegmentedCombinedMeshesNearPlanet: 1
+  nearCombinedMeshBucketCount: 32
+  maxCombinedMeshBucketsRebuiltPerFrame: 2
+  farHemisphereRefreshAngle: 5
   useRadialLayerCulling: 1
   neverLayerCullChunkDistance: 3
   maxChunkBuildsStartedPerFrame: 32
@@ -783,8 +795,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7fbe43d6dd814c9428b9abf5e4f5e8c1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.VoxelEngine.Runtime.VoxelDemoPlayerMover
-  moveSpeed: 12
+  moveSpeed: 100
   verticalSpeed: 8
+  mouseSensitivity: 0.12
+  lockCursorOnEnable: 1
   useUnscaledTime: 0
 --- !u!1660057539 &9223372036854775807
 SceneRoots:

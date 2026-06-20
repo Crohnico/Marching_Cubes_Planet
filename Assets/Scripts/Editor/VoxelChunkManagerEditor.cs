@@ -26,6 +26,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Editor
                 EditorGUILayout.IntField("Combined Vertices", manager.CombinedVertexCount);
                 EditorGUILayout.IntField("Combined Triangles", manager.CombinedTriangleCount);
                 EditorGUILayout.Toggle("Render Culling Active", manager.IsRenderCullingActive);
+                EditorGUILayout.Toggle("Far Bridge Active", manager.IsFarBridgeActive);
+                EditorGUILayout.Toggle("Near Rendering Active", manager.IsNearCombinedRenderingActive);
             }
 
             EditorGUILayout.Space();
