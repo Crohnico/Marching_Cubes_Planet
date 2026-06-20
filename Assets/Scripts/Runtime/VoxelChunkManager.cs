@@ -74,7 +74,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         public int VisibleChunkCount => CountVisibleChunks();
         public int CombinedVertexCount => combinedMesh != null ? combinedMesh.vertexCount : 0;
         public int CombinedTriangleCount => combinedMesh != null && combinedMesh.subMeshCount > 0 ? (int)combinedMesh.GetIndexCount(0) / 3 : 0;
-        public bool IsRenderCullingActive => false;
+        public bool IsRenderCullingActive => ShouldCullRenderedChunks();
 
         private void OnEnable()
         {
@@ -247,8 +247,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void HandleViewChanged()
         {
-            EnqueueVisibleDesiredChunks();
-            ReprioritizeChunkBuildQueue();
+            if (!ShouldCullRenderedChunks())
+            {
+                return;
+            }
+
             MarkCombinedMeshDirty();
         }
 
@@ -431,7 +434,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void EnsureChunkCullingGroup()
         {
-            if (!UseChunkCulling())
+            if (!ShouldCullRenderedChunks())
             {
                 DisposeChunkCullingGroup();
                 return;
@@ -456,7 +459,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             chunkVisibility.Clear();
             cullingChunkCoords.Clear();
 
-            if (!UseChunkCulling())
+            if (!ShouldCullRenderedChunks())
             {
                 DisposeChunkCullingGroup();
                 MarkCombinedMeshDirty();
@@ -496,6 +499,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void HandleChunkCullingStateChanged(CullingGroupEvent cullingEvent)
         {
+            if (!ShouldCullRenderedChunks())
+            {
+                return;
+            }
+
             if (cullingEvent.index < 0 || cullingEvent.index >= cullingChunkCoords.Count)
             {
                 return;
@@ -521,12 +529,18 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private bool IsChunkRenderVisible(int3 chunkCoord)
         {
-            return true;
+            return !ShouldCullRenderedChunks()
+                || (chunkVisibility.TryGetValue(chunkCoord, out bool isVisible) && isVisible);
         }
 
         private bool UseChunkCulling()
         {
             return playerChunkTracker != null && playerChunkTracker.EnableChunkCulling;
+        }
+
+        private bool ShouldCullRenderedChunks()
+        {
+            return useChunkCullingForRendering && UseChunkCulling();
         }
 
         private static bool IsChunkVisibleToPlayerCamera(Bounds bounds, Plane[] frustumPlanes)
@@ -548,7 +562,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private int CountVisibleChunks()
         {
-            if (!UseChunkCulling())
+            if (!ShouldCullRenderedChunks())
             {
                 return activeChunks.Count;
             }
