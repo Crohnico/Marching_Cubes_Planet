@@ -20,7 +20,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Jobs
         public ScalarFieldSettings scalarField;
         public NativeList<float3> vertices;
         public NativeList<float3> normals;
-        public NativeList<int> indices;
+        public NativeList<int> interiorIndices;
+        public NativeList<int> transitionIndices;
+        public NativeList<int> surfaceIndices;
 
         public void Execute()
         {
@@ -207,9 +209,26 @@ namespace MarchingCubesPlanet.VoxelEngine.Jobs
             normals.AddNoResize(normal);
             normals.AddNoResize(normal);
 
-            indices.AddNoResize(vertexIndex);
-            indices.AddNoResize(vertexIndex + 1);
-            indices.AddNoResize(vertexIndex + 2);
+            int layerIndex = scalarField.GetLayerIndex((a + b + c) / 3f);
+            if (layerIndex == 0)
+            {
+                interiorIndices.AddNoResize(vertexIndex);
+                interiorIndices.AddNoResize(vertexIndex + 1);
+                interiorIndices.AddNoResize(vertexIndex + 2);
+                return;
+            }
+
+            if (layerIndex == 1)
+            {
+                transitionIndices.AddNoResize(vertexIndex);
+                transitionIndices.AddNoResize(vertexIndex + 1);
+                transitionIndices.AddNoResize(vertexIndex + 2);
+                return;
+            }
+
+            surfaceIndices.AddNoResize(vertexIndex);
+            surfaceIndices.AddNoResize(vertexIndex + 1);
+            surfaceIndices.AddNoResize(vertexIndex + 2);
         }
 
         private float3 InterpolateEdge(VoxelCell cell, int edgeIndex)

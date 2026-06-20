@@ -13,6 +13,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [SerializeField] private Vector3 center = new Vector3(18f, 18f, 18f);
         [SerializeField, Min(0.01f)] private float radius = 14f;
         [SerializeField] private float isoLevel;
+        [SerializeField, Min(0f)] private float surfaceLayerDepth = 64f;
+        [SerializeField, Min(0f)] private float transitionLayerDepth = 192f;
 
         private readonly HashSet<int3> declaredChunks = new HashSet<int3>();
 
@@ -36,7 +38,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             {
                 debugSphereCenter = new float3(resolvedCenter.x, resolvedCenter.y, resolvedCenter.z),
                 debugSphereRadius = radius,
-                isoLevel = isoLevel
+                isoLevel = isoLevel,
+                surfaceLayerDepth = surfaceLayerDepth,
+                transitionLayerDepth = Mathf.Max(surfaceLayerDepth, transitionLayerDepth)
             };
         }
 
@@ -120,6 +124,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private void OnValidate()
         {
             radius = Mathf.Max(0.01f, radius);
+            surfaceLayerDepth = Mathf.Max(0f, surfaceLayerDepth);
+            transitionLayerDepth = Mathf.Max(surfaceLayerDepth, transitionLayerDepth);
         }
 
         private void OnDisable()

@@ -595,6 +595,8 @@ MonoBehaviour:
   center: {x: 18, y: 18, z: 18}
   radius: 1000
   isoLevel: 0
+  surfaceLayerDepth: 64
+  transitionLayerDepth: 192
 --- !u!114 &1723249797
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -614,6 +616,9 @@ MonoBehaviour:
   material: {fileID: 2100000, guid: b8e3496436244a8a9ecb657377f06a41, type: 2}
   generateOnEnable: 1
   completeInitialBuildSynchronously: 1
+  useChunkCullingForRendering: 1
+  useRadialLayerCulling: 1
+  neverLayerCullChunkDistance: 3
   maxChunkBuildsStartedPerFrame: 32
   maxChunkSwapsPerFrame: 32
   maxConcurrentChunkBuilds: 32
