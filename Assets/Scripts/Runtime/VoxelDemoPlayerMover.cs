@@ -10,11 +10,40 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
     {
         [SerializeField, Min(0f)] private float moveSpeed = 12f;
         [SerializeField, Min(0f)] private float verticalSpeed = 8f;
+        [SerializeField, Min(0f)] private float mouseSensitivity = 0.12f;
+        [SerializeField] private bool lockCursorOnEnable = true;
         [SerializeField] private bool useUnscaledTime;
+
+        private float yaw;
+        private float pitch;
+
+        private void OnEnable()
+        {
+            Vector3 eulerAngles = transform.rotation.eulerAngles;
+            yaw = eulerAngles.y;
+            pitch = NormalizeAngle(eulerAngles.x);
+
+            if (lockCursorOnEnable)
+            {
+                Cursor.lockState = CursorLockMode.Locked;
+                Cursor.visible = false;
+            }
+        }
+
+        private void OnDisable()
+        {
+            if (lockCursorOnEnable && Cursor.lockState == CursorLockMode.Locked)
+            {
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible = true;
+            }
+        }
 
         private void Update()
         {
             float deltaTime = useUnscaledTime ? Time.unscaledDeltaTime : Time.deltaTime;
+            UpdateRotation();
+
             Vector3 input = new Vector3(
                 GetAxis(KeyBinding.Right, KeyBinding.Left),
                 GetAxis(KeyBinding.Up, KeyBinding.Down),
@@ -31,8 +60,39 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 horizontal.Normalize();
             }
 
-            Vector3 movement = horizontal * moveSpeed + Vector3.up * (input.y * verticalSpeed);
+            Vector3 movement = (transform.right * horizontal.x + transform.forward * horizontal.z) * moveSpeed
+                + Vector3.up * (input.y * verticalSpeed);
             transform.position += movement * deltaTime;
+        }
+
+        private void UpdateRotation()
+        {
+            Vector2 mouseDelta = GetMouseDelta();
+            if (mouseDelta.sqrMagnitude <= 0f)
+            {
+                return;
+            }
+
+            yaw += mouseDelta.x * mouseSensitivity;
+            pitch = Mathf.Clamp(pitch - mouseDelta.y * mouseSensitivity, -89f, 89f);
+            transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
+        }
+
+        private static Vector2 GetMouseDelta()
+        {
+#if ENABLE_INPUT_SYSTEM
+            Mouse mouse = Mouse.current;
+            return mouse != null ? mouse.delta.ReadValue() : Vector2.zero;
+#elif ENABLE_LEGACY_INPUT_MANAGER
+            return new Vector2(Input.GetAxisRaw("Mouse X"), Input.GetAxisRaw("Mouse Y"));
+#else
+            return Vector2.zero;
+#endif
+        }
+
+        private static float NormalizeAngle(float angle)
+        {
+            return angle > 180f ? angle - 360f : angle;
         }
 
         private static float GetAxis(KeyBinding positive, KeyBinding negative)

@@ -62,6 +62,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private readonly List<QueuedChunkBuild> chunkBuildQueue = new List<QueuedChunkBuild>();
         private readonly List<int3> scratchChunkCoords = new List<int3>();
         private readonly List<CombineInstance> combineInstances = new List<CombineInstance>();
+        private readonly List<Vector3> meshUploadVertices = new List<Vector3>(65536);
+        private readonly List<Vector3> meshUploadNormals = new List<Vector3>(65536);
+        private readonly List<int> meshUploadInteriorIndices = new List<int>(65536);
+        private readonly List<int> meshUploadTransitionIndices = new List<int>(65536);
+        private readonly List<int> meshUploadSurfaceIndices = new List<int>(65536);
         private readonly List<CombinedMeshBucket> nearCombinedMeshBuckets = new List<CombinedMeshBucket>();
         private CombineInstance[] combineInstanceBuffer = new CombineInstance[0];
         private int3 priorityCenterChunk;
@@ -1197,7 +1202,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             return sides;
         }
 
-        private static Mesh BuildMesh(
+        private Mesh BuildMesh(
             string meshName,
             NativeList<float3> vertices,
             NativeList<float3> normals,
@@ -1226,40 +1231,50 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
                 Bounds bounds = CalculateBounds(vertices);
 
-                Vector3[] managedVertices = new Vector3[vertices.Length];
-                Vector3[] managedNormals = new Vector3[normals.Length];
-                for (int i = 0; i < vertices.Length; i++)
-                {
-                    float3 vertex = vertices[i];
-                    managedVertices[i] = new Vector3(vertex.x, vertex.y, vertex.z);
-                }
+                CopyToVector3List(vertices, meshUploadVertices);
+                CopyToVector3List(normals, meshUploadNormals);
+                CopyToIntList(interiorIndices, meshUploadInteriorIndices);
+                CopyToIntList(transitionIndices, meshUploadTransitionIndices);
+                CopyToIntList(surfaceIndices, meshUploadSurfaceIndices);
 
-                for (int i = 0; i < normals.Length; i++)
-                {
-                    float3 normal = normals[i];
-                    managedNormals[i] = new Vector3(normal.x, normal.y, normal.z);
-                }
-
-                mesh.vertices = managedVertices;
-                mesh.normals = managedNormals;
+                mesh.SetVertices(meshUploadVertices);
+                mesh.SetNormals(meshUploadNormals);
                 mesh.subMeshCount = LayerSubMeshCount;
-                mesh.SetTriangles(ToManagedIndices(interiorIndices), InteriorSubMesh, false);
-                mesh.SetTriangles(ToManagedIndices(transitionIndices), TransitionSubMesh, false);
-                mesh.SetTriangles(ToManagedIndices(surfaceIndices), SurfaceSubMesh, false);
+                mesh.SetTriangles(meshUploadInteriorIndices, InteriorSubMesh, false);
+                mesh.SetTriangles(meshUploadTransitionIndices, TransitionSubMesh, false);
+                mesh.SetTriangles(meshUploadSurfaceIndices, SurfaceSubMesh, false);
                 mesh.bounds = bounds;
                 return mesh;
             }
         }
 
-        private static int[] ToManagedIndices(NativeList<int> indices)
+        private static void CopyToVector3List(NativeList<float3> source, List<Vector3> destination)
         {
-            int[] managedIndices = new int[indices.Length];
-            for (int i = 0; i < indices.Length; i++)
+            EnsureListCapacity(destination, source.Length);
+            destination.Clear();
+            for (int i = 0; i < source.Length; i++)
             {
-                managedIndices[i] = indices[i];
+                float3 value = source[i];
+                destination.Add(new Vector3(value.x, value.y, value.z));
             }
+        }
 
-            return managedIndices;
+        private static void CopyToIntList(NativeList<int> source, List<int> destination)
+        {
+            EnsureListCapacity(destination, source.Length);
+            destination.Clear();
+            for (int i = 0; i < source.Length; i++)
+            {
+                destination.Add(source[i]);
+            }
+        }
+
+        private static void EnsureListCapacity<T>(List<T> list, int requiredCapacity)
+        {
+            if (list.Capacity < requiredCapacity)
+            {
+                list.Capacity = requiredCapacity;
+            }
         }
 
         private static Bounds CalculateBounds(NativeList<float3> vertices)
