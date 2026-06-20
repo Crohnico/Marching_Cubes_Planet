@@ -16,7 +16,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Jobs
 
         public int3 chunkOrigin;
         public int3 chunkSize;
-        public byte declaredNeighborSides;
         public ScalarFieldSettings scalarField;
         public NativeList<float3> vertices;
         public NativeList<float3> normals;
@@ -62,51 +61,45 @@ namespace MarchingCubesPlanet.VoxelEngine.Jobs
 
         private void AddExposedSolidCell(VoxelCell cell)
         {
-            if (HasPureAirNeighbor(cell, new int3(0, 0, -1), 1 << 4))
+            if (HasPureAirNeighbor(cell, new int3(0, 0, -1)))
             {
                 AddCellTriangle(cell, 0, 2, 1);
                 AddCellTriangle(cell, 0, 3, 2);
             }
 
-            if (HasPureAirNeighbor(cell, new int3(0, 0, 1), 1 << 5))
+            if (HasPureAirNeighbor(cell, new int3(0, 0, 1)))
             {
                 AddCellTriangle(cell, 4, 5, 6);
                 AddCellTriangle(cell, 4, 6, 7);
             }
 
-            if (HasPureAirNeighbor(cell, new int3(-1, 0, 0), 1 << 0))
+            if (HasPureAirNeighbor(cell, new int3(-1, 0, 0)))
             {
                 AddCellTriangle(cell, 0, 4, 7);
                 AddCellTriangle(cell, 0, 7, 3);
             }
 
-            if (HasPureAirNeighbor(cell, new int3(1, 0, 0), 1 << 1))
+            if (HasPureAirNeighbor(cell, new int3(1, 0, 0)))
             {
                 AddCellTriangle(cell, 1, 2, 6);
                 AddCellTriangle(cell, 1, 6, 5);
             }
 
-            if (HasPureAirNeighbor(cell, new int3(0, -1, 0), 1 << 2))
+            if (HasPureAirNeighbor(cell, new int3(0, -1, 0)))
             {
                 AddCellTriangle(cell, 0, 1, 5);
                 AddCellTriangle(cell, 0, 5, 4);
             }
 
-            if (HasPureAirNeighbor(cell, new int3(0, 1, 0), 1 << 3))
+            if (HasPureAirNeighbor(cell, new int3(0, 1, 0)))
             {
                 AddCellTriangle(cell, 3, 7, 6);
                 AddCellTriangle(cell, 3, 6, 2);
             }
         }
 
-        private bool HasPureAirNeighbor(VoxelCell cell, int3 direction, byte chunkBoundarySide)
+        private bool HasPureAirNeighbor(VoxelCell cell, int3 direction)
         {
-            if (!IsNeighborFaceInsideChunk(cell, direction)
-                && (declaredNeighborSides & chunkBoundarySide) == 0)
-            {
-                return true;
-            }
-
             return IsSampledNeighborPureAir(cell, direction);
         }
 

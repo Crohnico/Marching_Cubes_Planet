@@ -66,6 +66,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private MeshRenderer combinedMeshRenderer;
         private Mesh combinedMesh;
         private readonly Plane[] chunkCullingFrustumPlanes = new Plane[6];
+        private bool chunkVisibilityDirty = true;
+        private bool lastShouldCullRenderedChunks;
         private MarchingCubesCaseTable caseTable;
 
         public int DeclaredChunkCount => declaredChunks.Count;
@@ -113,9 +115,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void Update()
         {
-            UpdateChunkVisibility();
             CompleteReadyChunkBuilds();
             ProcessChunkBuildQueue();
+            UpdateChunkVisibilityIfNeeded();
             UpdateCombinedMeshForView();
         }
 
@@ -253,7 +255,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 return;
             }
 
-            MarkCombinedMeshDirty();
+            MarkChunkVisibilityDirty();
         }
 
         private void RebuildDesiredChunkSet(int3 centerChunk)
@@ -273,7 +275,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     desiredChunkStates[chunkCoord] = new DesiredChunkState(cellSize, boundaryRefinement, detailFocusKey);
                 }
 
-                UpdateChunkVisibility();
+                MarkChunkVisibilityDirty();
                 EnqueueVisibleDesiredChunks();
                 RemoveUndesiredChunks();
                 ReprioritizeChunkBuildQueue();
@@ -431,6 +433,24 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             SortChunkBuildQueue();
             chunkBuildQueueNeedsSort = false;
+        }
+
+        private void UpdateChunkVisibilityIfNeeded()
+        {
+            bool shouldCull = ShouldCullRenderedChunks();
+            if (shouldCull != lastShouldCullRenderedChunks)
+            {
+                lastShouldCullRenderedChunks = shouldCull;
+                MarkChunkVisibilityDirty();
+            }
+
+            if (!chunkVisibilityDirty)
+            {
+                return;
+            }
+
+            UpdateChunkVisibility();
+            chunkVisibilityDirty = false;
         }
 
         private void UpdateChunkVisibility()
@@ -671,7 +691,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     triangulation = caseTable.triangulation,
                     chunkOrigin = chunkOrigin,
                     chunkSize = chunkSize,
-                    declaredNeighborSides = GetDeclaredNeighborSides(chunkCoord),
                     scalarField = scalarField,
                     vertices = vertices,
                     normals = normals,
@@ -750,11 +769,13 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     {
                         DestroyChunk(oldState);
                         activeChunks[pendingBuild.chunkCoord] = nextState;
+                        MarkChunkVisibilityDirty();
                         MarkCombinedMeshDirty();
                         return;
                     }
 
                     activeChunks.Add(pendingBuild.chunkCoord, nextState);
+                    MarkChunkVisibilityDirty();
                     MarkCombinedMeshDirty();
                 }
                 finally
@@ -809,18 +830,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             refinement.Set(side, GetSharedBoundaryCellSize(cellSize, neighborCellSize));
-        }
-
-        private byte GetDeclaredNeighborSides(int3 chunkCoord)
-        {
-            byte sides = 0;
-            sides |= declaredChunks.Contains(chunkCoord + new int3(-1, 0, 0)) ? BoundaryXMin : (byte)0;
-            sides |= declaredChunks.Contains(chunkCoord + new int3(1, 0, 0)) ? BoundaryXMax : (byte)0;
-            sides |= declaredChunks.Contains(chunkCoord + new int3(0, -1, 0)) ? BoundaryYMin : (byte)0;
-            sides |= declaredChunks.Contains(chunkCoord + new int3(0, 1, 0)) ? BoundaryYMax : (byte)0;
-            sides |= declaredChunks.Contains(chunkCoord + new int3(0, 0, -1)) ? BoundaryZMin : (byte)0;
-            sides |= declaredChunks.Contains(chunkCoord + new int3(0, 0, 1)) ? BoundaryZMax : (byte)0;
-            return sides;
         }
 
         private static int GetChunkDistance(int3 chunkOffset)
@@ -1311,6 +1320,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             combinedMeshDirty = true;
         }
 
+        private void MarkChunkVisibilityDirty()
+        {
+            chunkVisibilityDirty = true;
+        }
+
         private void EnsureCombineInstanceBuffer(int requiredLength)
         {
             if (combineInstanceBuffer.Length != requiredLength)
@@ -1378,6 +1392,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 int3 chunkCoord = chunksToRemove[i];
                 DestroyChunk(activeChunks[chunkCoord]);
                 activeChunks.Remove(chunkCoord);
+                MarkChunkVisibilityDirty();
                 MarkCombinedMeshDirty();
             }
         }
@@ -1398,6 +1413,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             activeChunks.Clear();
             desiredChunks.Clear();
             desiredChunkStates.Clear();
+            MarkChunkVisibilityDirty();
             ClearCombinedMesh();
         }
 
