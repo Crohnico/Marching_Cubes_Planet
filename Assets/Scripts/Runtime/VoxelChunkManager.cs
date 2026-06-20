@@ -25,6 +25,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private const int TransitionSubMesh = 1;
         private const int SurfaceSubMesh = 2;
         private const int LayerSubMeshCount = 3;
+        private const int MaxCombinedMeshBucketCount = 32;
         private static readonly ProfilerMarker RebuildDesiredMarker = new ProfilerMarker("VoxelEngine.RebuildDesiredChunks");
         private static readonly ProfilerMarker BuildRequestsMarker = new ProfilerMarker("VoxelEngine.BuildOctreeRequests");
         private static readonly ProfilerMarker StartChunkBuildMarker = new ProfilerMarker("VoxelEngine.StartChunkBuild");
@@ -42,6 +43,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [SerializeField] private bool useChunkCullingForRendering = true;
         [SerializeField] private bool usePlanetActionRadius = true;
         [SerializeField] private bool useChunkCullingForBuildQueue = true;
+        [SerializeField] private bool useSegmentedCombinedMeshesNearPlanet = true;
+        [SerializeField, Range(1, MaxCombinedMeshBucketCount)] private int nearCombinedMeshBucketCount = MaxCombinedMeshBucketCount;
+        [SerializeField, Min(1)] private int maxCombinedMeshBucketsRebuiltPerFrame = 2;
         [SerializeField] private bool useRadialLayerCulling = true;
         [SerializeField, Min(0)] private int neverLayerCullChunkDistance = 3;
         [SerializeField, Min(1)] private int maxChunkBuildsStartedPerFrame = 8;
@@ -58,15 +62,20 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private readonly List<QueuedChunkBuild> chunkBuildQueue = new List<QueuedChunkBuild>();
         private readonly List<int3> scratchChunkCoords = new List<int3>();
         private readonly List<CombineInstance> combineInstances = new List<CombineInstance>();
+        private readonly List<CombinedMeshBucket> nearCombinedMeshBuckets = new List<CombinedMeshBucket>();
         private CombineInstance[] combineInstanceBuffer = new CombineInstance[0];
         private int3 priorityCenterChunk;
         private int queuedBuildSequence;
         private bool chunkBuildQueueNeedsSort;
         private bool completedInitialSynchronousBuild;
-        private bool combinedMeshDirty = true;
-        private MeshFilter combinedMeshFilter;
-        private MeshRenderer combinedMeshRenderer;
-        private Mesh combinedMesh;
+        private bool combinedMeshesDirty = true;
+        private bool combinedMeshLayoutDirty = true;
+        private bool farCombinedMeshDirty = true;
+        private bool useNearCombinedMeshes;
+        private bool nearCombinedMeshesBuiltOnce;
+        private int activeCombinedMeshBucketCount;
+        private int nextCombinedMeshBucketIndex;
+        private CombinedMeshBucket farCombinedMeshBucket;
         private readonly Plane[] chunkCullingFrustumPlanes = new Plane[6];
         private bool chunkVisibilityDirty = true;
         private bool lastShouldCullRenderedChunks;
@@ -80,8 +89,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         public int PendingChunkBuildCount => pendingChunkBuilds.Count;
         public int ActiveChunkCount => activeChunks.Count;
         public int VisibleChunkCount => CountVisibleChunks();
-        public int CombinedVertexCount => combinedMesh != null ? combinedMesh.vertexCount : 0;
-        public int CombinedTriangleCount => combinedMesh != null && combinedMesh.subMeshCount > 0 ? (int)combinedMesh.GetIndexCount(0) / 3 : 0;
+        public int CombinedVertexCount => GetCombinedVertexCount();
+        public int CombinedTriangleCount => GetCombinedTriangleCount();
         public bool IsRenderCullingActive => ShouldCullRenderedChunks();
 
         private void OnEnable()
@@ -115,6 +124,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             maxChunkBuildsStartedPerFrame = Mathf.Max(1, maxChunkBuildsStartedPerFrame);
             maxChunkSwapsPerFrame = Mathf.Max(1, maxChunkSwapsPerFrame);
             maxConcurrentChunkBuilds = Mathf.Max(1, maxConcurrentChunkBuilds);
+            nearCombinedMeshBucketCount = Mathf.Clamp(nearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount);
+            maxCombinedMeshBucketsRebuiltPerFrame = Mathf.Max(1, maxCombinedMeshBucketsRebuiltPerFrame);
             neverLayerCullChunkDistance = Mathf.Max(0, neverLayerCullChunkDistance);
         }
 
@@ -536,12 +547,13 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     };
                     state.frustumLastPlaneIndex = lastPlaneIndex;
                     visibilityChanged = true;
+                    MarkCombinedMeshDirty(state.chunkCoord);
                 }
             }
 
             if (visibilityChanged)
             {
-                MarkCombinedMeshDirty();
+                combinedMeshesDirty = true;
             }
         }
 
@@ -596,6 +608,16 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             isInsidePlanetActionRadius = nextInside;
             hasPlanetActionRadiusState = true;
+            combinedMeshLayoutDirty = true;
+            if (nextInside)
+            {
+                MarkAllNearCombinedMeshesDirty();
+            }
+            else
+            {
+                combinedMeshesDirty = true;
+            }
+
             return true;
         }
 
@@ -883,13 +905,13 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                         DestroyChunk(oldState);
                         activeChunks[pendingBuild.chunkCoord] = nextState;
                         MarkChunkVisibilityDirty();
-                        MarkCombinedMeshDirty();
+                        MarkCombinedMeshDirty(pendingBuild.chunkCoord);
                         return;
                     }
 
                     activeChunks.Add(pendingBuild.chunkCoord, nextState);
                     MarkChunkVisibilityDirty();
-                    MarkCombinedMeshDirty();
+                    MarkCombinedMeshDirty(pendingBuild.chunkCoord);
                 }
                 finally
                 {
@@ -1260,33 +1282,35 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void EnsureCombinedRenderer()
         {
-            if (combinedMeshFilter == null && !TryGetComponent(out combinedMeshFilter))
-            {
-                combinedMeshFilter = gameObject.AddComponent<MeshFilter>();
-            }
+            RefreshPlanetActionRadiusState();
+            EnsureFarCombinedMeshBucket();
+            EnsureNearCombinedMeshBucketCount(nearCombinedMeshBucketCount);
 
-            if (combinedMeshRenderer == null && !TryGetComponent(out combinedMeshRenderer))
-            {
-                combinedMeshRenderer = gameObject.AddComponent<MeshRenderer>();
-            }
+            bool shouldUseNearMeshes = ShouldUseNearCombinedMeshes();
+            int desiredBucketCount = shouldUseNearMeshes
+                ? Mathf.Clamp(nearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount)
+                : 0;
 
-            if (combinedMesh == null)
+            if (useNearCombinedMeshes != shouldUseNearMeshes
+                || activeCombinedMeshBucketCount != desiredBucketCount)
             {
-                combinedMesh = new Mesh
+                useNearCombinedMeshes = shouldUseNearMeshes;
+                activeCombinedMeshBucketCount = desiredBucketCount;
+                nextCombinedMeshBucketIndex = 0;
+                combinedMeshLayoutDirty = true;
+                if (useNearCombinedMeshes)
                 {
-                    name = "VoxelCombinedMesh",
-                    indexFormat = IndexFormat.UInt32
-                };
-                combinedMesh.MarkDynamic();
+                    nearCombinedMeshesBuiltOnce = false;
+                    MarkAllNearCombinedMeshesDirty();
+                }
             }
 
-            combinedMeshFilter.sharedMesh = combinedMesh;
-            combinedMeshRenderer.sharedMaterial = material;
+            ApplyCombinedRendererVisibility();
         }
 
         private void UpdateCombinedMeshForView()
         {
-            if (!combinedMeshDirty)
+            if (!combinedMeshesDirty && !combinedMeshLayoutDirty)
             {
                 return;
             }
@@ -1296,7 +1320,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void UpdateCombinedMesh(bool force)
         {
-            if (!force && !combinedMeshDirty)
+            if (!force && !combinedMeshesDirty && !combinedMeshLayoutDirty)
             {
                 return;
             }
@@ -1305,40 +1329,372 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             {
                 EnsureCombinedRenderer();
 
-                combineInstances.Clear();
-                foreach (VoxelChunkState state in activeChunks.Values)
+                if (force || combinedMeshLayoutDirty)
                 {
-                    if (!state.generated || state.mesh == null || state.mesh.vertexCount == 0)
+                    if (useNearCombinedMeshes)
+                    {
+                        ClearActiveNearCombinedMeshes();
+                        MarkAllNearCombinedMeshesDirty();
+                    }
+                    else if (force || farCombinedMeshBucket == null || farCombinedMeshBucket.mesh == null)
+                    {
+                        farCombinedMeshDirty = true;
+                    }
+
+                    combinedMeshLayoutDirty = false;
+                }
+
+                bool needsFarBridge = useNearCombinedMeshes && !nearCombinedMeshesBuiltOnce;
+                if ((!useNearCombinedMeshes || needsFarBridge || force)
+                    && (force || farCombinedMeshDirty || !IsFarCombinedMeshCached()))
+                {
+                    RebuildFarCombinedMesh();
+                }
+
+                int rebuiltBucketCount = 0;
+                int rebuildBudget = force
+                    ? activeCombinedMeshBucketCount
+                    : Mathf.Max(1, maxCombinedMeshBucketsRebuiltPerFrame);
+                int bucketVisitCount = force ? activeCombinedMeshBucketCount : activeCombinedMeshBucketCount;
+                int startBucketIndex = force
+                    ? 0
+                    : Mathf.Clamp(nextCombinedMeshBucketIndex, 0, activeCombinedMeshBucketCount - 1);
+                for (int visitIndex = 0; visitIndex < bucketVisitCount; visitIndex++)
+                {
+                    int bucketIndex = force
+                        ? visitIndex
+                        : (startBucketIndex + visitIndex) % activeCombinedMeshBucketCount;
+                    CombinedMeshBucket bucket = nearCombinedMeshBuckets[bucketIndex];
+                    if (!force && !bucket.dirty)
                     {
                         continue;
                     }
 
-                    if (!ShouldRenderChunk(state))
+                    if (!force && rebuiltBucketCount >= rebuildBudget)
                     {
-                        continue;
+                        break;
                     }
 
-                    AddChunkCombineInstances(state);
+                    combineInstances.Clear();
+                    foreach (VoxelChunkState state in activeChunks.Values)
+                    {
+                        if (GetCombinedMeshBucketIndex(state.chunkCoord) != bucketIndex)
+                        {
+                            continue;
+                        }
+
+                        if (!state.generated || state.mesh == null || state.mesh.vertexCount == 0)
+                        {
+                            continue;
+                        }
+
+                        if (!ShouldRenderChunk(state))
+                        {
+                            continue;
+                        }
+
+                        AddChunkCombineInstances(state);
+                    }
+
+                    bucket.mesh.Clear();
+                    bucket.mesh.indexFormat = IndexFormat.UInt32;
+                    if (combineInstances.Count > 0)
+                    {
+                        EnsureCombineInstanceBuffer(combineInstances.Count);
+                        for (int i = 0; i < combineInstances.Count; i++)
+                        {
+                            combineInstanceBuffer[i] = combineInstances[i];
+                        }
+
+                        bucket.mesh.CombineMeshes(combineInstanceBuffer, true, true, false);
+                        bucket.mesh.RecalculateBounds();
+                    }
+
+                    bucket.meshFilter.sharedMesh = bucket.mesh;
+                    bucket.meshRenderer.sharedMaterial = material;
+                    bucket.dirty = false;
+                    rebuiltBucketCount++;
+                    nextCombinedMeshBucketIndex = activeCombinedMeshBucketCount > 0
+                        ? (bucketIndex + 1) % activeCombinedMeshBucketCount
+                        : 0;
                 }
 
-                combinedMesh.Clear();
-                combinedMesh.indexFormat = IndexFormat.UInt32;
-                if (combineInstances.Count > 0)
+                combinedMeshesDirty = HasDirtyCombinedMeshBucket();
+                if (useNearCombinedMeshes && !combinedMeshesDirty)
                 {
-                    EnsureCombineInstanceBuffer(combineInstances.Count);
-                    for (int i = 0; i < combineInstances.Count; i++)
-                    {
-                        combineInstanceBuffer[i] = combineInstances[i];
-                    }
-
-                    combinedMesh.CombineMeshes(combineInstanceBuffer, true, true, false);
-                    combinedMesh.RecalculateBounds();
+                    nearCombinedMeshesBuiltOnce = true;
                 }
 
-                combinedMeshFilter.sharedMesh = combinedMesh;
-                combinedMeshRenderer.sharedMaterial = material;
-                combinedMeshDirty = false;
+                ApplyCombinedRendererVisibility();
             }
+        }
+
+        private bool ShouldUseNearCombinedMeshes()
+        {
+            if (!useSegmentedCombinedMeshesNearPlanet || ShouldThrottlePlanetUpdatesOutsideActionRadius())
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private void EnsureFarCombinedMeshBucket()
+        {
+            if (farCombinedMeshBucket == null)
+            {
+                farCombinedMeshBucket = CreateCombinedMeshBucket(gameObject, "VoxelCombinedMesh_Far");
+            }
+
+            farCombinedMeshBucket.meshRenderer.sharedMaterial = material;
+            farCombinedMeshBucket.meshFilter.sharedMesh = farCombinedMeshBucket.mesh;
+        }
+
+        private void EnsureNearCombinedMeshBucketCount(int requiredBucketCount)
+        {
+            int safeCount = Mathf.Clamp(requiredBucketCount, 1, MaxCombinedMeshBucketCount);
+            while (nearCombinedMeshBuckets.Count < safeCount)
+            {
+                int bucketIndex = nearCombinedMeshBuckets.Count;
+                nearCombinedMeshBuckets.Add(CreateCombinedMeshBucket(
+                    CreateCombinedMeshBucketObject(bucketIndex),
+                    $"VoxelCombinedMesh_Near_{bucketIndex:00}"));
+            }
+        }
+
+        private CombinedMeshBucket CreateCombinedMeshBucket(GameObject bucketOwner, string meshName)
+        {
+            if (!bucketOwner.TryGetComponent(out MeshFilter meshFilter))
+            {
+                meshFilter = bucketOwner.AddComponent<MeshFilter>();
+            }
+
+            if (!bucketOwner.TryGetComponent(out MeshRenderer meshRenderer))
+            {
+                meshRenderer = bucketOwner.AddComponent<MeshRenderer>();
+            }
+
+            Mesh mesh = new Mesh
+            {
+                name = meshName,
+                indexFormat = IndexFormat.UInt32
+            };
+            mesh.MarkDynamic();
+
+            meshFilter.sharedMesh = mesh;
+            meshRenderer.sharedMaterial = material;
+            return new CombinedMeshBucket
+            {
+                owner = bucketOwner,
+                meshFilter = meshFilter,
+                meshRenderer = meshRenderer,
+                mesh = mesh,
+                dirty = true
+            };
+        }
+
+        private GameObject CreateCombinedMeshBucketObject(int bucketIndex)
+        {
+            string bucketName = $"VoxelCombinedMesh_Near_{bucketIndex:00}";
+            Transform existing = transform.Find(bucketName);
+            GameObject bucketOwner = existing != null
+                ? existing.gameObject
+                : new GameObject(bucketName);
+            bucketOwner.transform.SetParent(transform, false);
+            bucketOwner.transform.localPosition = Vector3.zero;
+            bucketOwner.transform.localRotation = Quaternion.identity;
+            bucketOwner.transform.localScale = Vector3.one;
+            return bucketOwner;
+        }
+
+        private void ApplyCombinedRendererVisibility()
+        {
+            bool showNearMeshes = useNearCombinedMeshes && nearCombinedMeshesBuiltOnce;
+            bool showFarMesh = !showNearMeshes;
+
+            if (farCombinedMeshBucket != null)
+            {
+                farCombinedMeshBucket.owner.SetActive(true);
+                farCombinedMeshBucket.meshRenderer.enabled = showFarMesh;
+                farCombinedMeshBucket.meshRenderer.sharedMaterial = material;
+                farCombinedMeshBucket.meshFilter.sharedMesh = farCombinedMeshBucket.mesh;
+            }
+
+            for (int i = 0; i < nearCombinedMeshBuckets.Count; i++)
+            {
+                CombinedMeshBucket bucket = nearCombinedMeshBuckets[i];
+                bool active = showNearMeshes && i < activeCombinedMeshBucketCount;
+                bucket.owner.SetActive(active);
+                bucket.meshRenderer.enabled = active;
+                bucket.meshRenderer.sharedMaterial = material;
+                bucket.meshFilter.sharedMesh = bucket.mesh;
+            }
+        }
+
+        private void RebuildFarCombinedMesh()
+        {
+            EnsureFarCombinedMeshBucket();
+            RebuildCombinedMeshBucket(farCombinedMeshBucket, 0, false);
+            farCombinedMeshDirty = false;
+        }
+
+        private void RebuildCombinedMeshBucket(CombinedMeshBucket bucket, int bucketIndex, bool nearBucket)
+        {
+            combineInstances.Clear();
+            foreach (VoxelChunkState state in activeChunks.Values)
+            {
+                if (nearBucket && GetCombinedMeshBucketIndex(state.chunkCoord) != bucketIndex)
+                {
+                    continue;
+                }
+
+                if (!state.generated || state.mesh == null || state.mesh.vertexCount == 0)
+                {
+                    continue;
+                }
+
+                if (!ShouldRenderChunk(state))
+                {
+                    continue;
+                }
+
+                AddChunkCombineInstances(state);
+            }
+
+            bucket.mesh.Clear();
+            bucket.mesh.indexFormat = IndexFormat.UInt32;
+            if (combineInstances.Count > 0)
+            {
+                EnsureCombineInstanceBuffer(combineInstances.Count);
+                for (int i = 0; i < combineInstances.Count; i++)
+                {
+                    combineInstanceBuffer[i] = combineInstances[i];
+                }
+
+                bucket.mesh.CombineMeshes(combineInstanceBuffer, true, true, false);
+                bucket.mesh.RecalculateBounds();
+            }
+
+            bucket.meshFilter.sharedMesh = bucket.mesh;
+            bucket.meshRenderer.sharedMaterial = material;
+        }
+
+        private int GetCombinedMeshBucketIndex(int3 chunkCoord)
+        {
+            if (!useNearCombinedMeshes || activeCombinedMeshBucketCount <= 1)
+            {
+                return 0;
+            }
+
+            if (!TryGetCombinedMeshBucketGrid(activeCombinedMeshBucketCount, out int3 grid))
+            {
+                return GetHashedCombinedMeshBucketIndex(chunkCoord);
+            }
+
+            int3 chunkSize = config.ChunkSize;
+            int3 chunkOrigin = VoxelChunkUtility.GetChunkOrigin(chunkCoord, chunkSize);
+            Vector3 chunkCenter = ToVector3(chunkOrigin) + ToVector3(chunkSize) * 0.5f;
+            Vector3 localCenter = sphereGenerator != null
+                ? chunkCenter - sphereGenerator.Center
+                : chunkCenter;
+            float radius = sphereGenerator != null
+                ? Mathf.Max(0.01f, sphereGenerator.Radius)
+                : Mathf.Max(chunkSize.x, Mathf.Max(chunkSize.y, chunkSize.z));
+            Vector3 normalized = (localCenter + Vector3.one * radius) / (radius * 2f);
+
+            int x = Mathf.Clamp((int)(normalized.x * grid.x), 0, grid.x - 1);
+            int y = Mathf.Clamp((int)(normalized.y * grid.y), 0, grid.y - 1);
+            int z = Mathf.Clamp((int)(normalized.z * grid.z), 0, grid.z - 1);
+            return x + grid.x * (y + grid.y * z);
+        }
+
+        private static bool TryGetCombinedMeshBucketGrid(int bucketCount, out int3 grid)
+        {
+            switch (bucketCount)
+            {
+                case 2:
+                    grid = new int3(2, 1, 1);
+                    return true;
+                case 4:
+                    grid = new int3(2, 2, 1);
+                    return true;
+                case 8:
+                    grid = new int3(2, 2, 2);
+                    return true;
+                case 16:
+                    grid = new int3(4, 2, 2);
+                    return true;
+                case 32:
+                    grid = new int3(4, 4, 2);
+                    return true;
+                default:
+                    grid = default;
+                    return false;
+            }
+        }
+
+        private int GetHashedCombinedMeshBucketIndex(int3 chunkCoord)
+        {
+            unchecked
+            {
+                uint hash = (uint)chunkCoord.x * 73856093u
+                    ^ (uint)chunkCoord.y * 19349663u
+                    ^ (uint)chunkCoord.z * 83492791u;
+                return (int)(hash % (uint)activeCombinedMeshBucketCount);
+            }
+        }
+
+        private int GetCombinedVertexCount()
+        {
+            int count = 0;
+            if (farCombinedMeshBucket != null && farCombinedMeshBucket.meshRenderer.enabled && farCombinedMeshBucket.mesh != null)
+            {
+                count += farCombinedMeshBucket.mesh.vertexCount;
+            }
+
+            for (int i = 0; i < activeCombinedMeshBucketCount && i < nearCombinedMeshBuckets.Count; i++)
+            {
+                Mesh mesh = nearCombinedMeshBuckets[i].mesh;
+                if (mesh != null && nearCombinedMeshBuckets[i].meshRenderer.enabled)
+                {
+                    count += mesh.vertexCount;
+                }
+            }
+
+            return count;
+        }
+
+        private int GetCombinedTriangleCount()
+        {
+            int count = 0;
+            if (farCombinedMeshBucket != null && farCombinedMeshBucket.meshRenderer.enabled && farCombinedMeshBucket.mesh != null)
+            {
+                count += GetMeshTriangleCount(farCombinedMeshBucket.mesh);
+            }
+
+            for (int i = 0; i < activeCombinedMeshBucketCount && i < nearCombinedMeshBuckets.Count; i++)
+            {
+                Mesh mesh = nearCombinedMeshBuckets[i].mesh;
+                if (mesh == null || !nearCombinedMeshBuckets[i].meshRenderer.enabled)
+                {
+                    continue;
+                }
+
+                count += GetMeshTriangleCount(mesh);
+            }
+
+            return count;
+        }
+
+        private static int GetMeshTriangleCount(Mesh mesh)
+        {
+            int count = 0;
+            for (int subMesh = 0; subMesh < mesh.subMeshCount; subMesh++)
+            {
+                count += (int)mesh.GetIndexCount(subMesh) / 3;
+            }
+
+            return count;
         }
 
         private bool ShouldRenderChunk(VoxelChunkState state)
@@ -1427,7 +1783,84 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void MarkCombinedMeshDirty()
         {
-            combinedMeshDirty = true;
+            if (useNearCombinedMeshes)
+            {
+                MarkAllNearCombinedMeshesDirty();
+                return;
+            }
+
+            combinedMeshesDirty = true;
+            if (!IsFarCombinedMeshCached())
+            {
+                farCombinedMeshDirty = true;
+            }
+        }
+
+        private void MarkCombinedMeshDirty(int3 chunkCoord)
+        {
+            combinedMeshesDirty = true;
+            if (!useNearCombinedMeshes)
+            {
+                if (!IsFarCombinedMeshCached())
+                {
+                    farCombinedMeshDirty = true;
+                }
+
+                return;
+            }
+
+            if (combinedMeshLayoutDirty || activeCombinedMeshBucketCount <= 1 || nearCombinedMeshBuckets.Count == 0)
+            {
+                MarkAllNearCombinedMeshesDirty();
+                return;
+            }
+
+            int bucketIndex = GetCombinedMeshBucketIndex(chunkCoord);
+            if (bucketIndex >= 0 && bucketIndex < nearCombinedMeshBuckets.Count)
+            {
+                nearCombinedMeshBuckets[bucketIndex].dirty = true;
+            }
+        }
+
+        private void MarkAllNearCombinedMeshesDirty()
+        {
+            combinedMeshesDirty = true;
+            for (int i = 0; i < nearCombinedMeshBuckets.Count; i++)
+            {
+                nearCombinedMeshBuckets[i].dirty = true;
+            }
+        }
+
+        private bool HasDirtyCombinedMeshBucket()
+        {
+            for (int i = 0; i < activeCombinedMeshBucketCount && i < nearCombinedMeshBuckets.Count; i++)
+            {
+                if (nearCombinedMeshBuckets[i].dirty)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool IsFarCombinedMeshCached()
+        {
+            return farCombinedMeshBucket != null
+                && farCombinedMeshBucket.mesh != null
+                && farCombinedMeshBucket.mesh.vertexCount > 0;
+        }
+
+        private void ClearActiveNearCombinedMeshes()
+        {
+            for (int i = 0; i < activeCombinedMeshBucketCount && i < nearCombinedMeshBuckets.Count; i++)
+            {
+                Mesh mesh = nearCombinedMeshBuckets[i].mesh;
+                if (mesh != null)
+                {
+                    mesh.Clear();
+                }
+            }
         }
 
         private void MarkChunkVisibilityDirty()
@@ -1445,28 +1878,67 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void ClearCombinedMesh()
         {
-            if (combinedMesh != null)
+            if (farCombinedMeshBucket != null && farCombinedMeshBucket.mesh != null)
             {
-                combinedMesh.Clear();
+                farCombinedMeshBucket.mesh.Clear();
             }
 
-            combinedMeshDirty = true;
+            for (int i = 0; i < nearCombinedMeshBuckets.Count; i++)
+            {
+                if (nearCombinedMeshBuckets[i].mesh != null)
+                {
+                    nearCombinedMeshBuckets[i].mesh.Clear();
+                }
+            }
+
+            farCombinedMeshDirty = true;
+            nearCombinedMeshesBuiltOnce = false;
+            MarkAllNearCombinedMeshesDirty();
         }
 
         private void DestroyCombinedMesh()
         {
-            if (combinedMeshFilter != null)
+            if (farCombinedMeshBucket != null)
             {
-                combinedMeshFilter.sharedMesh = null;
+                if (farCombinedMeshBucket.meshFilter != null)
+                {
+                    farCombinedMeshBucket.meshFilter.sharedMesh = null;
+                }
+
+                if (farCombinedMeshBucket.mesh != null)
+                {
+                    DestroyUnityObject(farCombinedMeshBucket.mesh);
+                }
+
+                farCombinedMeshBucket = null;
             }
 
-            if (combinedMesh != null)
+            for (int i = 0; i < nearCombinedMeshBuckets.Count; i++)
             {
-                DestroyUnityObject(combinedMesh);
-                combinedMesh = null;
+                CombinedMeshBucket bucket = nearCombinedMeshBuckets[i];
+                if (bucket.meshFilter != null)
+                {
+                    bucket.meshFilter.sharedMesh = null;
+                }
+
+                if (bucket.mesh != null)
+                {
+                    DestroyUnityObject(bucket.mesh);
+                }
+
+                if (bucket.owner != null && bucket.owner != gameObject)
+                {
+                    DestroyUnityObject(bucket.owner);
+                }
             }
 
-            combinedMeshDirty = true;
+            nearCombinedMeshBuckets.Clear();
+            activeCombinedMeshBucketCount = 0;
+            useNearCombinedMeshes = false;
+            nearCombinedMeshesBuiltOnce = false;
+            farCombinedMeshDirty = true;
+            combinedMeshLayoutDirty = true;
+            combinedMeshesDirty = true;
         }
 
         private static Bounds BuildChunkBounds(int3 chunkOrigin, int3 chunkSize)
@@ -1503,7 +1975,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 DestroyChunk(activeChunks[chunkCoord]);
                 activeChunks.Remove(chunkCoord);
                 MarkChunkVisibilityDirty();
-                MarkCombinedMeshDirty();
+                MarkCombinedMeshDirty(chunkCoord);
             }
         }
 
@@ -1689,6 +2161,15 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             public ChunkVisibility visible;
             public int frustumLastPlaneIndex;
             public bool generated;
+            public bool dirty;
+        }
+
+        private sealed class CombinedMeshBucket
+        {
+            public GameObject owner;
+            public MeshFilter meshFilter;
+            public MeshRenderer meshRenderer;
+            public Mesh mesh;
             public bool dirty;
         }
 
