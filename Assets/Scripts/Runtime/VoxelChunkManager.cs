@@ -40,6 +40,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [SerializeField] private bool generateOnEnable = true;
         [SerializeField] private bool completeInitialBuildSynchronously = true;
         [SerializeField] private bool useChunkCullingForRendering = true;
+        [SerializeField] private bool usePlanetActionRadius = true;
+        [SerializeField] private bool useChunkCullingForBuildQueue = true;
         [SerializeField] private bool useRadialLayerCulling = true;
         [SerializeField, Min(0)] private int neverLayerCullChunkDistance = 3;
         [SerializeField, Min(1)] private int maxChunkBuildsStartedPerFrame = 8;
@@ -68,6 +70,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private readonly Plane[] chunkCullingFrustumPlanes = new Plane[6];
         private bool chunkVisibilityDirty = true;
         private bool lastShouldCullRenderedChunks;
+        private bool hasPlanetActionRadiusState;
+        private bool isInsidePlanetActionRadius = true;
         private MarchingCubesCaseTable caseTable;
 
         public int DeclaredChunkCount => declaredChunks.Count;
@@ -86,6 +90,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             EnsureCaseTable();
             EnsureCombinedRenderer();
             completedInitialSynchronousBuild = false;
+            hasPlanetActionRadiusState = false;
 
             if (playerChunkTracker != null)
             {
@@ -154,6 +159,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             EnsureConfig();
             EnsureCaseTable();
+            RefreshPlanetActionRadiusState();
             int3 centerChunk = GetCurrentCenterChunk();
             RefreshDeclaredChunks();
             RebuildDesiredChunkSet(centerChunk);
@@ -244,18 +250,37 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void HandleChunkChanged(int3 currentChunk)
         {
+            bool actionRadiusChanged = RefreshPlanetActionRadiusState();
+            if (ShouldThrottlePlanetUpdatesOutsideActionRadius() && !actionRadiusChanged)
+            {
+                return;
+            }
+
             RefreshDeclaredChunks();
             RebuildDesiredChunkSet(currentChunk);
         }
 
         private void HandleViewChanged()
         {
+            bool actionRadiusChanged = RefreshPlanetActionRadiusState();
+            if (actionRadiusChanged)
+            {
+                RefreshDeclaredChunks();
+                RebuildDesiredChunkSet(GetCurrentCenterChunk());
+            }
+
             if (!ShouldCullRenderedChunks())
             {
                 return;
             }
 
             MarkChunkVisibilityDirty();
+            if (ShouldCullChunkBuildQueue()
+                && (!ShouldThrottlePlanetUpdatesOutsideActionRadius() || actionRadiusChanged))
+            {
+                EnqueueVisibleDesiredChunks();
+                ReprioritizeChunkBuildQueue();
+            }
         }
 
         private void RebuildDesiredChunkSet(int3 centerChunk)
@@ -284,8 +309,19 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void EnqueueVisibleDesiredChunks()
         {
+            bool shouldCullBuildQueue = ShouldCullChunkBuildQueue();
+            if (shouldCullBuildQueue)
+            {
+                GeometryUtility.CalculateFrustumPlanes(playerChunkTracker.ChunkCullingCamera, chunkCullingFrustumPlanes);
+            }
+
             foreach (KeyValuePair<int3, DesiredChunkState> pair in desiredChunkStates)
             {
+                if (shouldCullBuildQueue && !IsChunkBuildAllowedWithCurrentPlanes(pair.Key))
+                {
+                    continue;
+                }
+
                 EnqueueChunkState(pair.Key, pair.Value);
             }
         }
@@ -346,6 +382,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     continue;
                 }
 
+                if (!IsChunkBuildAllowed(chunkCoord))
+                {
+                    continue;
+                }
+
                 if (pendingChunkBuilds.ContainsKey(chunkCoord))
                 {
                     if (queuedChunkBuilds.Add(chunkCoord))
@@ -399,11 +440,18 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void ReprioritizeChunkBuildQueue()
         {
+            bool shouldCullBuildQueue = ShouldCullChunkBuildQueue();
+            if (shouldCullBuildQueue)
+            {
+                GeometryUtility.CalculateFrustumPlanes(playerChunkTracker.ChunkCullingCamera, chunkCullingFrustumPlanes);
+            }
+
             for (int i = chunkBuildQueue.Count - 1; i >= 0; i--)
             {
                 QueuedChunkBuild queuedBuild = chunkBuildQueue[i];
                 if (!desiredChunkStates.TryGetValue(queuedBuild.chunkCoord, out DesiredChunkState desiredState)
-                    || IsChunkReady(queuedBuild.chunkCoord, desiredState))
+                    || IsChunkReady(queuedBuild.chunkCoord, desiredState)
+                    || (shouldCullBuildQueue && !IsChunkBuildAllowedWithCurrentPlanes(queuedBuild.chunkCoord)))
                 {
                     queuedChunkBuilds.Remove(queuedBuild.chunkCoord);
                     chunkBuildQueue.RemoveAt(i);
@@ -499,7 +547,27 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private bool IsChunkBuildAllowed(int3 chunkCoord)
         {
-            return true;
+            if (!ShouldCullChunkBuildQueue())
+            {
+                return true;
+            }
+
+            GeometryUtility.CalculateFrustumPlanes(playerChunkTracker.ChunkCullingCamera, chunkCullingFrustumPlanes);
+            return IsChunkBuildAllowedWithCurrentPlanes(chunkCoord);
+        }
+
+        private bool IsChunkBuildAllowedWithCurrentPlanes(int3 chunkCoord)
+        {
+            int3 chunkSize = config.ChunkSize;
+            int3 chunkOrigin = VoxelChunkUtility.GetChunkOrigin(chunkCoord, chunkSize);
+            Bounds chunkBounds = BuildChunkBounds(chunkOrigin, chunkSize);
+            Camera camera = playerChunkTracker.ChunkCullingCamera;
+            return IsChunkInCameraRange(chunkBounds, camera)
+                && TestAabbAgainstFrustumCoherent(
+                    chunkBounds,
+                    chunkCullingFrustumPlanes,
+                    0,
+                    out _);
         }
 
         private bool IsChunkRenderVisible(int3 chunkCoord)
@@ -513,9 +581,49 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             return playerChunkTracker != null && playerChunkTracker.EnableChunkCulling;
         }
 
+        private bool ShouldUsePlanetActionRadius()
+        {
+            return usePlanetActionRadius && sphereGenerator != null && config != null;
+        }
+
+        private bool RefreshPlanetActionRadiusState()
+        {
+            bool nextInside = IsCurrentFocusInsidePlanetActionRadius();
+            if (hasPlanetActionRadiusState && nextInside == isInsidePlanetActionRadius)
+            {
+                return false;
+            }
+
+            isInsidePlanetActionRadius = nextInside;
+            hasPlanetActionRadiusState = true;
+            return true;
+        }
+
+        private bool IsCurrentFocusInsidePlanetActionRadius()
+        {
+            if (!ShouldUsePlanetActionRadius())
+            {
+                return true;
+            }
+
+            return sphereGenerator.ContainsActionPoint(GetCurrentDetailFocusVector3(), config);
+        }
+
+        private bool ShouldThrottlePlanetUpdatesOutsideActionRadius()
+        {
+            return ShouldUsePlanetActionRadius()
+                && hasPlanetActionRadiusState
+                && !isInsidePlanetActionRadius;
+        }
+
         private bool ShouldCullRenderedChunks()
         {
             return useChunkCullingForRendering && UseChunkCulling();
+        }
+
+        private bool ShouldCullChunkBuildQueue()
+        {
+            return useChunkCullingForBuildQueue && UseChunkCulling();
         }
 
         private static bool IsChunkInCameraRange(Bounds bounds, Camera camera)
@@ -736,6 +844,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     if (!isStillDesired)
                     {
                         EnqueueChunkStateIfStillDesired(pendingBuild.chunkCoord);
+                        return;
+                    }
+
+                    if (!IsChunkBuildAllowed(pendingBuild.chunkCoord))
+                    {
                         return;
                     }
 

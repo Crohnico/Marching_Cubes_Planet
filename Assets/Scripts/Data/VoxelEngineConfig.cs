@@ -36,6 +36,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
         public int DefaultCellSize => NormalizeCellSize(defaultCellSize);
         public int FinestCellSize => GetFinestCellSize();
         public int CoarsestCellSize => GetCoarsestCellSize();
+        public float CoarsestLodStartDistance => GetLodStartDistanceForCellSize(CoarsestCellSize);
         public float OctreeFocusRebuildDistance => Mathf.Max(1f, octreeFocusRebuildDistance);
 
         public ScalarFieldSettings ScalarFieldSettings => new ScalarFieldSettings
@@ -131,6 +132,21 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
             int cellSizeCount = cellSizes != null ? cellSizes.Length : 0;
             int distanceCount = octreeDetailDistances != null ? octreeDetailDistances.Length : 0;
             return math.max(1, math.min(cellSizeCount, distanceCount));
+        }
+
+        private float GetLodStartDistanceForCellSize(int targetCellSize)
+        {
+            int cellSizeCount = GetOctreeCellSizeCount();
+            int normalizedTarget = NormalizeCellSize(targetCellSize);
+            for (int i = 0; i < cellSizeCount; i++)
+            {
+                if (NormalizeCellSize(GetCellSizeAt(i)) == normalizedTarget)
+                {
+                    return i == 0 ? 0f : GetMaxWorldDistanceForLodIndex(i - 1);
+                }
+            }
+
+            return 0f;
         }
 
         private int GetFinestCellSize()

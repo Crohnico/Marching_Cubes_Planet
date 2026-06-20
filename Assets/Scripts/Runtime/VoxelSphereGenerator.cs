@@ -24,6 +24,18 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         public float Radius => radius;
         public Vector3 Center => centerOverride != null ? centerOverride.position : center;
 
+        public float GetActionRadius(VoxelEngineConfig config)
+        {
+            float lodPadding = config != null ? config.CoarsestLodStartDistance : 0f;
+            return radius + lodPadding;
+        }
+
+        public bool ContainsActionPoint(Vector3 point, VoxelEngineConfig config)
+        {
+            float actionRadius = GetActionRadius(config);
+            return (point - Center).sqrMagnitude <= actionRadius * actionRadius;
+        }
+
         private void Reset()
         {
             TryGetComponent(out chunkManager);
