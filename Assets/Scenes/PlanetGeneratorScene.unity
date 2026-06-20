@@ -119,6 +119,85 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!1 &181062079
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 181062082}
+  - component: {fileID: 181062081}
+  - component: {fileID: 181062080}
+  m_Layer: 0
+  m_Name: Voxel Sphere Engine (1)
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &181062080
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 181062079}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 54439b6d7387692458e9203bd101011a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.VoxelEngine.Runtime.VoxelSphereGenerator
+  chunkManager: {fileID: 181062081}
+  centerOverride: {fileID: 181062082}
+  center: {x: 18, y: 18, z: 18}
+  radius: 750
+  isoLevel: 0
+  surfaceLayerDepth: 64
+  transitionLayerDepth: 192
+  declareOnlySurfaceChunks: 1
+  chunkDeclarationPadding: 0
+--- !u!114 &181062081
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 181062079}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 16479debd3ae1ff49b23ef1dfc40d66d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.VoxelEngine.Runtime.VoxelChunkManager
+  config: {fileID: 11400000, guid: 32b514a84acaa3e46b4ec4da86f6bddb, type: 2}
+  playerChunkTracker: {fileID: 2099919848}
+  sphereGenerator: {fileID: 181062080}
+  fallbackAnchor: {fileID: 2099919847}
+  material: {fileID: 2100000, guid: b8e3496436244a8a9ecb657377f06a41, type: 2}
+  generateOnEnable: 1
+  completeInitialBuildSynchronously: 1
+  useChunkCullingForRendering: 1
+  useRadialLayerCulling: 1
+  neverLayerCullChunkDistance: 3
+  maxChunkBuildsStartedPerFrame: 32
+  maxChunkSwapsPerFrame: 32
+  maxConcurrentChunkBuilds: 32
+--- !u!4 &181062082
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 181062079}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -3038, y: 2727, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &330585543
 GameObject:
   m_ObjectHideFlags: 0
@@ -715,3 +794,4 @@ SceneRoots:
   - {fileID: 832575519}
   - {fileID: 2099919847}
   - {fileID: 1723249798}
+  - {fileID: 181062082}

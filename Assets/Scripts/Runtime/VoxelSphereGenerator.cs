@@ -19,6 +19,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [SerializeField, Min(0f)] private float chunkDeclarationPadding = 0f;
 
         private readonly HashSet<int3> declaredChunks = new HashSet<int3>();
+        private readonly HashSet<int3> nextDeclaredChunks = new HashSet<int3>();
 
         public float Radius => radius;
         public Vector3 Center => centerOverride != null ? centerOverride.position : center;
@@ -66,7 +67,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             int3 minChunk = VoxelChunkUtility.GetChunkCoords(min, chunkSize);
             int3 maxChunk = VoxelChunkUtility.GetChunkCoords(max, chunkSize);
 
-            HashSet<int3> nextDeclaredChunks = new HashSet<int3>();
+            nextDeclaredChunks.Clear();
             for (int x = minChunk.x; x <= maxChunk.x; x++)
             {
                 for (int y = minChunk.y; y <= maxChunk.y; y++)

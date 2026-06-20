@@ -35,16 +35,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Jobs
             {
                 origin = origin,
                 size = size,
-                corners = corners,
-                boundarySides = request.boundarySides,
-                type = SampleMaterialType(origin)
+                corners = corners
             };
-        }
-
-        private static int SampleMaterialType(int3 unitCellOrigin)
-        {
-            // Debug material until a real material provider exists.
-            return 1 + math.abs((unitCellOrigin.x * 17 + unitCellOrigin.y * 31 + unitCellOrigin.z * 47) % 3);
         }
 
         private static int3 GetCornerOffset(int index, int size)

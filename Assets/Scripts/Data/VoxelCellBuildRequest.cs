@@ -8,6 +8,5 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
     {
         public int3 origin;
         public int size;
-        public byte boundarySides;
     }
 }

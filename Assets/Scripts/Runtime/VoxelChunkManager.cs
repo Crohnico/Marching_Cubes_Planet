@@ -918,8 +918,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 requests.Add(new VoxelCellBuildRequest
                 {
                     origin = origin,
-                    size = nodeSize,
-                    boundarySides = chunkBoundarySides
+                    size = nodeSize
                 });
                 return;
             }
@@ -1017,12 +1016,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     for (int z = 0; z < size.z; z += cellSize)
                     {
                         int3 refinedOrigin = origin + new int3(x, y, z);
-                        int3 localOrigin = refinedOrigin - chunkOrigin;
                         requests.Add(new VoxelCellBuildRequest
                         {
                             origin = refinedOrigin,
-                            size = cellSize,
-                            boundarySides = (byte)(GetChunkBoundarySides(localOrigin, cellSize, chunkSize) & boundaryRefinement.sides)
+                            size = cellSize
                         });
                     }
                 }
@@ -1378,18 +1375,18 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void RemoveUndesiredChunks()
         {
-            List<int3> chunksToRemove = new List<int3>();
+            scratchChunkCoords.Clear();
             foreach (KeyValuePair<int3, VoxelChunkState> pair in activeChunks)
             {
                 if (!desiredChunks.Contains(pair.Key))
                 {
-                    chunksToRemove.Add(pair.Key);
+                    scratchChunkCoords.Add(pair.Key);
                 }
             }
 
-            for (int i = 0; i < chunksToRemove.Count; i++)
+            for (int i = 0; i < scratchChunkCoords.Count; i++)
             {
-                int3 chunkCoord = chunksToRemove[i];
+                int3 chunkCoord = scratchChunkCoords[i];
                 DestroyChunk(activeChunks[chunkCoord]);
                 activeChunks.Remove(chunkCoord);
                 MarkChunkVisibilityDirty();

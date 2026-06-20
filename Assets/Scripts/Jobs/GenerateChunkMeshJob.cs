@@ -144,37 +144,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Jobs
             return center + new float3(direction.x, direction.y, direction.z) * halfSize;
         }
 
-        private bool IsNeighborFaceInsideChunk(VoxelCell cell, int3 direction)
-        {
-            int3 localOrigin = cell.origin - chunkOrigin;
-            if (direction.x < 0)
-            {
-                return localOrigin.x > 0;
-            }
-
-            if (direction.x > 0)
-            {
-                return localOrigin.x + cell.size < chunkSize.x;
-            }
-
-            if (direction.y < 0)
-            {
-                return localOrigin.y > 0;
-            }
-
-            if (direction.y > 0)
-            {
-                return localOrigin.y + cell.size < chunkSize.y;
-            }
-
-            if (direction.z < 0)
-            {
-                return localOrigin.z > 0;
-            }
-
-            return localOrigin.z + cell.size < chunkSize.z;
-        }
-
         private void AddCellTriangle(VoxelCell cell, int cornerA, int cornerB, int cornerC)
         {
             AddTriangle(
