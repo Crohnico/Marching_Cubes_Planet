@@ -14,6 +14,21 @@ namespace MarchingCubesPlanet.VoxelEngine.Editor
             VoxelChunkManager manager = (VoxelChunkManager)target;
 
             EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Runtime State", EditorStyles.boldLabel);
+            using (new EditorGUI.DisabledScope(true))
+            {
+                EditorGUILayout.IntField("Declared Chunks", manager.DeclaredChunkCount);
+                EditorGUILayout.IntField("Desired Chunks", manager.DesiredChunkCount);
+                EditorGUILayout.IntField("Queued Builds", manager.QueuedChunkBuildCount);
+                EditorGUILayout.IntField("Pending Builds", manager.PendingChunkBuildCount);
+                EditorGUILayout.IntField("Active Chunks", manager.ActiveChunkCount);
+                EditorGUILayout.IntField("Visible Chunks", manager.VisibleChunkCount);
+                EditorGUILayout.IntField("Combined Vertices", manager.CombinedVertexCount);
+                EditorGUILayout.IntField("Combined Triangles", manager.CombinedTriangleCount);
+                EditorGUILayout.Toggle("Render Culling Active", manager.IsRenderCullingActive);
+            }
+
+            EditorGUILayout.Space();
             if (GUILayout.Button("Generate"))
             {
                 manager.Generate();

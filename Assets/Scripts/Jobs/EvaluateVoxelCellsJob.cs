@@ -37,61 +37,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Jobs
                 size = size,
                 corners = corners,
                 boundarySides = request.boundarySides,
-                type = ResolveCellType(origin, size)
+                type = SampleMaterialType(origin)
             };
-        }
-
-        private static int ResolveCellType(int3 origin, int size)
-        {
-            FixedList4096Bytes<int> counts = default;
-            for (int i = 0; i <= 256; i++)
-            {
-                counts.Add(0);
-            }
-
-            for (int x = 0; x < size; x++)
-            {
-                for (int y = 0; y < size; y++)
-                {
-                    for (int z = 0; z < size; z++)
-                    {
-                        int type = math.clamp(SampleMaterialType(origin + new int3(x, y, z)), 0, 256);
-                        counts[type] = counts[type] + 1;
-                    }
-                }
-            }
-
-            int bestCount = -1;
-            FixedList4096Bytes<int> tiedTypes = default;
-            for (int type = 0; type <= 256; type++)
-            {
-                int count = counts[type];
-                if (count <= 0)
-                {
-                    continue;
-                }
-
-                if (count > bestCount)
-                {
-                    bestCount = count;
-                    tiedTypes.Clear();
-                    tiedTypes.Add(type);
-                    continue;
-                }
-
-                if (count == bestCount)
-                {
-                    tiedTypes.Add(type);
-                }
-            }
-
-            if (tiedTypes.Length == 0)
-            {
-                return 0;
-            }
-
-            uint hash = math.hash(new int4(origin.x, origin.y, origin.z, size));
-            return tiedTypes[(int)(hash % (uint)tiedTypes.Length)];
         }
 
         private static int SampleMaterialType(int3 unitCellOrigin)

@@ -7,45 +7,9 @@ using Unity.Mathematics;
 namespace MarchingCubesPlanet.VoxelEngine.Jobs
 {
     [BurstCompile]
-    public struct BuildVoxelCellLookupJob : IJob
-    {
-        [ReadOnly] public NativeArray<VoxelCell> cells;
-
-        public int3 chunkOrigin;
-        public int3 chunkSize;
-        public NativeArray<byte> cornersByUnitCell;
-
-        public void Execute()
-        {
-            for (int i = 0; i < cells.Length; i++)
-            {
-                VoxelCell cell = cells[i];
-                int3 localOrigin = cell.origin - chunkOrigin;
-                for (int x = 0; x < cell.size; x++)
-                {
-                    for (int y = 0; y < cell.size; y++)
-                    {
-                        for (int z = 0; z < cell.size; z++)
-                        {
-                            int3 local = localOrigin + new int3(x, y, z);
-                            cornersByUnitCell[FlattenIndex(local, chunkSize)] = cell.corners;
-                        }
-                    }
-                }
-            }
-        }
-
-        private static int FlattenIndex(int3 local, int3 size)
-        {
-            return local.x + size.x * (local.y + size.y * local.z);
-        }
-    }
-
-    [BurstCompile]
     public struct GenerateChunkMeshJob : IJob
     {
         [ReadOnly] public NativeArray<VoxelCell> cells;
-        [ReadOnly] public NativeArray<byte> cornersByUnitCell;
         [ReadOnly] public NativeArray<int> cornerIndexAFromEdge;
         [ReadOnly] public NativeArray<int> cornerIndexBFromEdge;
         [ReadOnly] public NativeArray<int> triangulation;
@@ -55,6 +19,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Jobs
         public byte declaredNeighborSides;
         public ScalarFieldSettings scalarField;
         public NativeList<float3> vertices;
+        public NativeList<float3> normals;
         public NativeList<int> indices;
 
         public void Execute()
@@ -134,12 +99,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Jobs
 
         private bool HasPureAirNeighbor(VoxelCell cell, int3 direction, byte chunkBoundarySide)
         {
-            if (IsNeighborFaceInsideChunk(cell, direction))
-            {
-                return HasPureAirNeighborInsideChunk(cell, direction);
-            }
-
-            if ((declaredNeighborSides & chunkBoundarySide) == 0)
+            if (!IsNeighborFaceInsideChunk(cell, direction)
+                && (declaredNeighborSides & chunkBoundarySide) == 0)
             {
                 return true;
             }
@@ -147,63 +108,24 @@ namespace MarchingCubesPlanet.VoxelEngine.Jobs
             return IsSampledNeighborPureAir(cell, direction);
         }
 
-        private bool HasPureAirNeighborInsideChunk(VoxelCell cell, int3 direction)
-        {
-            int3 localOrigin = cell.origin - chunkOrigin;
-            int size = cell.size;
-
-            if (direction.x != 0)
-            {
-                int x = direction.x > 0 ? localOrigin.x + size : localOrigin.x - 1;
-                for (int y = 0; y < size; y++)
-                {
-                    for (int z = 0; z < size; z++)
-                    {
-                        if (cornersByUnitCell[FlattenIndex(new int3(x, localOrigin.y + y, localOrigin.z + z))] == 0)
-                        {
-                            return true;
-                        }
-                    }
-                }
-
-                return false;
-            }
-
-            if (direction.y != 0)
-            {
-                int y = direction.y > 0 ? localOrigin.y + size : localOrigin.y - 1;
-                for (int x = 0; x < size; x++)
-                {
-                    for (int z = 0; z < size; z++)
-                    {
-                        if (cornersByUnitCell[FlattenIndex(new int3(localOrigin.x + x, y, localOrigin.z + z))] == 0)
-                        {
-                            return true;
-                        }
-                    }
-                }
-
-                return false;
-            }
-
-            int fixedZ = direction.z > 0 ? localOrigin.z + size : localOrigin.z - 1;
-            for (int x = 0; x < size; x++)
-            {
-                for (int y = 0; y < size; y++)
-                {
-                    if (cornersByUnitCell[FlattenIndex(new int3(localOrigin.x + x, localOrigin.y + y, fixedZ))] == 0)
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-
         private bool IsSampledNeighborPureAir(VoxelCell cell, int3 direction)
         {
             int3 neighborOrigin = cell.origin + direction * cell.size;
+            float3 faceCenter = GetFaceCenter(cell, direction);
+            if (scalarField.Sample(faceCenter) <= scalarField.isoLevel)
+            {
+                return true;
+            }
+
+            float3 neighborCenter = new float3(
+                neighborOrigin.x + cell.size * 0.5f,
+                neighborOrigin.y + cell.size * 0.5f,
+                neighborOrigin.z + cell.size * 0.5f);
+            if (scalarField.Sample(neighborCenter) <= scalarField.isoLevel)
+            {
+                return true;
+            }
+
             for (int i = 0; i < 8; i++)
             {
                 int3 samplePosition = neighborOrigin + GetCornerOffset(i, cell.size);
@@ -215,6 +137,16 @@ namespace MarchingCubesPlanet.VoxelEngine.Jobs
             }
 
             return true;
+        }
+
+        private static float3 GetFaceCenter(VoxelCell cell, int3 direction)
+        {
+            float halfSize = cell.size * 0.5f;
+            float3 center = new float3(
+                cell.origin.x + halfSize,
+                cell.origin.y + halfSize,
+                cell.origin.z + halfSize);
+            return center + new float3(direction.x, direction.y, direction.z) * halfSize;
         }
 
         private bool IsNeighborFaceInsideChunk(VoxelCell cell, int3 direction)
@@ -248,11 +180,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Jobs
             return localOrigin.z + cell.size < chunkSize.z;
         }
 
-        private int FlattenIndex(int3 local)
-        {
-            return local.x + chunkSize.x * (local.y + chunkSize.y * local.z);
-        }
-
         private void AddCellTriangle(VoxelCell cell, int cornerA, int cornerB, int cornerC)
         {
             AddTriangle(
@@ -272,9 +199,13 @@ namespace MarchingCubesPlanet.VoxelEngine.Jobs
         {
             float3 localOrigin = new float3(chunkOrigin.x, chunkOrigin.y, chunkOrigin.z);
             int vertexIndex = vertices.Length;
+            float3 normal = math.normalizesafe(math.cross(b - a, c - a), new float3(0f, 1f, 0f));
             vertices.AddNoResize(a - localOrigin);
             vertices.AddNoResize(b - localOrigin);
             vertices.AddNoResize(c - localOrigin);
+            normals.AddNoResize(normal);
+            normals.AddNoResize(normal);
+            normals.AddNoResize(normal);
 
             indices.AddNoResize(vertexIndex);
             indices.AddNoResize(vertexIndex + 1);

@@ -15,12 +15,12 @@ MonoBehaviour:
   chunkSize: {x: 128, y: 128, z: 128}
   cellSizes: 01000000040000000800000010000000200000004000000080000000
   octreeDetailDistances:
-  - 16
   - 32
   - 64
   - 128
   - 256
   - 512
   - 1024
+  - 8192
   defaultCellSize: 1
   octreeFocusRebuildDistance: 8
