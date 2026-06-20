@@ -521,15 +521,64 @@ Regla:
 
 Esto reduce batches y mantiene la individualidad logica de cada chunk.
 
-### Cono de render
+### Octree adaptativo intra-chunk
 
-El manager puede filtrar que chunks entran en el mesh combinado usando un frustum/cono de vision:
+La declaracion del mundo usa chunks base. Ese chunk base es la unidad postal minima del motor: si un objeto ocupa una zona, declara los chunks base que cubre esa zona.
 
-- Si hay una `Camera` de culling asignada, se usan sus planos de frustum.
-- Si no hay camara asignada pero existe `Camera.main`, se usa `Camera.main`.
-- Si no hay camara, se usa un cono rectangular definido por un `Transform`, FOV vertical, aspect ratio y distancia maxima.
+La generacion/render mantiene esa unidad de chunk. No se agrupan chunks en superchunks. El LOD se decide dentro del chunk al crear `VoxelCellBuildRequest`, usando un octree local.
 
-El chunk se testea con su `Bounds` de chunk completo. Esta prueba decide si la mesh individual del chunk entra o no en el mesh combinado. No destruye la mesh del chunk ni altera su estado de generacion.
+La config expone:
+
+- `cellSizes`: resoluciones internas de Marching Cubes.
+- `lodDistances`: distancias maximas para cada salto de LOD.
+
+Ejemplo con chunk de `32`:
+
+```text
+raiz del chunk     -> 32 x 32 x 32
+si toca zona fina  -> se divide en 8 hijos de 16
+si sigue tocando   -> se divide en 8 hijos de 8
+...
+hoja final         -> VoxelCellBuildRequest
+```
+
+Asi cerca del jugador no obligamos a todo el chunk `32 x 32 x 32` a generarse a maxima definicion. Solo se refinan los nodos del octree que intersectan la zona cercana al foco de detalle. El resto del chunk emite hojas grandes.
+
+Regla:
+
+- El chunk sigue siendo el contenedor estable.
+- Todo chunk declarado por un cuerpo existe para el pintado.
+- La distancia al player no elimina chunks declarados; solo decide con que resolucion se construye su mesh.
+- Fuera del radio de detalle, los chunks declarados siguen pintandose con el LOD mas bajo disponible.
+- El octree decide el `size` de cada hoja/celda dentro del chunk.
+- Fuera del area refinada se conserva la generacion gruesa.
+- Las costuras se resuelven contra vecinos directos de chunk y contra las celdas de borde.
+
+### Culling de chunks
+
+La camara de culling pertenece al player, no al planeta. `PlayerChunkTracker` mantiene la referencia a la camara que representa la vista real del jugador.
+
+No usamos `OnBecameVisible` para decidir chunks:
+
+- `OnBecameVisible` depende de `Renderer`.
+- Con render agregado solo existe un `MeshRenderer` padre, no uno por chunk.
+- Unity tambien puede dispararlo por la Scene View del editor, y eso falsearia las pruebas.
+
+La alternativa nativa usada es `CullingGroup`:
+
+- El target es la camara del player.
+- Cada chunk deseado registra una `BoundingSphere`.
+- El sistema de Unity informa que chunks estan visibles para esa camara.
+- La Scene Camera no activa chunks porque no es el target del `CullingGroup`.
+
+El player tambien emite un evento cuando cambia la vista de su camara, aunque no haya cambiado de chunk. Esto cubre el caso de girar la cabeza sin moverse. Al recibir ese evento, el manager refresca la visibilidad de los chunks contra la camara del player, marca el mesh combinado como dirty y encola los chunks visibles que aun no tengan mesh lista.
+
+Regla de trabajo:
+
+- Si el chunk no esta visible, no se encola su build de mesh.
+- Si un chunk invisible pasa a visible, se encola en ese momento.
+- Si un chunk ya tenia mesh pero deja de ser visible, conserva su mesh individual pero sale del mesh combinado.
+- El mesh combinado solo contiene chunks visibles.
 
 ## Configuracion del motor voxel
 
@@ -554,24 +603,39 @@ Decision actual:
 
 ```text
 chunkSize = 32 x 32 x 32
-activeChunkRadius = 4
+activeChunkRadius = 8
 ```
 
-Eso significa que un chunk cubre 32 unidades base por eje. Como la unidad minima del juego es `1u x 1u x 1u`, un chunk base puede contener hasta:
+Eso significa que un chunk cubre 32 unidades por eje. Como la unidad minima del juego es `1u x 1u x 1u`, un chunk puede contener hasta:
 
 ```text
 32 * 32 * 32 = 32.768 celdas minimas
 ```
 
-Cuando se usen `VoxelCell.size > 1`, el mismo volumen de chunk se cubrira con menos celdas agregadas.
+Cuando se usen `VoxelCell.size > 1`, el mismo volumen se cubrira con menos celdas agregadas.
 
-Los tamaños de celda usados por LOD deben dividir exactamente el tamano del chunk. Para chunk `32`, los tamaños principales son:
+Configuracion actual:
 
 ```text
-1, 2, 4, 8, 16, 32
+cellSizes = 1, 4, 8, 16, 32, 64, 128, 256
+lodDistances = 1, 3, 5, 7, 11, 13, 32, 64
+defaultCellSize = 8
 ```
 
-Esta es la lista base de resoluciones del motor. Si el chunk se baja a `16`, los tamaños validos pasan a ser `1, 2, 4, 8, 16`.
+`cellSizes` y `lodDistances` van por pares:
+
+```text
+<= 1  -> cellSize 1
+<= 3  -> cellSize 4
+<= 5  -> cellSize 8
+<= 7  -> cellSize 16
+<= 11 -> cellSize 32
+<= 13 -> cellSize 64
+<= 32 -> cellSize 128
+<= 64 -> cellSize 256
+```
+
+Para un chunk de `32`, los valores mayores que `32` se normalizan a `32` hasta que exista el filtro intra-chunk/futuro escalado que los use con otro tamano de chunk.
 
 ## Manager de chunks
 
@@ -599,6 +663,8 @@ public event Action<int3> OnChunkChanged;
 ```
 
 El `int3` enviado es el chunk actual del player/anchor.
+
+Ademas, el player expone la camara que se usa para culling de chunks. Esa camara es el target del `CullingGroup`; el planeta no decide que camara representa la vista del jugador. El player tambien notifica cambios de vista cuando la camara rota o se desplaza por encima de umbrales configurables, para que el motor actualice visibilidad aunque el jugador siga dentro del mismo chunk.
 
 Regla:
 

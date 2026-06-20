@@ -12,20 +12,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a257bf530dc928845849fd4985748e47, type: 3}
   m_Name: VoxelEngineConfig
   m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.VoxelEngine.Data.VoxelEngineConfig
-  chunkSize: {x: 32, y: 32, z: 32}
-  activeChunkRadius: 1600
-  lodLevels:
-  - maxChunkDistance: 1
-    cellSize: 1
-  - maxChunkDistance: 3
-    cellSize: 4
-  - maxChunkDistance: 5
-    cellSize: 8
-  - maxChunkDistance: 7
-    cellSize: 16
-  - maxChunkDistance: 16
-    cellSize: 32
-  defaultCellSize: 32
-  debugSphereCenter: {x: 16, y: 16, z: 16}
-  debugSphereRadius: 14
-  isoLevel: 0
+  chunkSize: {x: 128, y: 128, z: 128}
+  cellSizes: 01000000040000000800000010000000200000004000000080000000
+  octreeDetailDistances:
+  - 16
+  - 32
+  - 64
+  - 128
+  - 256
+  - 512
+  - 1024
+  defaultCellSize: 1
+  octreeFocusRebuildDistance: 8

@@ -16,9 +16,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Editor
 
             GameObject player = new GameObject("Voxel Demo Player");
             player.transform.position = Vector3.zero;
+            Camera playerCamera = CreatePlayerCamera(player.transform);
             PlayerChunkTracker tracker = player.AddComponent<PlayerChunkTracker>();
             player.AddComponent<VoxelDemoPlayerMover>();
-            tracker.Configure(config, player.transform);
+            tracker.Configure(config, player.transform, playerCamera);
 
             GameObject engine = new GameObject("Voxel Sphere Engine");
             VoxelChunkManager manager = engine.AddComponent<VoxelChunkManager>();
@@ -37,9 +38,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Editor
             VoxelEngineConfig config = GetOrCreateConfig();
             GameObject player = new GameObject("Voxel Demo Player");
             player.transform.position = Vector3.zero;
+            Camera playerCamera = CreatePlayerCamera(player.transform);
             PlayerChunkTracker tracker = player.AddComponent<PlayerChunkTracker>();
             player.AddComponent<VoxelDemoPlayerMover>();
-            tracker.Configure(config, player.transform);
+            tracker.Configure(config, player.transform, playerCamera);
 
             Selection.activeGameObject = player;
             Undo.RegisterCreatedObjectUndo(player, "Create Voxel Demo Player");
@@ -74,6 +76,20 @@ namespace MarchingCubesPlanet.VoxelEngine.Editor
             AssetDatabase.CreateAsset(config, ConfigPath);
             AssetDatabase.SaveAssets();
             return config;
+        }
+
+        private static Camera CreatePlayerCamera(Transform parent)
+        {
+            GameObject cameraObject = new GameObject("Voxel Player Camera");
+            cameraObject.transform.SetParent(parent, false);
+            cameraObject.transform.localPosition = new Vector3(0f, 2f, -8f);
+            cameraObject.transform.localRotation = Quaternion.Euler(12f, 0f, 0f);
+
+            Camera camera = cameraObject.AddComponent<Camera>();
+            camera.nearClipPlane = 0.1f;
+            camera.farClipPlane = 2048f;
+            camera.fieldOfView = 70f;
+            return camera;
         }
     }
 }

@@ -1,4 +1,3 @@
-using System;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -8,49 +7,48 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
     public sealed class VoxelEngineConfig : ScriptableObject
     {
         [SerializeField] private Vector3Int chunkSize = new Vector3Int(32, 32, 32);
-        [SerializeField, Min(0)] private int activeChunkRadius = 4;
-        [SerializeField] private VoxelLodLevel[] lodLevels =
+        [SerializeField] private int[] cellSizes =
         {
-            new VoxelLodLevel(1, 1),
-            new VoxelLodLevel(3, 4),
-            new VoxelLodLevel(5, 8),
-            new VoxelLodLevel(7, 16),
-            new VoxelLodLevel(8, 32)
+            1,
+            4,
+            8,
+            16,
+            32,
+            64,
+            128,
+            256
         };
-        [SerializeField, Min(1)] private int defaultCellSize = 32;
-        [SerializeField] private Vector3 debugSphereCenter = new Vector3(16f, 16f, 16f);
-        [SerializeField, Min(0.01f)] private float debugSphereRadius = 14f;
-        [SerializeField] private float isoLevel;
+        [SerializeField] private float[] octreeDetailDistances =
+        {
+            16f,
+            32f,
+            64f,
+            128f,
+            256f,
+            512f,
+            1024f,
+            2048f
+        };
+        [SerializeField, Min(1)] private int defaultCellSize = 8;
+        [SerializeField, Min(1f)] private float octreeFocusRebuildDistance = 1f;
 
         public int3 ChunkSize => new int3(chunkSize.x, chunkSize.y, chunkSize.z);
-        public int ActiveChunkRadius => activeChunkRadius;
         public int DefaultCellSize => NormalizeCellSize(defaultCellSize);
+        public int FinestCellSize => GetFinestCellSize();
+        public int CoarsestCellSize => GetCoarsestCellSize();
+        public float OctreeFocusRebuildDistance => Mathf.Max(1f, octreeFocusRebuildDistance);
 
         public ScalarFieldSettings ScalarFieldSettings => new ScalarFieldSettings
         {
-            debugSphereCenter = new float3(debugSphereCenter.x, debugSphereCenter.y, debugSphereCenter.z),
-            debugSphereRadius = debugSphereRadius,
-            isoLevel = isoLevel
+            debugSphereCenter = new float3(chunkSize.x, chunkSize.y, chunkSize.z) * 0.5f,
+            debugSphereRadius = math.min(chunkSize.x, math.min(chunkSize.y, chunkSize.z)) * 0.45f,
+            isoLevel = 0f
         };
 
-        public int GetCellSizeForChunkDistance(int chunkDistance)
+        public int GetCellSizeForWorldDistance(float worldDistance)
         {
-            if (lodLevels == null || lodLevels.Length == 0)
-            {
-                return DefaultCellSize;
-            }
-
-            int normalizedDistance = math.max(0, chunkDistance);
-            for (int i = 0; i < lodLevels.Length; i++)
-            {
-                VoxelLodLevel level = lodLevels[i];
-                if (normalizedDistance <= level.maxChunkDistance)
-                {
-                    return NormalizeCellSize(level.cellSize);
-                }
-            }
-
-            return NormalizeCellSize(lodLevels[lodLevels.Length - 1].cellSize);
+            int lodIndex = GetLodIndexForWorldDistance(worldDistance);
+            return NormalizeCellSize(GetCellSizeAt(lodIndex));
         }
 
         private void OnValidate()
@@ -59,34 +57,112 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
                 Mathf.Max(1, chunkSize.x),
                 Mathf.Max(1, chunkSize.y),
                 Mathf.Max(1, chunkSize.z));
-            activeChunkRadius = Mathf.Max(0, activeChunkRadius);
-            ValidateLodLevels();
+            ValidateCellSizes();
+            ValidateOctreeDetailDistances();
             defaultCellSize = NormalizeCellSize(defaultCellSize);
-            debugSphereRadius = Mathf.Max(0.01f, debugSphereRadius);
+            octreeFocusRebuildDistance = Mathf.Max(1f, octreeFocusRebuildDistance);
         }
 
-        private void ValidateLodLevels()
+        private void ValidateCellSizes()
         {
-            if (lodLevels == null || lodLevels.Length == 0)
+            if (cellSizes == null || cellSizes.Length == 0)
             {
-                lodLevels = new[]
+                cellSizes = new[] { 1, 4, 8, 16, 32, 64, 128, 256 };
+            }
+
+            for (int i = 0; i < cellSizes.Length; i++)
+            {
+                cellSizes[i] = NormalizeCellSize(cellSizes[i]);
+            }
+        }
+
+        private void ValidateOctreeDetailDistances()
+        {
+            if (octreeDetailDistances == null || octreeDetailDistances.Length == 0)
+            {
+                octreeDetailDistances = new[] { 16f, 32f, 64f, 128f, 256f, 512f, 1024f, 2048f };
+            }
+
+            float previous = 0f;
+            for (int i = 0; i < octreeDetailDistances.Length; i++)
+            {
+                octreeDetailDistances[i] = Mathf.Max(previous, octreeDetailDistances[i]);
+                previous = octreeDetailDistances[i];
+            }
+        }
+
+        private int GetLodIndexForWorldDistance(float worldDistance)
+        {
+            float normalizedDistance = Mathf.Max(0f, worldDistance);
+            int cellSizeCount = GetOctreeCellSizeCount();
+            for (int i = 0; i < cellSizeCount; i++)
+            {
+                if (normalizedDistance <= GetMaxWorldDistanceForLodIndex(i))
                 {
-                    new VoxelLodLevel(1, 1),
-                    new VoxelLodLevel(3, 4),
-                    new VoxelLodLevel(5, 8),
-                    new VoxelLodLevel(7, 16),
-                    new VoxelLodLevel(activeChunkRadius, 32)
-                };
+                    return i;
+                }
             }
 
-            for (int i = 0; i < lodLevels.Length; i++)
+            return cellSizeCount - 1;
+        }
+
+        private float GetMaxWorldDistanceForLodIndex(int lodIndex)
+        {
+            if (octreeDetailDistances != null && lodIndex < octreeDetailDistances.Length)
             {
-                lodLevels[i] = new VoxelLodLevel(
-                    Mathf.Max(0, lodLevels[i].maxChunkDistance),
-                    NormalizeCellSize(lodLevels[i].cellSize));
+                return Mathf.Max(0f, octreeDetailDistances[lodIndex]);
             }
 
-            Array.Sort(lodLevels, (a, b) => a.maxChunkDistance.CompareTo(b.maxChunkDistance));
+            return float.PositiveInfinity;
+        }
+
+        private int GetCellSizeAt(int lodIndex)
+        {
+            if (cellSizes == null || cellSizes.Length == 0)
+            {
+                return DefaultCellSize;
+            }
+
+            return cellSizes[math.clamp(lodIndex, 0, cellSizes.Length - 1)];
+        }
+
+        private int GetOctreeCellSizeCount()
+        {
+            int cellSizeCount = cellSizes != null ? cellSizes.Length : 0;
+            int distanceCount = octreeDetailDistances != null ? octreeDetailDistances.Length : 0;
+            return math.max(1, math.min(cellSizeCount, distanceCount));
+        }
+
+        private int GetFinestCellSize()
+        {
+            if (cellSizes == null || cellSizes.Length == 0)
+            {
+                return DefaultCellSize;
+            }
+
+            int finest = int.MaxValue;
+            for (int i = 0; i < cellSizes.Length; i++)
+            {
+                finest = math.min(finest, NormalizeCellSize(cellSizes[i]));
+            }
+
+            return finest == int.MaxValue ? DefaultCellSize : finest;
+        }
+
+        private int GetCoarsestCellSize()
+        {
+            if (cellSizes == null || cellSizes.Length == 0)
+            {
+                return DefaultCellSize;
+            }
+
+            int coarsest = 1;
+            for (int i = 0; i < cellSizes.Length; i++)
+            {
+                coarsest = math.max(coarsest, NormalizeCellSize(cellSizes[i]));
+            }
+
+            return coarsest;
         }
 
         private int NormalizeCellSize(int requestedSize)
@@ -108,17 +184,5 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
             return 1;
         }
 
-        [Serializable]
-        public struct VoxelLodLevel
-        {
-            [Min(0)] public int maxChunkDistance;
-            [Min(1)] public int cellSize;
-
-            public VoxelLodLevel(int maxChunkDistance, int cellSize)
-            {
-                this.maxChunkDistance = maxChunkDistance;
-                this.cellSize = cellSize;
-            }
-        }
     }
 }

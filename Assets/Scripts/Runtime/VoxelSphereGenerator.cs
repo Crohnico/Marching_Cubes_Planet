@@ -59,6 +59,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             int3 minChunk = VoxelChunkUtility.GetChunkCoords(min, chunkSize);
             int3 maxChunk = VoxelChunkUtility.GetChunkCoords(max, chunkSize);
+
             HashSet<int3> nextDeclaredChunks = new HashSet<int3>();
             for (int x = minChunk.x; x <= maxChunk.x; x++)
             {
@@ -94,6 +95,16 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
         }
 
+        private void ReleaseDeclaredChunks(VoxelChunkManager manager)
+        {
+            foreach (int3 chunkCoord in declaredChunks)
+            {
+                manager.ReleaseChunk(chunkCoord);
+            }
+
+            declaredChunks.Clear();
+        }
+
         [ContextMenu("Generate")]
         public void Generate()
         {
@@ -119,12 +130,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 return;
             }
 
-            foreach (int3 chunkCoord in declaredChunks)
-            {
-                chunkManager.ReleaseChunk(chunkCoord);
-            }
-
-            declaredChunks.Clear();
+            ReleaseDeclaredChunks(chunkManager);
         }
 
         private void OnDrawGizmosSelected()
