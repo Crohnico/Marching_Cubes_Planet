@@ -14,23 +14,23 @@ namespace MarchingCubesPlanet.VoxelEngine.Editor
             serializedObject.Update();
             SerializedProperty chunkSize = serializedObject.FindProperty("chunkSize");
             SerializedProperty cellSizes = serializedObject.FindProperty("cellSizes");
-            SerializedProperty octreeDetailDistances = serializedObject.FindProperty("octreeDetailDistances");
+            SerializedProperty lodDistances = serializedObject.FindProperty("lodDistances");
 
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Resolved Octree LODs", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("Distances are world units from PlayerChunkTracker. Chunks stay declared; the octree decides the cell size inside them.", MessageType.Info);
+            EditorGUILayout.LabelField("Resolved Segment LODs", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox("Distances are world units from PlayerChunkTracker. Segment meshes are baked on a uniform grid for each configured cell size.", MessageType.Info);
             int cellSizeCount = cellSizes != null ? cellSizes.arraySize : 0;
-            int distanceCount = octreeDetailDistances != null ? octreeDetailDistances.arraySize : 0;
+            int distanceCount = lodDistances != null ? lodDistances.arraySize : 0;
             if (cellSizeCount != distanceCount)
             {
-                EditorGUILayout.HelpBox("Cell Sizes and Octree Detail Distances should have the same length. Only valid pairs are used.", MessageType.Warning);
+                EditorGUILayout.HelpBox("Cell Sizes and LOD Distances should have the same length. Only valid pairs are used.", MessageType.Warning);
             }
 
             cellSizeCount = Mathf.Min(cellSizeCount, distanceCount);
             for (int i = 0; i < cellSizeCount; i++)
             {
                 int cellSize = Mathf.Max(1, cellSizes.GetArrayElementAtIndex(i).intValue);
-                float maxDistance = Mathf.Max(0f, octreeDetailDistances.GetArrayElementAtIndex(i).floatValue);
+                float maxDistance = Mathf.Max(0f, lodDistances.GetArrayElementAtIndex(i).floatValue);
                 int normalizedCellSize = NormalizeCellSize(chunkSize.vector3IntValue, cellSize);
                 EditorGUILayout.LabelField(
                     $"<= {maxDistance:0.##}u",

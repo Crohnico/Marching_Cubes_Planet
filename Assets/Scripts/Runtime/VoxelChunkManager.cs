@@ -25,9 +25,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private const int TransitionSubMesh = 1;
         private const int SurfaceSubMesh = 2;
         private const int LayerSubMeshCount = 3;
-        private const int MaxCombinedMeshBucketCount = 32;
+        private const int MaxCombinedMeshBucketCount = 64;
+        private const int SegmentLodCount = 3;
+        private const int ActiveSegmentLodIndex = 2;
         private static readonly ProfilerMarker RebuildDesiredMarker = new ProfilerMarker("VoxelEngine.RebuildDesiredChunks");
-        private static readonly ProfilerMarker BuildRequestsMarker = new ProfilerMarker("VoxelEngine.BuildOctreeRequests");
+        private static readonly ProfilerMarker BuildRequestsMarker = new ProfilerMarker("VoxelEngine.BuildCellRequests");
         private static readonly ProfilerMarker StartChunkBuildMarker = new ProfilerMarker("VoxelEngine.StartChunkBuild");
         private static readonly ProfilerMarker CompleteChunkBuildMarker = new ProfilerMarker("VoxelEngine.CompleteChunkBuild");
         private static readonly ProfilerMarker UploadMeshMarker = new ProfilerMarker("VoxelEngine.UploadMesh");
@@ -49,6 +51,13 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [SerializeField] private bool useSegmentedCombinedMeshesNearPlanet = true;
         [SerializeField, Range(1, MaxCombinedMeshBucketCount)] private int nearCombinedMeshBucketCount = MaxCombinedMeshBucketCount;
         [SerializeField, Min(1)] private int maxCombinedMeshBucketsRebuiltPerFrame = 2;
+        [Header("Segment LOD")]
+        [SerializeField] private bool useSegmentLodSelection = true;
+        [SerializeField, Min(1)] private int maxSegmentLodBuildsStartedPerFrame = 1;
+        [SerializeField, Min(1)] private int maxSegmentLodSwapsPerFrame = 1;
+        [SerializeField, Min(1)] private int maxConcurrentSegmentLodBuilds = 1;
+        [SerializeField, Min(0f)] private float segmentLodBuildIntervalSeconds = 0.2f;
+        [SerializeField] private bool drawSegmentGizmos = true;
         [SerializeField, Range(0f, 90f)] private float farHemisphereRefreshAngle = 3f;
         [SerializeField] private bool useRadialLayerCulling = true;
         [SerializeField, Min(0)] private int neverLayerCullChunkDistance = 3;
@@ -60,11 +69,15 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private readonly Dictionary<int3, int> declaredChunkRefCounts = new Dictionary<int3, int>();
         private readonly Dictionary<int3, DesiredChunkState> desiredChunkStates = new Dictionary<int3, DesiredChunkState>();
         private readonly Dictionary<int3, PendingChunkBuild> pendingChunkBuilds = new Dictionary<int3, PendingChunkBuild>();
+        private readonly Dictionary<SegmentLodKey, PendingSegmentLodBuild> pendingSegmentLodBuilds = new Dictionary<SegmentLodKey, PendingSegmentLodBuild>();
         private readonly HashSet<int3> declaredChunks = new HashSet<int3>();
         private readonly HashSet<int3> desiredChunks = new HashSet<int3>();
         private readonly HashSet<int3> queuedChunkBuilds = new HashSet<int3>();
+        private readonly HashSet<SegmentLodKey> queuedSegmentLodBuilds = new HashSet<SegmentLodKey>();
         private readonly List<QueuedChunkBuild> chunkBuildQueue = new List<QueuedChunkBuild>();
+        private readonly List<SegmentLodKey> segmentLodBuildQueue = new List<SegmentLodKey>();
         private readonly List<int3> scratchChunkCoords = new List<int3>();
+        private readonly List<SegmentLodKey> scratchSegmentLodKeys = new List<SegmentLodKey>();
         private readonly List<CombineInstance> combineInstances = new List<CombineInstance>();
         private readonly List<Vector3> meshUploadVertices = new List<Vector3>(65536);
         private readonly List<Vector3> meshUploadNormals = new List<Vector3>(65536);
@@ -74,6 +87,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private readonly List<int> meshUploadSurfaceIndices = new List<int>(65536);
         private readonly List<VoxelCellBuildRequest> cellRequestBuffer = new List<VoxelCellBuildRequest>(32768);
         private readonly List<CombinedMeshBucket> nearCombinedMeshBuckets = new List<CombinedMeshBucket>();
+        private readonly int[] receivedLodMeshCounts = new int[SegmentLodCount];
+        private readonly bool[] loggedReceivedLodCompleted = new bool[SegmentLodCount];
         private int3 priorityCenterChunk;
         private int queuedBuildSequence;
         private bool chunkBuildQueueNeedsSort;
@@ -83,8 +98,12 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private bool farCombinedMeshDirty = true;
         private bool useNearCombinedMeshes;
         private bool nearCombinedMeshesBuiltOnce;
+        private bool segmentLodBuildQueueNeedsSort;
         private int activeCombinedMeshBucketCount;
         private int nextCombinedMeshBucketIndex;
+        private int nextSegmentLodActivationIndex;
+        private int allSegmentLodsActivatedCount;
+        private float nextSegmentLodBuildTime;
         private CombinedMeshBucket farCombinedMeshBucket;
         private Vector3 lastFarHemisphereDirection;
         private bool hasLastFarHemisphereDirection;
@@ -93,6 +112,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private bool lastShouldCullRenderedChunks;
         private bool hasPlanetActionRadiusState;
         private bool isInsidePlanetActionRadius = true;
+        private bool hasSegmentLodFocusKey;
+        private bool segmentLodSelectionReady;
+        private int3 segmentLodFocusKey;
         private MarchingCubesCaseTable caseTable;
 
         public int DeclaredChunkCount => declaredChunks.Count;
@@ -106,6 +128,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         public bool IsRenderCullingActive => ShouldCullRenderedChunks();
         public bool IsFarBridgeActive => IsFarBridgeVisible();
         public bool IsNearCombinedRenderingActive => useNearCombinedMeshes && nearCombinedMeshesBuiltOnce;
+        public int NearSegmentCount => Mathf.Clamp(nearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount);
+        public Vector3 DetailFocusPosition => GetCurrentDetailFocusVector3();
 
         private void OnEnable()
         {
@@ -114,6 +138,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             EnsureCombinedRenderer();
             completedInitialSynchronousBuild = false;
             hasPlanetActionRadiusState = false;
+            hasSegmentLodFocusKey = false;
 
             if (playerChunkTracker != null)
             {
@@ -140,17 +165,41 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             maxConcurrentChunkBuilds = Mathf.Max(1, maxConcurrentChunkBuilds);
             nearCombinedMeshBucketCount = Mathf.Clamp(nearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount);
             maxCombinedMeshBucketsRebuiltPerFrame = Mathf.Max(1, maxCombinedMeshBucketsRebuiltPerFrame);
+            maxSegmentLodBuildsStartedPerFrame = Mathf.Max(1, maxSegmentLodBuildsStartedPerFrame);
+            maxSegmentLodSwapsPerFrame = Mathf.Max(1, maxSegmentLodSwapsPerFrame);
+            maxConcurrentSegmentLodBuilds = Mathf.Max(1, maxConcurrentSegmentLodBuilds);
+            segmentLodBuildIntervalSeconds = Mathf.Max(0f, segmentLodBuildIntervalSeconds);
             farHemisphereRefreshAngle = Mathf.Clamp(farHemisphereRefreshAngle, 0f, 90f);
             neverLayerCullChunkDistance = Mathf.Max(0, neverLayerCullChunkDistance);
         }
 
         private void Update()
         {
+            CompleteReadySegmentLodBuilds();
             CompleteReadyChunkBuilds();
+            ProcessSegmentLodBuildQueue();
             ProcessChunkBuildQueue();
+            ProcessPendingSegmentLodActivations();
+            UpdateSegmentLodSelectionForView();
             UpdateChunkVisibilityIfNeeded();
             RefreshFarHemisphereIfNeeded();
             UpdateCombinedMeshForView();
+        }
+
+        private void UpdateSegmentLodSelectionForView()
+        {
+            if (!useSegmentLodSelection
+                || !segmentLodSelectionReady
+                || !useNearCombinedMeshes
+                || !nearCombinedMeshesBuiltOnce)
+            {
+                return;
+            }
+
+            if (RefreshSegmentLodFocusKey())
+            {
+                ApplyCombinedRendererVisibility();
+            }
         }
 
         public void Configure(
@@ -181,14 +230,69 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
         }
 
+        private void OnDrawGizmosSelected()
+        {
+            if (!drawSegmentGizmos)
+            {
+                return;
+            }
+
+            int segmentCount = Mathf.Clamp(nearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount);
+            if (!TryGetCombinedMeshBucketGrid(segmentCount, out int3 grid))
+            {
+                return;
+            }
+
+            float radius = sphereGenerator != null
+                ? Mathf.Max(0.01f, sphereGenerator.MaximumTerrainRadius)
+                : 1f;
+            Vector3 center = sphereGenerator != null ? sphereGenerator.Center : Vector3.zero;
+            Vector3 size = new Vector3(
+                (radius * 2f) / grid.x,
+                (radius * 2f) / grid.y,
+                (radius * 2f) / grid.z);
+            int focusSegment = GetSegmentIndexForWorldPosition(GetCurrentDetailFocusVector3(), segmentCount);
+
+            Matrix4x4 previousMatrix = Gizmos.matrix;
+            Color previousColor = Gizmos.color;
+            Gizmos.matrix = transform.localToWorldMatrix;
+
+            Gizmos.color = new Color(1f, 1f, 1f, 0.35f);
+            Gizmos.DrawWireCube(center, Vector3.one * radius * 2f);
+
+            for (int segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++)
+            {
+                Vector3 segmentCenter = GetSegmentLocalCenter(segmentIndex, segmentCount);
+                Gizmos.color = segmentIndex == focusSegment
+                    ? new Color(0f, 1f, 0.25f, 0.95f)
+                    : new Color(0.1f, 0.65f, 1f, 0.45f);
+                Gizmos.DrawWireCube(segmentCenter, size);
+
+                Gizmos.color = segmentIndex == focusSegment
+                    ? new Color(0f, 1f, 0.25f, 1f)
+                    : new Color(1f, 0.9f, 0.1f, 0.85f);
+                Gizmos.DrawSphere(segmentCenter, radius * 0.0125f);
+            }
+
+            Gizmos.matrix = previousMatrix;
+            Gizmos.color = previousColor;
+        }
+
         [ContextMenu("Rebuild Active Chunks")]
         public void RebuildAroundCurrentAnchor()
         {
             EnsureConfig();
             EnsureCaseTable();
             RefreshPlanetActionRadiusState();
+            RefreshSegmentLodFocusKey();
             int3 centerChunk = GetCurrentCenterChunk();
             RefreshDeclaredChunks();
+            if (useSegmentLodSelection && isInsidePlanetActionRadius && activeChunks.Count > 0)
+            {
+                UpdateCombinedMesh(true);
+                return;
+            }
+
             RebuildDesiredChunkSet(centerChunk);
             bool shouldCompleteSynchronously = !Application.isPlaying
                 || (completeInitialBuildSynchronously && !completedInitialSynchronousBuild);
@@ -204,6 +308,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [ContextMenu("Generate")]
         public void Generate()
         {
+            hasSegmentLodFocusKey = false;
+            ClearCombinedMesh();
             MarkAllChunksDirty();
             RebuildAroundCurrentAnchor();
         }
@@ -275,24 +381,68 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 : null;
         }
 
+        public Transform GetNearSegmentTransformOrNull(int segmentIndex)
+        {
+            if (segmentIndex < 0)
+            {
+                return null;
+            }
+
+            EnsureNearCombinedMeshBucketCount(nearCombinedMeshBucketCount);
+            return segmentIndex < nearCombinedMeshBuckets.Count && nearCombinedMeshBuckets[segmentIndex].owner != null
+                ? nearCombinedMeshBuckets[segmentIndex].owner.transform
+                : null;
+        }
+
+        public int GetNearSegmentIndexForWorldPosition(Vector3 worldPosition)
+        {
+            return GetSegmentIndexForWorldPosition(worldPosition, Mathf.Clamp(nearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount));
+        }
+
         private void HandleChunkChanged(int3 currentChunk)
         {
             bool actionRadiusChanged = RefreshPlanetActionRadiusState();
+            bool segmentLodChanged = RefreshSegmentLodFocusKey();
+            if (useSegmentLodSelection && isInsidePlanetActionRadius && !actionRadiusChanged)
+            {
+                ApplyCombinedRendererVisibility();
+                return;
+            }
+
             if (ShouldThrottlePlanetUpdatesOutsideActionRadius() && !actionRadiusChanged)
             {
                 return;
             }
 
             RefreshDeclaredChunks();
+            if (useSegmentLodSelection && isInsidePlanetActionRadius)
+            {
+                UpdateCombinedMesh(true);
+                return;
+            }
+
             RebuildDesiredChunkSet(currentChunk);
         }
 
         private void HandleViewChanged()
         {
             bool actionRadiusChanged = RefreshPlanetActionRadiusState();
+            bool segmentLodChanged = RefreshSegmentLodFocusKey();
+            if (useSegmentLodSelection && isInsidePlanetActionRadius && segmentLodChanged && !actionRadiusChanged)
+            {
+                ApplyCombinedRendererVisibility();
+                return;
+            }
+
             if (actionRadiusChanged)
             {
                 RefreshDeclaredChunks();
+                if (useSegmentLodSelection && isInsidePlanetActionRadius)
+                {
+                    UpdateCombinedMesh(true);
+                    return;
+                }
+
                 RebuildDesiredChunkSet(GetCurrentCenterChunk());
             }
 
@@ -326,7 +476,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
                 foreach (int3 chunkCoord in declaredChunks)
                 {
-                    int cellSize = config.CoarsestCellSize;
+                    int cellSize = ResolveCellSizeForChunk(chunkCoord);
                     BoundaryRefinement boundaryRefinement = GetBoundaryRefinement(chunkCoord, cellSize);
                     desiredChunks.Add(chunkCoord);
                     desiredChunkStates[chunkCoord] = new DesiredChunkState(cellSize, boundaryRefinement, detailFocusKey);
@@ -461,6 +611,436 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
         }
 
+        private void ProcessSegmentLodBuildQueue()
+        {
+            if (!useSegmentLodSelection || !isInsidePlanetActionRadius)
+            {
+                return;
+            }
+
+            if (Application.isPlaying && Time.unscaledTime < nextSegmentLodBuildTime)
+            {
+                return;
+            }
+
+            SortSegmentLodBuildQueueIfNeeded();
+
+            int startedBuilds = 0;
+            while (startedBuilds < maxSegmentLodBuildsStartedPerFrame
+                && pendingSegmentLodBuilds.Count < maxConcurrentSegmentLodBuilds
+                && segmentLodBuildQueue.Count > 0)
+            {
+                int queuedIndex = 0;
+                SegmentLodKey key = segmentLodBuildQueue[queuedIndex];
+                segmentLodBuildQueue.RemoveAt(queuedIndex);
+                queuedSegmentLodBuilds.Remove(key);
+
+                if (IsSegmentLodMeshCached(key) || pendingSegmentLodBuilds.ContainsKey(key))
+                {
+                    continue;
+                }
+
+                pendingSegmentLodBuilds.Add(key, StartSegmentLodBuild(key));
+                startedBuilds++;
+            }
+
+            if (Application.isPlaying && startedBuilds > 0)
+            {
+                nextSegmentLodBuildTime = Time.unscaledTime + segmentLodBuildIntervalSeconds;
+            }
+        }
+
+        private void CompleteReadySegmentLodBuilds()
+        {
+            if (pendingSegmentLodBuilds.Count == 0)
+            {
+                return;
+            }
+
+            scratchSegmentLodKeys.Clear();
+            foreach (KeyValuePair<SegmentLodKey, PendingSegmentLodBuild> pair in pendingSegmentLodBuilds)
+            {
+                if (pair.Value.jobHandle.IsCompleted)
+                {
+                    scratchSegmentLodKeys.Add(pair.Key);
+                }
+            }
+
+            int completeCount = math.min(maxSegmentLodSwapsPerFrame, scratchSegmentLodKeys.Count);
+            for (int i = 0; i < completeCount; i++)
+            {
+                SegmentLodKey key = scratchSegmentLodKeys[i];
+                PendingSegmentLodBuild pendingBuild = pendingSegmentLodBuilds[key];
+                pendingSegmentLodBuilds.Remove(key);
+                CompleteSegmentLodBuild(pendingBuild);
+            }
+        }
+
+        private void ProcessPendingSegmentLodActivations()
+        {
+            if (!useSegmentLodSelection || !useNearCombinedMeshes || !nearCombinedMeshesBuiltOnce)
+            {
+                return;
+            }
+
+            // Activate one LOD per frame to avoid spiking FPS with simultaneous GPU uploads
+            if (nextSegmentLodActivationIndex < activeCombinedMeshBucketCount && nextSegmentLodActivationIndex < nearCombinedMeshBuckets.Count)
+            {
+                CombinedMeshBucket bucket = nearCombinedMeshBuckets[nextSegmentLodActivationIndex];
+                int bucketIndex = nextSegmentLodActivationIndex;
+
+                EnsureSegmentLodCache(bucket, $"VoxelCombinedMesh_Near_{bucketIndex:00}");
+                ActivateSegmentLodForBucket(bucket, bucketIndex);
+                nextSegmentLodActivationIndex++;
+
+                if (bucket.meshRenderer != null && bucket.meshRenderer.enabled)
+                {
+                    allSegmentLodsActivatedCount++;
+                }
+            }
+        }
+
+        private void ActivateSegmentLodForBucket(CombinedMeshBucket bucket, int bucketIndex)
+        {
+            EnsureSegmentLodCache(bucket, $"VoxelCombinedMesh_Near_{bucketIndex:00}");
+            ApplySegmentLodMesh(bucket, ResolveLodIndexForSegment(bucketIndex), true);
+        }
+
+        private PendingSegmentLodBuild StartSegmentLodBuild(SegmentLodKey key)
+        {
+            using (StartChunkBuildMarker.Auto())
+            {
+                int3 chunkSize = config.ChunkSize;
+                int cellSize = GetCellSizeForLodIndex(key.lodIndex);
+                int declaredChunkCount = 0;
+                cellRequestBuffer.Clear();
+                foreach (int3 chunkCoord in declaredChunks)
+                {
+                    if (GetSegmentIndexForChunkCoord(chunkCoord, nearCombinedMeshBucketCount) != key.segmentIndex)
+                    {
+                        continue;
+                    }
+
+                    declaredChunkCount++;
+                    int3 chunkOrigin = VoxelChunkUtility.GetChunkOrigin(chunkCoord, chunkSize);
+                    BuildCellRequests(
+                        cellRequestBuffer,
+                        chunkOrigin,
+                        chunkSize,
+                        cellSize,
+                        default,
+                        config,
+                        BoundaryRefinement.Empty,
+                        false);
+                }
+
+                if (declaredChunkCount == 0)
+                {
+                    Debug.Log($"StartSegmentLodBuild: Segment {key.segmentIndex} LOD {key.lodIndex} has no declared chunks.");
+                }
+                else if (cellRequestBuffer.Count == 0)
+                {
+                    Debug.Log($"StartSegmentLodBuild: Segment {key.segmentIndex} LOD {key.lodIndex} declared chunks={declaredChunkCount} but built 0 cell requests (cellSize={cellSize}).");
+                }
+
+                int cellCount = cellRequestBuffer.Count;
+                NativeArray<VoxelCellBuildRequest> requests = new NativeArray<VoxelCellBuildRequest>(cellCount, Allocator.Persistent);
+                NativeArray<VoxelCell> cells = new NativeArray<VoxelCell>(cellCount, Allocator.Persistent);
+                NativeList<float3> vertices = new NativeList<float3>(math.max(1, cellCount * MaxVerticesPerCell), Allocator.Persistent);
+                NativeList<float3> normals = new NativeList<float3>(math.max(1, cellCount * MaxVerticesPerCell), Allocator.Persistent);
+                NativeList<float2> uvs = new NativeList<float2>(math.max(1, cellCount * MaxVerticesPerCell), Allocator.Persistent);
+                NativeList<int> interiorIndices = new NativeList<int>(math.max(1, cellCount * MaxVerticesPerCell), Allocator.Persistent);
+                NativeList<int> transitionIndices = new NativeList<int>(math.max(1, cellCount * MaxVerticesPerCell), Allocator.Persistent);
+                NativeList<int> surfaceIndices = new NativeList<int>(math.max(1, cellCount * MaxVerticesPerCell), Allocator.Persistent);
+                ScalarFieldSettings scalarField = GetScalarFieldSettings();
+
+                for (int i = 0; i < cellCount; i++)
+                {
+                    requests[i] = cellRequestBuffer[i];
+                }
+
+                EvaluateVoxelCellsJob evaluateJob = new EvaluateVoxelCellsJob
+                {
+                    scalarField = scalarField,
+                    requests = requests,
+                    cells = cells
+                };
+                JobHandle evaluateHandle = evaluateJob.Schedule(cellCount, 64);
+
+                GenerateChunkMeshJob meshJob = new GenerateChunkMeshJob
+                {
+                    cells = cells,
+                    cornerIndexAFromEdge = caseTable.cornerIndexAFromEdge,
+                    cornerIndexBFromEdge = caseTable.cornerIndexBFromEdge,
+                    triangulation = caseTable.triangulation,
+                    chunkOrigin = int3.zero,
+                    chunkSize = chunkSize,
+                    scalarField = scalarField,
+                    vertices = vertices,
+                    normals = normals,
+                    uvs = uvs,
+                    interiorIndices = interiorIndices,
+                    transitionIndices = transitionIndices,
+                    surfaceIndices = surfaceIndices
+                };
+
+                return new PendingSegmentLodBuild
+                {
+                    key = key,
+                    cellSize = cellSize,
+                    requests = requests,
+                    cells = cells,
+                    vertices = vertices,
+                    normals = normals,
+                    uvs = uvs,
+                    interiorIndices = interiorIndices,
+                    transitionIndices = transitionIndices,
+                    surfaceIndices = surfaceIndices,
+                    jobHandle = meshJob.Schedule(evaluateHandle)
+                };
+            }
+        }
+
+        private void CompleteSegmentLodBuild(PendingSegmentLodBuild pendingBuild)
+        {
+            pendingBuild.jobHandle.Complete();
+            try
+            {
+                EnsureNearCombinedMeshBucketCount(nearCombinedMeshBucketCount);
+                if (pendingBuild.key.segmentIndex < 0 || pendingBuild.key.segmentIndex >= nearCombinedMeshBuckets.Count)
+                {
+                    return;
+                }
+
+                CombinedMeshBucket bucket = nearCombinedMeshBuckets[pendingBuild.key.segmentIndex];
+                EnsureSegmentLodCache(bucket, $"VoxelCombinedMesh_Near_{pendingBuild.key.segmentIndex:00}");
+                Mesh previousMesh = bucket.lodMeshes[pendingBuild.key.lodIndex];
+                Matrix4x4 targetWorldToLocal = bucket.owner != null
+                    ? bucket.owner.transform.worldToLocalMatrix
+                    : transform.worldToLocalMatrix;
+
+                VoxelChunkAltIndices altIndices;
+                Mesh mesh = BuildMesh(
+                    $"VoxelCombinedMesh_Near_{pendingBuild.key.segmentIndex:00}_LOD_{pendingBuild.key.lodIndex}",
+                    pendingBuild.vertices,
+                    pendingBuild.normals,
+                    pendingBuild.uvs,
+                    pendingBuild.interiorIndices,
+                    pendingBuild.transitionIndices,
+                    pendingBuild.surfaceIndices,
+                    out altIndices,
+                    true,
+                    targetWorldToLocal);
+                
+                bucket.lodMeshes[pendingBuild.key.lodIndex] = mesh;
+                bucket.lodCache.SetMesh(pendingBuild.key.lodIndex, mesh);
+                bucket.lodDirty[pendingBuild.key.lodIndex] = false;
+                bucket.lodCached[pendingBuild.key.lodIndex] = true;
+
+                DestroyUnityObject(previousMesh);
+                ApplyCombinedRendererVisibility(false);
+            }
+            finally
+            {
+                DisposePendingSegmentLodBuild(pendingBuild);
+            }
+        }
+
+        private void QueueAllSegmentLodBuilds(bool force)
+        {
+            EnsureNearCombinedMeshBucketCount(nearCombinedMeshBucketCount);
+            int segmentCount = Mathf.Clamp(nearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount);
+            for (int segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++)
+            {
+                QueueSegmentLodBuildsForSegment(segmentIndex, force);
+            }
+        }
+
+        private void QueueSegmentLodBuildsForSegment(int segmentIndex, bool force)
+        {
+            if (force)
+            {
+                InvalidateSegmentLodMesh(new SegmentLodKey(segmentIndex, ResolveActiveSegmentLodIndex()));
+            }
+        }
+
+        private void QueueSegmentLodBuild(SegmentLodKey key, bool force)
+        {
+            if (force)
+            {
+                InvalidateSegmentLodMesh(key);
+            }
+
+            if (!SegmentHasDeclaredChunks(key.segmentIndex))
+            {
+                MarkSegmentLodEmptyCached(key);
+                return;
+            }
+
+            if (!force && IsSegmentLodMeshCached(key))
+            {
+                return;
+            }
+
+            if (pendingSegmentLodBuilds.ContainsKey(key))
+            {
+                return;
+            }
+
+            if (queuedSegmentLodBuilds.Add(key))
+            {
+                segmentLodBuildQueue.Add(key);
+                segmentLodBuildQueueNeedsSort = true;
+            }
+        }
+
+        private bool SegmentHasDeclaredChunks(int segmentIndex)
+        {
+            foreach (int3 chunkCoord in declaredChunks)
+            {
+                if (GetSegmentIndexForChunkCoord(chunkCoord, nearCombinedMeshBucketCount) == segmentIndex)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void MarkSegmentLodEmptyCached(SegmentLodKey key)
+        {
+            EnsureNearCombinedMeshBucketCount(nearCombinedMeshBucketCount);
+            if (key.segmentIndex < 0 || key.segmentIndex >= nearCombinedMeshBuckets.Count)
+            {
+                return;
+            }
+
+            CombinedMeshBucket bucket = nearCombinedMeshBuckets[key.segmentIndex];
+            EnsureSegmentLodCache(bucket, $"VoxelCombinedMesh_Near_{key.segmentIndex:00}");
+            Mesh mesh = bucket.lodMeshes[key.lodIndex];
+            if (mesh != null)
+            {
+                mesh.Clear();
+            }
+
+            if (bucket.lodCache != null)
+            {
+                bucket.lodCache.SetMesh(key.lodIndex, mesh);
+            }
+
+            bucket.lodCached[key.lodIndex] = true;
+            bucket.lodDirty[key.lodIndex] = false;
+        }
+
+        private void InvalidateSegmentLodMesh(SegmentLodKey key)
+        {
+            if (key.segmentIndex < 0
+                || key.segmentIndex >= nearCombinedMeshBuckets.Count
+                || key.lodIndex < 0
+                || key.lodIndex >= SegmentLodCount)
+            {
+                return;
+            }
+
+            CombinedMeshBucket bucket = nearCombinedMeshBuckets[key.segmentIndex];
+            if (bucket.lodMeshes != null && key.lodIndex < bucket.lodMeshes.Length && bucket.lodMeshes[key.lodIndex] != null)
+            {
+                bucket.lodMeshes[key.lodIndex].Clear();
+            }
+
+            if (bucket.lodCache != null)
+            {
+                bucket.lodCache.SetMesh(key.lodIndex, null);
+            }
+
+            if (bucket.lodCached != null && key.lodIndex < bucket.lodCached.Length)
+            {
+                bucket.lodCached[key.lodIndex] = false;
+            }
+
+            if (bucket.lodDirty != null && key.lodIndex < bucket.lodDirty.Length)
+            {
+                bucket.lodDirty[key.lodIndex] = true;
+            }
+        }
+
+        private void ForceSegmentLodBuild(SegmentLodKey key)
+        {
+            if (IsSegmentLodMeshCached(key))
+            {
+                return;
+            }
+
+            if (!SegmentHasDeclaredChunks(key.segmentIndex))
+            {
+                MarkSegmentLodEmptyCached(key);
+                return;
+            }
+
+            if (pendingSegmentLodBuilds.TryGetValue(key, out PendingSegmentLodBuild pendingBuild))
+            {
+                pendingSegmentLodBuilds.Remove(key);
+                CompleteSegmentLodBuild(pendingBuild);
+                return;
+            }
+
+            queuedSegmentLodBuilds.Remove(key);
+            segmentLodBuildQueue.Remove(key);
+            CompleteSegmentLodBuild(StartSegmentLodBuild(key));
+        }
+
+        private bool IsSegmentLodMeshCached(SegmentLodKey key)
+        {
+            if (key.segmentIndex < 0
+                || key.segmentIndex >= nearCombinedMeshBuckets.Count
+                || key.lodIndex < 0
+                || key.lodIndex >= SegmentLodCount)
+            {
+                return false;
+            }
+
+            CombinedMeshBucket bucket = nearCombinedMeshBuckets[key.segmentIndex];
+            EnsureSegmentLodCache(bucket, $"VoxelCombinedMesh_Near_{key.segmentIndex:00}");
+            if (bucket.lodCached != null
+                && key.lodIndex < bucket.lodCached.Length
+                && bucket.lodCached[key.lodIndex])
+            {
+                return true;
+            }
+
+            Mesh mesh = GetSegmentLodMesh(bucket, key.lodIndex);
+            bool hasRenderableMesh = mesh != null && mesh.vertexCount > 0;
+            if (hasRenderableMesh && bucket.lodCached != null && key.lodIndex < bucket.lodCached.Length)
+            {
+                bucket.lodCached[key.lodIndex] = true;
+            }
+
+            return hasRenderableMesh;
+        }
+
+        private void SortSegmentLodBuildQueueIfNeeded()
+        {
+            if (!segmentLodBuildQueueNeedsSort)
+            {
+                return;
+            }
+
+            Vector3 focus = GetCurrentDetailFocusVector3();
+            segmentLodBuildQueue.Sort((a, b) =>
+            {
+                int lodComparison = b.lodIndex.CompareTo(a.lodIndex);
+                if (lodComparison != 0)
+                {
+                    return lodComparison;
+                }
+
+                float distanceA = Vector3.SqrMagnitude(GetSegmentCenter(a.segmentIndex, nearCombinedMeshBucketCount) - focus);
+                float distanceB = Vector3.SqrMagnitude(GetSegmentCenter(b.segmentIndex, nearCombinedMeshBucketCount) - focus);
+                return distanceA.CompareTo(distanceB);
+            });
+            segmentLodBuildQueueNeedsSort = false;
+        }
+
         private void CompleteAllQueuedChunkBuilds()
         {
             while (chunkBuildQueue.Count > 0 || pendingChunkBuilds.Count > 0)
@@ -517,6 +1097,13 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void UpdateChunkVisibilityIfNeeded()
         {
+            if (useSegmentLodSelection && useNearCombinedMeshes)
+            {
+                chunkVisibilityDirty = false;
+                lastShouldCullRenderedChunks = ShouldCullRenderedChunks();
+                return;
+            }
+
             bool shouldCull = ShouldCullRenderedChunks();
             if (!shouldCull && !lastShouldCullRenderedChunks)
             {
@@ -659,7 +1246,84 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 return true;
             }
 
+            if (useSegmentLodSelection)
+            {
+                return IsCurrentFocusInsideSegmentLodActivationRadius();
+            }
+
             return sphereGenerator.ContainsActionPoint(GetCurrentDetailFocusVector3(), config);
+        }
+
+        private bool IsCurrentFocusInsideSegmentLodActivationRadius()
+        {
+            if (sphereGenerator == null)
+            {
+                return true;
+            }
+
+            Vector3 focus = GetCurrentDetailFocusVector3();
+            float effectiveRadius = Mathf.Max(0f, sphereGenerator.Radius + GetMaximumConfiguredLodDistance());
+            return (focus - sphereGenerator.Center).sqrMagnitude <= effectiveRadius * effectiveRadius;
+        }
+
+        private bool RefreshSegmentLodFocusKey()
+        {
+            if (!useSegmentLodSelection)
+            {
+                hasSegmentLodFocusKey = false;
+                return false;
+            }
+
+            int3 nextKey = BuildSegmentLodFocusKey();
+            if (hasSegmentLodFocusKey && nextKey.Equals(segmentLodFocusKey))
+            {
+                return false;
+            }
+
+            segmentLodFocusKey = nextKey;
+            hasSegmentLodFocusKey = true;
+            return true;
+        }
+
+        private int3 BuildSegmentLodFocusKey()
+        {
+            if (sphereGenerator == null)
+            {
+                return GetCurrentCenterChunk();
+            }
+
+            Vector3 focus = GetCurrentDetailFocusVector3();
+            float surfaceDistance = Mathf.Max(0f, Vector3.Distance(focus, sphereGenerator.Center) - sphereGenerator.Radius);
+            int segmentCount = Mathf.Clamp(nearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount);
+            int segmentIndex = GetSegmentIndexForWorldPosition(focus, segmentCount);
+            int distanceBand = segmentLodSelectionReady
+                ? ResolveLodIndexForSegment(segmentIndex, focus)
+                : GetDistanceBandForConfiguredLods(surfaceDistance);
+            if (distanceBand >= GetSegmentLodCount())
+            {
+                segmentIndex = -1;
+            }
+
+            return new int3(segmentIndex, distanceBand, 0);
+        }
+
+        private float GetMaximumConfiguredLodDistance()
+        {
+            return config.GetMaxWorldDistanceForLod(GetSegmentLodCount() - 1);
+        }
+
+        private int GetDistanceBandForConfiguredLods(float surfaceDistance)
+        {
+            int lodCount = GetSegmentLodCount();
+            for (int lodIndex = 0; lodIndex < lodCount; lodIndex++)
+            {
+                if (surfaceDistance <= config.GetMaxWorldDistanceForLod(lodIndex))
+                {
+                    return lodIndex;
+                }
+            }
+
+            return lodCount;
         }
 
         private bool ShouldThrottlePlanetUpdatesOutsideActionRadius()
@@ -676,6 +1340,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private bool ShouldCullChunkBuildQueue()
         {
+            if (useSegmentLodSelection && isInsidePlanetActionRadius)
+            {
+                return false;
+            }
+
             return useChunkCullingForBuildQueue && UseChunkCulling();
         }
 
@@ -818,7 +1487,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                         cellRequestBuffer,
                         chunkOrigin,
                         chunkSize,
-                        config.CoarsestCellSize,
+                        desiredState.cellSize,
                         detailFocus,
                         config,
                         desiredState.boundaryRefinement);
@@ -998,7 +1667,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 return;
             }
 
-            int neighborCellSize = config.CoarsestCellSize;
+            int neighborCellSize = ResolveCellSizeForChunk(neighborCoord);
             if (neighborCellSize >= cellSize)
             {
                 return;
@@ -1038,119 +1707,24 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             int maximumCellSize,
             float3 detailFocus,
             VoxelEngineConfig config,
-            BoundaryRefinement boundaryRefinement)
+            BoundaryRefinement boundaryRefinement,
+            bool clearRequests = true)
         {
             int normalizedMaximumCellSize = math.max(1, maximumCellSize);
             normalizedMaximumCellSize = NormalizeCellSizeForChunk(normalizedMaximumCellSize, chunkSize);
-            requests.Clear();
-
-            if (chunkSize.x != chunkSize.y || chunkSize.x != chunkSize.z || !IsPowerOfTwo(chunkSize.x))
+            if (clearRequests)
             {
-                AddCells(
-                    requests,
-                    chunkOrigin,
-                    chunkOrigin,
-                    chunkSize,
-                    chunkSize,
-                    normalizedMaximumCellSize,
-                    boundaryRefinement);
-                return;
+                requests.Clear();
             }
 
-            AddOctreeCells(
+            AddCells(
                 requests,
                 chunkOrigin,
                 chunkOrigin,
-                chunkSize.x,
+                chunkSize,
                 chunkSize,
                 normalizedMaximumCellSize,
-                detailFocus,
-                config,
                 boundaryRefinement);
-        }
-
-        private static void AddOctreeCells(
-            List<VoxelCellBuildRequest> requests,
-            int3 origin,
-            int3 chunkOrigin,
-            int nodeSize,
-            int3 chunkSize,
-            int maximumCellSize,
-            float3 detailFocus,
-            VoxelEngineConfig config,
-            BoundaryRefinement boundaryRefinement)
-        {
-            int3 localOrigin = origin - chunkOrigin;
-            byte chunkBoundarySides = GetChunkBoundarySides(localOrigin, nodeSize, chunkSize);
-            int boundaryCellSize = boundaryRefinement.GetSmallestCellSizeForSides(chunkBoundarySides, maximumCellSize);
-            int targetCellSize = math.min(
-                boundaryCellSize,
-                GetOctreeTargetCellSize(origin, nodeSize, maximumCellSize, detailFocus, config));
-
-            if (nodeSize <= targetCellSize || nodeSize <= 1 || (nodeSize & 1) != 0)
-            {
-                requests.Add(new VoxelCellBuildRequest
-                {
-                    origin = origin,
-                    size = nodeSize
-                });
-                return;
-            }
-
-            int childSize = nodeSize / 2;
-            for (int x = 0; x < 2; x++)
-            {
-                for (int y = 0; y < 2; y++)
-                {
-                    for (int z = 0; z < 2; z++)
-                    {
-                        AddOctreeCells(
-                            requests,
-                            origin + new int3(x, y, z) * childSize,
-                            chunkOrigin,
-                            childSize,
-                            chunkSize,
-                            maximumCellSize,
-                            detailFocus,
-                            config,
-                            boundaryRefinement);
-                    }
-                }
-            }
-        }
-
-        private static int GetOctreeTargetCellSize(
-            int3 origin,
-            int nodeSize,
-            int maximumCellSize,
-            float3 detailFocus,
-            VoxelEngineConfig config)
-        {
-            float distance = GetEuclideanDistanceToCube(origin, nodeSize, detailFocus);
-            int target = config.GetCellSizeForWorldDistance(distance);
-            return math.min(maximumCellSize, NormalizePowerOfTwoCellSize(target, maximumCellSize));
-        }
-
-        private static float GetEuclideanDistanceToCube(int3 origin, int size, float3 point)
-        {
-            float3 min = new float3(origin.x, origin.y, origin.z);
-            float3 max = min + new float3(size, size, size);
-            float dx = math.max(math.max(min.x - point.x, 0f), point.x - max.x);
-            float dy = math.max(math.max(min.y - point.y, 0f), point.y - max.y);
-            float dz = math.max(math.max(min.z - point.z, 0f), point.z - max.z);
-            return math.sqrt(dx * dx + dy * dy + dz * dz);
-        }
-
-        private static int NormalizePowerOfTwoCellSize(int requestedSize, int maximumCellSize)
-        {
-            int size = 1;
-            int requested = math.max(1, requestedSize);
-            while (size < requested && size < maximumCellSize)
-            {
-                size *= 2;
-            }
-
-            return math.min(size, maximumCellSize);
         }
 
         private static int NormalizeCellSizeForChunk(int requestedSize, int3 chunkSize)
@@ -1167,11 +1741,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             return 1;
-        }
-
-        private static bool IsPowerOfTwo(int value)
-        {
-            return value > 0 && (value & (value - 1)) == 0;
         }
 
         private static void AddCells(
@@ -1244,7 +1813,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             NativeList<int> interiorIndices,
             NativeList<int> transitionIndices,
             NativeList<int> surfaceIndices,
-            out VoxelChunkAltIndices altIndices)
+            out VoxelChunkAltIndices altIndices,
+            bool transformVerticesToLocal = false,
+            Matrix4x4 worldToLocalMatrix = default)
         {
             using (UploadMeshMarker.Auto())
             {
@@ -1264,10 +1835,18 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     return mesh;
                 }
 
-                Bounds bounds = CalculateBounds(vertices);
+                if (transformVerticesToLocal)
+                {
+                    CopyToVector3List(vertices, meshUploadVertices, worldToLocalMatrix);
+                    CopyNormalsToVector3List(normals, meshUploadNormals, worldToLocalMatrix);
+                }
+                else
+                {
+                    CopyToVector3List(vertices, meshUploadVertices);
+                    CopyToVector3List(normals, meshUploadNormals);
+                }
 
-                CopyToVector3List(vertices, meshUploadVertices);
-                CopyToVector3List(normals, meshUploadNormals);
+                Bounds bounds = CalculateBounds(meshUploadVertices);
                 CopyToVector2List(uvs, meshUploadUvs);
                 CopyToIntList(interiorIndices, meshUploadInteriorIndices);
                 CopyToIntList(transitionIndices, meshUploadTransitionIndices);
@@ -1285,6 +1864,20 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
         }
 
+        private static Bounds CalculateBounds(List<Vector3> vertices)
+        {
+            Vector3 min = vertices[0];
+            Vector3 max = vertices[0];
+            for (int i = 1; i < vertices.Count; i++)
+            {
+                Vector3 vertex = vertices[i];
+                min = Vector3.Min(min, vertex);
+                max = Vector3.Max(max, vertex);
+            }
+
+            return new Bounds((min + max) * 0.5f, max - min);
+        }
+
         private static void CopyToVector3List(NativeList<float3> source, List<Vector3> destination)
         {
             EnsureListCapacity(destination, source.Length);
@@ -1293,6 +1886,28 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             {
                 float3 value = source[i];
                 destination.Add(new Vector3(value.x, value.y, value.z));
+            }
+        }
+
+        private static void CopyToVector3List(NativeList<float3> source, List<Vector3> destination, Matrix4x4 transformMatrix)
+        {
+            EnsureListCapacity(destination, source.Length);
+            destination.Clear();
+            for (int i = 0; i < source.Length; i++)
+            {
+                float3 value = source[i];
+                destination.Add(transformMatrix.MultiplyPoint3x4(new Vector3(value.x, value.y, value.z)));
+            }
+        }
+
+        private static void CopyNormalsToVector3List(NativeList<float3> source, List<Vector3> destination, Matrix4x4 transformMatrix)
+        {
+            EnsureListCapacity(destination, source.Length);
+            destination.Clear();
+            for (int i = 0; i < source.Length; i++)
+            {
+                float3 value = source[i];
+                destination.Add(transformMatrix.MultiplyVector(new Vector3(value.x, value.y, value.z)).normalized);
             }
         }
 
@@ -1360,6 +1975,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 useNearCombinedMeshes = shouldUseNearMeshes;
                 activeCombinedMeshBucketCount = desiredBucketCount;
                 nextCombinedMeshBucketIndex = 0;
+                // Reset sequential LOD activation when bucket count changes
+                nextSegmentLodActivationIndex = 0;
+                allSegmentLodsActivatedCount = 0;
                 combinedMeshLayoutDirty = true;
                 if (useNearCombinedMeshes)
                 {
@@ -1391,6 +2009,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             using (CombineMeshMarker.Auto())
             {
                 EnsureCombinedRenderer();
+                if (useSegmentLodSelection && useNearCombinedMeshes)
+                {
+                    UpdateSegmentLodCombinedMeshes();
+                    return;
+                }
 
                 if (force || combinedMeshLayoutDirty)
                 {
@@ -1440,49 +2063,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                             break;
                         }
 
-                    using (BuildCombineInstancesMarker.Auto())
-                    {
-                        combineInstances.Clear();
-                        foreach (VoxelChunkState state in activeChunks.Values)
-                        {
-                            if (GetCombinedMeshBucketIndex(state.chunkCoord) != bucketIndex)
-                            {
-                                continue;
-                            }
-
-                            if (!state.generated || state.mesh == null || state.mesh.vertexCount == 0)
-                            {
-                                continue;
-                            }
-
-                            if (!ShouldRenderChunk(state))
-                            {
-                                continue;
-                            }
-
-                            AddChunkCombineInstances(state);
-                        }
-                    }
-
-                    bucket.mesh.Clear();
-                    bucket.mesh.indexFormat = IndexFormat.UInt32;
-                    if (combineInstances.Count > 0)
-                    {
-                        EnsureCombineInstanceBuffer(bucket, combineInstances.Count);
-                        for (int i = 0; i < combineInstances.Count; i++)
-                        {
-                            bucket.combineInstanceBuffer[i] = combineInstances[i];
-                        }
-
-                        using (CombineBucketMeshMarker.Auto())
-                        {
-                            bucket.mesh.CombineMeshes(bucket.combineInstanceBuffer, true, true, false);
-                            bucket.mesh.RecalculateBounds();
-                        }
-                    }
-
-                        bucket.meshFilter.sharedMesh = bucket.mesh;
-                        bucket.meshRenderer.sharedMaterial = material;
+                        QueueSegmentLodBuildsForSegment(bucketIndex, false);
                         bucket.dirty = false;
                         rebuiltBucketCount++;
                         nextCombinedMeshBucketIndex = (bucketIndex + 1) % activeCombinedMeshBucketCount;
@@ -1496,6 +2077,86 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 }
 
                 ApplyCombinedRendererVisibility();
+            }
+        }
+
+        private void UpdateSegmentLodCombinedMeshes()
+        {
+            EnsureNearCombinedMeshBucketCount(nearCombinedMeshBucketCount);
+            segmentLodBuildQueue.Clear();
+            queuedSegmentLodBuilds.Clear();
+            segmentLodBuildQueueNeedsSort = false;
+
+            for (int i = 0; i < activeCombinedMeshBucketCount && i < nearCombinedMeshBuckets.Count; i++)
+            {
+                CombinedMeshBucket bucket = nearCombinedMeshBuckets[i];
+                if (bucket.dirty || combinedMeshLayoutDirty)
+                {
+                    RebuildSegmentLod2CombinedMeshBucket(bucket, i);
+                }
+
+                bucket.dirty = false;
+            }
+
+            // Reset sequential LOD activation counters
+            nextSegmentLodActivationIndex = 0;
+            allSegmentLodsActivatedCount = 0;
+
+            combinedMeshLayoutDirty = false;
+            combinedMeshesDirty = false;
+            nearCombinedMeshesBuiltOnce = true;
+            ApplyCombinedRendererVisibility();
+        }
+
+        private void HandleSegmentLodMeshReceived(VoxelSegmentLodMeshCache cache, int lodIndex)
+        {
+            if (lodIndex < 0 || lodIndex >= receivedLodMeshCounts.Length)
+            {
+                return;
+            }
+
+            receivedLodMeshCounts[lodIndex]++;
+            if (!loggedReceivedLodCompleted[lodIndex]
+                && receivedLodMeshCounts[lodIndex] >= MaxCombinedMeshBucketCount)
+            {
+                loggedReceivedLodCompleted[lodIndex] = true;
+                Debug.Log($"LOD_{lodIndex} Completado");
+                receivedLodMeshCounts[lodIndex] = 0;
+                if (lodIndex - 1 >= 0)
+                {
+                    RequestSegmentLodBuild(lodIndex - 1);
+                }
+                else if (AreAllSegmentLodsCompleted())
+                {
+                    segmentLodSelectionReady = true;
+                    ApplyCombinedRendererVisibility();
+                }
+            }
+        }
+
+        private void RequestSegmentLodBuild(int lodIndex)
+        {
+            if (lodIndex < 0 || lodIndex >= SegmentLodCount)
+            {
+                return;
+            }
+
+            receivedLodMeshCounts[lodIndex] = 0;
+            loggedReceivedLodCompleted[lodIndex] = false;
+
+            EnsureNearCombinedMeshBucketCount(nearCombinedMeshBucketCount);
+            int segmentCount = Mathf.Clamp(nearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount);
+            for (int segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++)
+            {
+                CombinedMeshBucket bucket = nearCombinedMeshBuckets[segmentIndex];
+                EnsureSegmentLodCache(bucket, $"VoxelCombinedMesh_Near_{segmentIndex:00}");
+                if (HasRenderableSegmentLodMesh(bucket, lodIndex))
+                {
+                    HandleSegmentLodMeshReceived(bucket.lodCache, lodIndex);
+                    continue;
+                }
+
+                QueueSegmentLodBuild(new SegmentLodKey(segmentIndex, lodIndex), false);
             }
         }
 
@@ -1577,10 +2238,13 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             while (nearCombinedMeshBuckets.Count < safeCount)
             {
                 int bucketIndex = nearCombinedMeshBuckets.Count;
-                nearCombinedMeshBuckets.Add(CreateCombinedMeshBucket(
+                CombinedMeshBucket bucket = CreateCombinedMeshBucket(
                     CreateCombinedMeshBucketObject(bucketIndex),
-                    $"VoxelCombinedMesh_Near_{bucketIndex:00}"));
+                    $"VoxelCombinedMesh_Near_{bucketIndex:00}");
+                EnsureSegmentLodCache(bucket, $"VoxelCombinedMesh_Near_{bucketIndex:00}");
+                nearCombinedMeshBuckets.Add(bucket);
             }
+
         }
 
         private CombinedMeshBucket CreateCombinedMeshBucket(GameObject bucketOwner, string meshName)
@@ -1610,8 +2274,76 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 meshFilter = meshFilter,
                 meshRenderer = meshRenderer,
                 mesh = mesh,
+                activeLodIndex = -1,
                 dirty = true
             };
+        }
+
+        private void EnsureSegmentLodCache(CombinedMeshBucket bucket, string meshName)
+        {
+            if (bucket.lodMeshes == null || bucket.lodMeshes.Length != SegmentLodCount)
+            {
+                bucket.lodMeshes = new Mesh[SegmentLodCount];
+            }
+
+            if (bucket.lodDirty == null || bucket.lodDirty.Length != SegmentLodCount)
+            {
+                bucket.lodDirty = new bool[SegmentLodCount];
+                for (int lodIndex = 0; lodIndex < bucket.lodDirty.Length; lodIndex++)
+                {
+                    bucket.lodDirty[lodIndex] = true;
+                }
+            }
+
+            if (bucket.lodCached == null || bucket.lodCached.Length != SegmentLodCount)
+            {
+                bucket.lodCached = new bool[SegmentLodCount];
+            }
+
+            if (bucket.lodCache == null && !bucket.owner.TryGetComponent(out bucket.lodCache))
+            {
+                bucket.lodCache = bucket.owner.AddComponent<VoxelSegmentLodMeshCache>();
+            }
+
+            bucket.lodCache.LodMeshReceived -= HandleSegmentLodMeshReceived;
+            bucket.lodCache.LodMeshReceived += HandleSegmentLodMeshReceived;
+            bucket.lodCache.EnsureCapacity(SegmentLodCount);
+            for (int lodIndex = 0; lodIndex < SegmentLodCount; lodIndex++)
+            {
+                Mesh cachedMesh = bucket.lodCache.GetMesh(lodIndex);
+                if (cachedMesh != null && bucket.lodMeshes[lodIndex] != cachedMesh)
+                {
+                    bucket.lodMeshes[lodIndex] = cachedMesh;
+                }
+
+                if (cachedMesh != null)
+                {
+                    bucket.lodCached[lodIndex] = cachedMesh.vertexCount > 0;
+                }
+            }
+
+            for (int lodIndex = 0; lodIndex < SegmentLodCount; lodIndex++)
+            {
+                Transform oldLodChild = bucket.owner.transform.Find($"LOD_{lodIndex}");
+                if (oldLodChild != null)
+                {
+                    DestroyUnityObject(oldLodChild.gameObject);
+                }
+            }
+
+            if (bucket.meshFilter != null && bucket.activeLodIndex < 0)
+            {
+                bucket.meshFilter.sharedMesh = null;
+            }
+
+            if (bucket.meshRenderer != null)
+            {
+                bucket.meshRenderer.sharedMaterial = material;
+                if (bucket.activeLodIndex < 0)
+                {
+                    bucket.meshRenderer.enabled = false;
+                }
+            }
         }
 
         private GameObject CreateCombinedMeshBucketObject(int bucketIndex)
@@ -1622,17 +2354,66 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 ? existing.gameObject
                 : new GameObject(bucketName);
             bucketOwner.transform.SetParent(transform, false);
-            bucketOwner.transform.localPosition = Vector3.zero;
+            UpdateNearCombinedMeshBucketTransform(bucketIndex, bucketOwner);
             bucketOwner.transform.localRotation = Quaternion.identity;
             bucketOwner.transform.localScale = Vector3.one;
             return bucketOwner;
         }
 
-        private void ApplyCombinedRendererVisibility()
+        private void UpdateNearCombinedMeshBucketTransform(int bucketIndex, GameObject bucketOwner)
+        {
+            if (bucketOwner == null)
+            {
+                return;
+            }
+
+            Vector3 segmentCenter = GetSegmentLocalCenter(
+                bucketIndex,
+                Mathf.Clamp(nearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount));
+            bucketOwner.transform.localPosition = segmentCenter;
+        }
+
+        private void ApplyCombinedRendererVisibility(bool forceMissingActiveLods = true)
         {
             bool showNearMeshes = useNearCombinedMeshes && nearCombinedMeshesBuiltOnce;
-            bool showFarMesh = !showNearMeshes;
+            bool hasVisibleSegment = false;
+            bool hasReadyVisibleSegment = false;
+            for (int i = 0; i < nearCombinedMeshBuckets.Count; i++)
+            {
+                CombinedMeshBucket bucket = nearCombinedMeshBuckets[i];
+                bool active = showNearMeshes
+                    && i < activeCombinedMeshBucketCount;
 
+                if (useSegmentLodSelection && useNearCombinedMeshes)
+                {
+                    EnsureSegmentLodCache(bucket, $"VoxelCombinedMesh_Near_{i:00}");
+                    bucket.owner.SetActive(active);
+                    if (!active)
+                    {
+                        continue;
+                    }
+
+                    hasVisibleSegment = true;
+                    int targetLod = ResolveLodIndexForSegment(i);
+                    if (ApplySegmentLodMesh(bucket, targetLod, true))
+                    {
+                        hasReadyVisibleSegment = true;
+                    }
+                }
+                else
+                {
+                    bucket.owner.SetActive(active);
+                    ApplySegmentLodVisibility(bucket, i, active, forceMissingActiveLods);
+                    if (active && bucket.meshRenderer != null && bucket.meshRenderer.enabled)
+                    {
+                        hasVisibleSegment = true;
+                        hasReadyVisibleSegment = true;
+                    }
+                }
+            }
+
+            bool showFarMesh = !showNearMeshes
+                || (useSegmentLodSelection && hasVisibleSegment && !hasReadyVisibleSegment);
             if (farCombinedMeshBucket != null)
             {
                 farCombinedMeshBucket.owner.SetActive(true);
@@ -1640,16 +2421,101 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 farCombinedMeshBucket.meshRenderer.sharedMaterial = material;
                 farCombinedMeshBucket.meshFilter.sharedMesh = farCombinedMeshBucket.mesh;
             }
+        }
 
-            for (int i = 0; i < nearCombinedMeshBuckets.Count; i++)
+        private void ApplySegmentLodVisibility(
+            CombinedMeshBucket bucket,
+            int bucketIndex,
+            bool segmentActive,
+            bool forceMissingActiveLods)
+        {
+            EnsureSegmentLodCache(bucket, $"VoxelCombinedMesh_Near_{bucketIndex:00}");
+            int activeLod = segmentActive ? ResolveLodIndexForSegment(bucketIndex) : -1;
+            ApplySegmentLodMesh(bucket, activeLod, segmentActive);
+        }
+
+        private bool ApplySegmentLodMesh(CombinedMeshBucket bucket, int targetLodIndex, bool segmentActive)
+        {
+            int renderLodIndex = segmentActive ? ResolveRenderableLodIndex(bucket, targetLodIndex) : -1;
+            bucket.activeLodIndex = renderLodIndex;
+
+            if (bucket.lodCache != null)
             {
-                CombinedMeshBucket bucket = nearCombinedMeshBuckets[i];
-                bool active = showNearMeshes && i < activeCombinedMeshBucketCount;
-                bucket.owner.SetActive(active);
-                bucket.meshRenderer.enabled = active;
-                bucket.meshRenderer.sharedMaterial = material;
-                bucket.meshFilter.sharedMesh = bucket.mesh;
+                Mesh mesh = GetSegmentLodMesh(bucket, renderLodIndex);
+                if (renderLodIndex >= 0 && bucket.lodCache.GetMesh(renderLodIndex) != mesh)
+                {
+                    bucket.lodCache.SetMesh(renderLodIndex, mesh);
+                }
+
+                bucket.lodCache.ApplyActiveMesh(bucket.meshFilter, bucket.meshRenderer, material, renderLodIndex, segmentActive);
             }
+            else
+            {
+                Mesh mesh = GetSegmentLodMesh(bucket, renderLodIndex);
+                bool renderable = segmentActive && mesh != null && mesh.vertexCount > 0;
+                if (bucket.meshFilter != null)
+                {
+                    if (renderable)
+                    {
+                        bucket.meshFilter.sharedMesh = mesh;
+                    }
+                }
+
+                if (bucket.meshRenderer != null)
+                {
+                    bucket.meshRenderer.sharedMaterial = material;
+                    bucket.meshRenderer.enabled = renderable;
+                }
+            }
+
+            return bucket.meshRenderer != null && bucket.meshRenderer.enabled;
+        }
+
+        private int ResolveRenderableLodIndex(CombinedMeshBucket bucket, int targetLodIndex)
+        {
+            if (targetLodIndex < 0)
+            {
+                return -1;
+            }
+
+            return HasRenderableSegmentLodMesh(bucket, targetLodIndex)
+                ? targetLodIndex
+                : -1;
+        }
+
+        private bool HasRenderableSegmentLodMesh(CombinedMeshBucket bucket, int lodIndex)
+        {
+            Mesh mesh = GetSegmentLodMesh(bucket, lodIndex);
+            return mesh != null && mesh.vertexCount > 0;
+        }
+
+        private static Mesh GetSegmentLodMesh(CombinedMeshBucket bucket, int lodIndex)
+        {
+            if (lodIndex < 0)
+            {
+                return null;
+            }
+
+            Mesh mesh = bucket.lodMeshes != null && lodIndex < bucket.lodMeshes.Length
+                ? bucket.lodMeshes[lodIndex]
+                : null;
+            if (mesh != null && mesh.vertexCount > 0)
+            {
+                return mesh;
+            }
+
+            Mesh cachedMesh = bucket.lodCache != null ? bucket.lodCache.GetMesh(lodIndex) : null;
+            if (cachedMesh != null)
+            {
+                if (bucket.lodMeshes != null && lodIndex < bucket.lodMeshes.Length && bucket.lodMeshes[lodIndex] != cachedMesh)
+                {
+                    bucket.lodMeshes[lodIndex] = cachedMesh;
+                }
+
+                return cachedMesh;
+            }
+
+            return mesh;
         }
 
         private void RebuildFarCombinedMesh()
@@ -1665,11 +2531,37 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             farCombinedMeshDirty = false;
         }
 
+        private void RebuildSegmentLod2CombinedMeshBucket(CombinedMeshBucket bucket, int bucketIndex)
+        {
+            EnsureSegmentLodCache(bucket, $"VoxelCombinedMesh_Near_{bucketIndex:00}");
+            Mesh previousLodMesh = GetSegmentLodMesh(bucket, ResolveActiveSegmentLodIndex());
+
+            RebuildCombinedMeshBucket(bucket, bucketIndex, true);
+
+            int lodIndex = ResolveActiveSegmentLodIndex();
+            if (previousLodMesh != null && previousLodMesh != bucket.mesh)
+            {
+                DestroyUnityObject(previousLodMesh);
+            }
+
+            bucket.lodMeshes[lodIndex] = bucket.mesh;
+            bucket.lodDirty[lodIndex] = false;
+            bucket.lodCached[lodIndex] = bucket.mesh != null && bucket.mesh.vertexCount > 0;
+            bucket.activeLodIndex = lodIndex;
+            if (bucket.lodCache != null)
+            {
+                bucket.lodCache.SetMesh(lodIndex, bucket.mesh);
+            }
+        }
+
         private void RebuildCombinedMeshBucket(CombinedMeshBucket bucket, int bucketIndex, bool nearBucket)
         {
             using (BuildCombineInstancesMarker.Auto())
             {
                 combineInstances.Clear();
+                Matrix4x4 targetWorldToLocal = bucket.owner != null
+                    ? bucket.owner.transform.worldToLocalMatrix
+                    : transform.worldToLocalMatrix;
                 foreach (VoxelChunkState state in activeChunks.Values)
                 {
                     if (nearBucket && GetCombinedMeshBucketIndex(state.chunkCoord) != bucketIndex)
@@ -1687,7 +2579,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                         continue;
                     }
 
-                    AddChunkCombineInstances(state);
+                    AddChunkCombineInstances(state, targetWorldToLocal);
                 }
             }
 
@@ -1719,26 +2611,185 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 return 0;
             }
 
-            if (!TryGetCombinedMeshBucketGrid(activeCombinedMeshBucketCount, out int3 grid))
+            return GetSegmentIndexForChunkCoord(chunkCoord, activeCombinedMeshBucketCount);
+        }
+
+        private int ResolveCellSizeForChunk(int3 chunkCoord)
+        {
+            if (!useSegmentLodSelection)
             {
-                return GetHashedCombinedMeshBucketIndex(chunkCoord);
+                return NormalizeCellSizeForChunk(config.CoarsestCellSize, config.ChunkSize);
+            }
+
+            int requestedCellSize = config.CoarsestCellSize;
+            if (IsCurrentFocusInsideSegmentLodActivationRadius())
+            {
+                Vector3 focus = GetCurrentDetailFocusVector3();
+                int segmentIndex = GetSegmentIndexForChunkCoord(
+                    chunkCoord,
+                    Mathf.Clamp(nearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount));
+                requestedCellSize = GetCellSizeForLodIndex(ResolveLodIndexForSegment(segmentIndex, focus));
+            }
+
+            return NormalizeCellSizeForChunk(requestedCellSize, config.ChunkSize);
+        }
+
+        private int ResolveLodIndexForSegment(int segmentIndex)
+        {
+            return ResolveLodIndexForSegment(segmentIndex, GetCurrentDetailFocusVector3());
+        }
+
+        private int ResolveLodIndexForSegment(int segmentIndex, Vector3 playerPosition)
+        {
+            int fallbackLod = ResolveActiveSegmentLodIndex();
+            if (!segmentLodSelectionReady)
+            {
+                return fallbackLod;
+            }
+
+            if (segmentIndex < 0 || segmentIndex >= nearCombinedMeshBuckets.Count)
+            {
+                return fallbackLod;
+            }
+
+            VoxelSegmentLodMeshCache lodCache = nearCombinedMeshBuckets[segmentIndex].lodCache;
+            return lodCache != null
+                ? lodCache.ResolveLodIndex(playerPosition, config, GetSegmentLodCount(), fallbackLod)
+                : fallbackLod;
+        }
+
+        private bool AreAllSegmentLodsCompleted()
+        {
+            int lodCount = GetSegmentLodCount();
+            for (int lodIndex = 0; lodIndex < lodCount; lodIndex++)
+            {
+                if (!loggedReceivedLodCompleted[lodIndex])
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private int ResolveActiveSegmentLodIndex()
+        {
+            return Mathf.Clamp(ActiveSegmentLodIndex, 0, GetSegmentLodCount() - 1);
+        }
+
+        private int GetCellSizeForLodIndex(int lodIndex)
+        {
+            return NormalizeCellSizeForChunk(
+                config.GetCellSizeAtLod(Mathf.Clamp(lodIndex, 0, GetSegmentLodCount() - 1)),
+                config.ChunkSize);
+        }
+
+        private int GetSegmentLodCount()
+        {
+            return Mathf.Clamp(config != null ? config.LodCount : SegmentLodCount, 1, SegmentLodCount);
+        }
+
+        private int GetSegmentIndexForChunkCoord(int3 chunkCoord, int bucketCount)
+        {
+            int safeBucketCount = Mathf.Clamp(bucketCount, 1, MaxCombinedMeshBucketCount);
+            if (!TryGetCombinedMeshBucketGrid(safeBucketCount, out int3 grid))
+            {
+                unchecked
+                {
+                    uint hash = (uint)chunkCoord.x * 73856093u
+                        ^ (uint)chunkCoord.y * 19349663u
+                        ^ (uint)chunkCoord.z * 83492791u;
+                    return (int)(hash % (uint)safeBucketCount);
+                }
             }
 
             int3 chunkSize = config.ChunkSize;
             int3 chunkOrigin = VoxelChunkUtility.GetChunkOrigin(chunkCoord, chunkSize);
             Vector3 chunkCenter = ToVector3(chunkOrigin) + ToVector3(chunkSize) * 0.5f;
+            return GetSegmentIndexForLocalPosition(chunkCenter, safeBucketCount);
+        }
+
+        private int GetSegmentIndexForWorldPosition(Vector3 worldPosition, int bucketCount)
+        {
+            return GetSegmentIndexForLocalPosition(transform.InverseTransformPoint(worldPosition), bucketCount);
+        }
+
+        private int GetSegmentIndexForLocalPosition(Vector3 localPosition, int bucketCount)
+        {
+            int safeBucketCount = Mathf.Clamp(bucketCount, 1, MaxCombinedMeshBucketCount);
+            if (!TryGetCombinedMeshBucketGrid(safeBucketCount, out int3 grid))
+            {
+                unchecked
+                {
+                    uint hash = (uint)Mathf.FloorToInt(localPosition.x) * 73856093u
+                        ^ (uint)Mathf.FloorToInt(localPosition.y) * 19349663u
+                        ^ (uint)Mathf.FloorToInt(localPosition.z) * 83492791u;
+                    return (int)(hash % (uint)safeBucketCount);
+                }
+            }
+
             Vector3 localCenter = sphereGenerator != null
-                ? chunkCenter - sphereGenerator.Center
-                : chunkCenter;
+                ? localPosition - sphereGenerator.Center
+                : localPosition;
             float radius = sphereGenerator != null
-                ? Mathf.Max(0.01f, sphereGenerator.Radius)
-                : Mathf.Max(chunkSize.x, Mathf.Max(chunkSize.y, chunkSize.z));
+                ? Mathf.Max(0.01f, sphereGenerator.MaximumTerrainRadius)
+                : Mathf.Max(config.ChunkSize.x, Mathf.Max(config.ChunkSize.y, config.ChunkSize.z));
             Vector3 normalized = (localCenter + Vector3.one * radius) / (radius * 2f);
 
             int x = Mathf.Clamp((int)(normalized.x * grid.x), 0, grid.x - 1);
             int y = Mathf.Clamp((int)(normalized.y * grid.y), 0, grid.y - 1);
             int z = Mathf.Clamp((int)(normalized.z * grid.z), 0, grid.z - 1);
             return x + grid.x * (y + grid.y * z);
+        }
+
+        private Vector3 GetSegmentCenter(int segmentIndex, int bucketCount)
+        {
+            return transform.TransformPoint(GetSegmentLocalCenter(segmentIndex, bucketCount));
+        }
+
+        private Vector3 GetSegmentLocalCenter(int segmentIndex, int bucketCount)
+        {
+            int safeBucketCount = Mathf.Clamp(bucketCount, 1, MaxCombinedMeshBucketCount);
+            if (!TryGetCombinedMeshBucketGrid(safeBucketCount, out int3 grid))
+            {
+                return sphereGenerator != null ? sphereGenerator.Center : Vector3.zero;
+            }
+
+            int clampedIndex = Mathf.Clamp(segmentIndex, 0, safeBucketCount - 1);
+            int x = clampedIndex % grid.x;
+            int yz = clampedIndex / grid.x;
+            int y = yz % grid.y;
+            int z = yz / grid.y;
+            float radius = sphereGenerator != null
+                ? Mathf.Max(0.01f, sphereGenerator.MaximumTerrainRadius)
+                : Mathf.Max(config.ChunkSize.x, Mathf.Max(config.ChunkSize.y, config.ChunkSize.z));
+            Vector3 normalizedCenter = new Vector3(
+                (x + 0.5f) / grid.x,
+                (y + 0.5f) / grid.y,
+                (z + 0.5f) / grid.z);
+            Vector3 localCenter = normalizedCenter * (radius * 2f) - Vector3.one * radius;
+            return sphereGenerator != null ? sphereGenerator.Center + localCenter : localCenter;
+        }
+
+        private Bounds GetSegmentBounds(int segmentIndex, int bucketCount)
+        {
+            int safeBucketCount = Mathf.Clamp(bucketCount, 1, MaxCombinedMeshBucketCount);
+            if (!TryGetCombinedMeshBucketGrid(safeBucketCount, out int3 grid))
+            {
+                float fallbackSize = sphereGenerator != null
+                    ? Mathf.Max(0.01f, sphereGenerator.MaximumTerrainRadius * 2f)
+                    : Mathf.Max(config.ChunkSize.x, Mathf.Max(config.ChunkSize.y, config.ChunkSize.z));
+                return new Bounds(GetSegmentCenter(segmentIndex, safeBucketCount), Vector3.one * fallbackSize);
+            }
+
+            float radius = sphereGenerator != null
+                ? Mathf.Max(0.01f, sphereGenerator.MaximumTerrainRadius)
+                : Mathf.Max(config.ChunkSize.x, Mathf.Max(config.ChunkSize.y, config.ChunkSize.z));
+            Vector3 size = new Vector3(
+                (radius * 2f) / grid.x,
+                (radius * 2f) / grid.y,
+                (radius * 2f) / grid.z);
+            return new Bounds(GetSegmentCenter(segmentIndex, safeBucketCount), size);
         }
 
         private static bool TryGetCombinedMeshBucketGrid(int bucketCount, out int3 grid)
@@ -1760,20 +2811,12 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 case 32:
                     grid = new int3(4, 4, 2);
                     return true;
+                case 64:
+                    grid = new int3(4, 4, 4);
+                    return true;
                 default:
                     grid = default;
                     return false;
-            }
-        }
-
-        private int GetHashedCombinedMeshBucketIndex(int3 chunkCoord)
-        {
-            unchecked
-            {
-                uint hash = (uint)chunkCoord.x * 73856093u
-                    ^ (uint)chunkCoord.y * 19349663u
-                    ^ (uint)chunkCoord.z * 83492791u;
-                return (int)(hash % (uint)activeCombinedMeshBucketCount);
             }
         }
 
@@ -1787,8 +2830,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             for (int i = 0; i < activeCombinedMeshBucketCount && i < nearCombinedMeshBuckets.Count; i++)
             {
-                Mesh mesh = nearCombinedMeshBuckets[i].mesh;
-                if (mesh != null && nearCombinedMeshBuckets[i].meshRenderer.enabled)
+                CombinedMeshBucket bucket = nearCombinedMeshBuckets[i];
+                int lodIndex = bucket.activeLodIndex;
+                Mesh mesh = GetSegmentLodMesh(bucket, lodIndex);
+                if (mesh != null && bucket.meshRenderer != null && bucket.meshRenderer.enabled)
                 {
                     count += mesh.vertexCount;
                 }
@@ -1807,8 +2852,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             for (int i = 0; i < activeCombinedMeshBucketCount && i < nearCombinedMeshBuckets.Count; i++)
             {
-                Mesh mesh = nearCombinedMeshBuckets[i].mesh;
-                if (mesh == null || !nearCombinedMeshBuckets[i].meshRenderer.enabled)
+                CombinedMeshBucket bucket = nearCombinedMeshBuckets[i];
+                int lodIndex = bucket.activeLodIndex;
+                Mesh mesh = GetSegmentLodMesh(bucket, lodIndex);
+                if (mesh == null || bucket.meshRenderer == null || !bucket.meshRenderer.enabled)
                 {
                     continue;
                 }
@@ -1832,13 +2879,18 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private bool ShouldRenderChunk(VoxelChunkState state)
         {
+            if (useSegmentLodSelection && useNearCombinedMeshes)
+            {
+                return true;
+            }
+
             return IsChunkRenderVisible(state.chunkCoord);
         }
 
-        private void AddChunkCombineInstances(VoxelChunkState state)
+        private void AddChunkCombineInstances(VoxelChunkState state, Matrix4x4 targetWorldToLocal)
         {
             int layerMask = GetChunkLayerMask(state);
-            Matrix4x4 chunkTransform = transform.worldToLocalMatrix * Matrix4x4.Translate(ToVector3(state.chunkOrigin));
+            Matrix4x4 chunkTransform = targetWorldToLocal * Matrix4x4.Translate(ToVector3(state.chunkOrigin));
             AddChunkCombineInstance(state, InteriorSubMesh, VoxelChunkLayerMask.Interior, layerMask, chunkTransform);
             AddChunkCombineInstance(state, TransitionSubMesh, VoxelChunkLayerMask.Transition, layerMask, chunkTransform);
             AddChunkCombineInstance(state, SurfaceSubMesh, VoxelChunkLayerMask.Surface, layerMask, chunkTransform);
@@ -1961,7 +3013,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             int bucketIndex = GetCombinedMeshBucketIndex(chunkCoord);
             if (bucketIndex >= 0 && bucketIndex < nearCombinedMeshBuckets.Count)
             {
-                nearCombinedMeshBuckets[bucketIndex].dirty = true;
+                MarkNearCombinedMeshBucketDirty(nearCombinedMeshBuckets[bucketIndex]);
             }
         }
 
@@ -1970,7 +3022,21 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             combinedMeshesDirty = true;
             for (int i = 0; i < nearCombinedMeshBuckets.Count; i++)
             {
-                nearCombinedMeshBuckets[i].dirty = true;
+                MarkNearCombinedMeshBucketDirty(nearCombinedMeshBuckets[i]);
+            }
+        }
+
+        private static void MarkNearCombinedMeshBucketDirty(CombinedMeshBucket bucket)
+        {
+            bucket.dirty = true;
+            if (bucket.lodDirty == null)
+            {
+                return;
+            }
+
+            for (int lodIndex = 0; lodIndex < bucket.lodDirty.Length; lodIndex++)
+            {
+                bucket.lodDirty[lodIndex] = true;
             }
         }
 
@@ -2003,10 +3069,34 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             for (int i = 0; i < activeCombinedMeshBucketCount && i < nearCombinedMeshBuckets.Count; i++)
             {
-                Mesh mesh = nearCombinedMeshBuckets[i].mesh;
-                if (mesh != null)
+                CombinedMeshBucket bucket = nearCombinedMeshBuckets[i];
+                if (bucket.mesh != null)
                 {
-                    mesh.Clear();
+                    bucket.mesh.Clear();
+                }
+
+                if (bucket.lodMeshes == null)
+                {
+                    continue;
+                }
+
+                for (int lodIndex = 0; lodIndex < bucket.lodMeshes.Length; lodIndex++)
+                {
+                    Mesh mesh = bucket.lodMeshes[lodIndex];
+                    if (mesh != null)
+                    {
+                        mesh.Clear();
+                    }
+
+                    if (bucket.lodCached != null && lodIndex < bucket.lodCached.Length)
+                    {
+                        bucket.lodCached[lodIndex] = false;
+                    }
+
+                    if (bucket.lodCache != null)
+                    {
+                        bucket.lodCache.SetMesh(lodIndex, null);
+                    }
                 }
             }
         }
@@ -2033,9 +3123,33 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             for (int i = 0; i < nearCombinedMeshBuckets.Count; i++)
             {
-                if (nearCombinedMeshBuckets[i].mesh != null)
+                CombinedMeshBucket bucket = nearCombinedMeshBuckets[i];
+                if (bucket.mesh != null)
                 {
-                    nearCombinedMeshBuckets[i].mesh.Clear();
+                    bucket.mesh.Clear();
+                }
+
+                if (bucket.lodMeshes == null)
+                {
+                    continue;
+                }
+
+                for (int lodIndex = 0; lodIndex < bucket.lodMeshes.Length; lodIndex++)
+                {
+                    if (bucket.lodMeshes[lodIndex] != null)
+                    {
+                        bucket.lodMeshes[lodIndex].Clear();
+                    }
+
+                    if (bucket.lodCached != null && lodIndex < bucket.lodCached.Length)
+                    {
+                        bucket.lodCached[lodIndex] = false;
+                    }
+
+                    if (bucket.lodCache != null)
+                    {
+                        bucket.lodCache.SetMesh(lodIndex, null);
+                    }
                 }
             }
 
@@ -2072,6 +3186,28 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 if (bucket.mesh != null)
                 {
                     DestroyUnityObject(bucket.mesh);
+                }
+
+                if (bucket.lodMeshFilters != null)
+                {
+                    for (int lodIndex = 0; lodIndex < bucket.lodMeshFilters.Length; lodIndex++)
+                    {
+                        if (bucket.lodMeshFilters[lodIndex] != null)
+                        {
+                            bucket.lodMeshFilters[lodIndex].sharedMesh = null;
+                        }
+                    }
+                }
+
+                if (bucket.lodMeshes != null)
+                {
+                    for (int lodIndex = 0; lodIndex < bucket.lodMeshes.Length; lodIndex++)
+                    {
+                        if (bucket.lodMeshes[lodIndex] != null)
+                        {
+                            DestroyUnityObject(bucket.lodMeshes[lodIndex]);
+                        }
+                    }
                 }
 
                 if (bucket.owner != null && bucket.owner != gameObject)
@@ -2149,6 +3285,17 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void CompleteAndDisposePendingChunkBuilds()
         {
+            foreach (PendingSegmentLodBuild pendingBuild in pendingSegmentLodBuilds.Values)
+            {
+                pendingBuild.jobHandle.Complete();
+                DisposePendingSegmentLodBuild(pendingBuild);
+            }
+
+            pendingSegmentLodBuilds.Clear();
+            segmentLodBuildQueue.Clear();
+            queuedSegmentLodBuilds.Clear();
+            segmentLodBuildQueueNeedsSort = false;
+
             foreach (PendingChunkBuild pendingBuild in pendingChunkBuilds.Values)
             {
                 pendingBuild.jobHandle.Complete();
@@ -2159,6 +3306,49 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         }
 
         private static void DisposePendingChunkBuild(PendingChunkBuild pendingBuild)
+        {
+            if (pendingBuild.requests.IsCreated)
+            {
+                pendingBuild.requests.Dispose();
+            }
+
+            if (pendingBuild.cells.IsCreated)
+            {
+                pendingBuild.cells.Dispose();
+            }
+
+            if (pendingBuild.vertices.IsCreated)
+            {
+                pendingBuild.vertices.Dispose();
+            }
+
+            if (pendingBuild.normals.IsCreated)
+            {
+                pendingBuild.normals.Dispose();
+            }
+
+            if (pendingBuild.uvs.IsCreated)
+            {
+                pendingBuild.uvs.Dispose();
+            }
+
+            if (pendingBuild.interiorIndices.IsCreated)
+            {
+                pendingBuild.interiorIndices.Dispose();
+            }
+
+            if (pendingBuild.transitionIndices.IsCreated)
+            {
+                pendingBuild.transitionIndices.Dispose();
+            }
+
+            if (pendingBuild.surfaceIndices.IsCreated)
+            {
+                pendingBuild.surfaceIndices.Dispose();
+            }
+        }
+
+        private static void DisposePendingSegmentLodBuild(PendingSegmentLodBuild pendingBuild)
         {
             if (pendingBuild.requests.IsCreated)
             {
@@ -2275,7 +3465,12 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private int3 GetCurrentDetailFocusKey()
         {
-            int quantization = math.max(1, (int)math.round(config.OctreeFocusRebuildDistance));
+            if (useSegmentLodSelection)
+            {
+                return BuildSegmentLodFocusKey();
+            }
+
+            int quantization = math.max(1, math.min(config.ChunkSize.x, math.min(config.ChunkSize.y, config.ChunkSize.z)));
             return (int3)math.floor(GetCurrentDetailFocus() / quantization);
         }
 
@@ -2323,6 +3518,14 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             public MeshFilter meshFilter;
             public MeshRenderer meshRenderer;
             public Mesh mesh;
+            public VoxelSegmentLodMeshCache lodCache;
+            public GameObject[] lodOwners;
+            public MeshFilter[] lodMeshFilters;
+            public MeshRenderer[] lodMeshRenderers;
+            public Mesh[] lodMeshes;
+            public bool[] lodDirty;
+            public bool[] lodCached;
+            public int activeLodIndex;
             public CombineInstance[] combineInstanceBuffer;
             public bool dirty;
         }
@@ -2381,6 +3584,51 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             public NativeList<int> transitionIndices;
             public NativeList<int> surfaceIndices;
             public JobHandle jobHandle;
+        }
+
+        private sealed class PendingSegmentLodBuild
+        {
+            public SegmentLodKey key;
+            public int cellSize;
+            public NativeArray<VoxelCellBuildRequest> requests;
+            public NativeArray<VoxelCell> cells;
+            public NativeList<float3> vertices;
+            public NativeList<float3> normals;
+            public NativeList<float2> uvs;
+            public NativeList<int> interiorIndices;
+            public NativeList<int> transitionIndices;
+            public NativeList<int> surfaceIndices;
+            public JobHandle jobHandle;
+        }
+
+        private readonly struct SegmentLodKey : System.IEquatable<SegmentLodKey>
+        {
+            public readonly int segmentIndex;
+            public readonly int lodIndex;
+
+            public SegmentLodKey(int segmentIndex, int lodIndex)
+            {
+                this.segmentIndex = segmentIndex;
+                this.lodIndex = lodIndex;
+            }
+
+            public bool Equals(SegmentLodKey other)
+            {
+                return segmentIndex == other.segmentIndex && lodIndex == other.lodIndex;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is SegmentLodKey other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    return (segmentIndex * 397) ^ lodIndex;
+                }
+            }
         }
 
         private struct ChunkVisibility

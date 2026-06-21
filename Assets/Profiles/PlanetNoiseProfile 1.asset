@@ -10,13 +10,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 75cf72b6f0ad44d491f7e89f4d57e340, type: 3}
-  m_Name: New Planet Noise Profile
-  m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.VoxelEngine.Data.PlanetNoiseProfile
+  m_Name: PlanetNoiseProfile 1
+  m_EditorClassIdentifier: 
   voronoiDivision: 56
-  voronoiContinentMinRange: 43
-  voronoiContinentMaxRange: 43
+  voronoiContinentMinRange: 56
+  voronoiContinentMaxRange: 56
   landMinElevation: 0.015
-  landMaxElevation: 0.127
+  landMaxElevation: 0.486
   landElevationCurve:
     serializedVersion: 2
     m_Curve:
@@ -42,8 +42,8 @@ MonoBehaviour:
     m_PostInfinity: 2
     m_RotationOrder: 4
   oceanDepth: 0.16
-  minimumOceanDepth: 0.03
-  continentEdgeBlend: 0.16
+  minimumOceanDepth: 0.23
+  continentEdgeBlend: 0.169
   continentBlendCurve:
     serializedVersion: 2
     m_Curve:
@@ -57,8 +57,17 @@ MonoBehaviour:
       inWeight: 0
       outWeight: 0
     - serializedVersion: 3
-      time: 1
-      value: 1
+      time: 0.99761045
+      value: 0.18355602
+      inSlope: 0.419708
+      outSlope: 0.419708
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 1
+    - serializedVersion: 3
+      time: 1.0325928
+      value: 0.75476074
       inSlope: 0
       outSlope: 0
       tangentMode: 0
@@ -68,8 +77,8 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  surfaceNoiseAmplitude: 0.308
-  surfaceNoiseFrequency: 2
-  seaLevelAtlasV: 0.337
-  cellHeightModifierRange: {x: 1, y: 2}
-  cellRoughnessModifierRange: {x: 0.5, y: 1}
+  surfaceNoiseAmplitude: 0.108
+  surfaceNoiseFrequency: 3.59
+  seaLevelAtlasV: 0.05
+  cellHeightModifierRange: {x: 0.3, y: 0.5}
+  cellRoughnessModifierRange: {x: 0.6, y: 0.8}

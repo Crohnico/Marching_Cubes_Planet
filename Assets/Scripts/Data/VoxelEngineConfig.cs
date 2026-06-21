@@ -6,38 +6,27 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
     [CreateAssetMenu(menuName = "Voxel Engine/Voxel Engine Config")]
     public sealed class VoxelEngineConfig : ScriptableObject
     {
-        [SerializeField] private Vector3Int chunkSize = new Vector3Int(32, 32, 32);
+        [SerializeField] private Vector3Int chunkSize = new Vector3Int(64, 64, 64);
         [SerializeField] private int[] cellSizes =
         {
-            1,
-            4,
             8,
-            16,
             32,
-            64,
-            128,
-            256
+            64
         };
-        [SerializeField] private float[] octreeDetailDistances =
+        [SerializeField] private float[] lodDistances =
         {
-            16f,
-            32f,
-            64f,
-            128f,
             256f,
-            512f,
-            1024f,
+            768f,
             2048f
         };
         [SerializeField, Min(1)] private int defaultCellSize = 8;
-        [SerializeField, Min(1f)] private float octreeFocusRebuildDistance = 1f;
 
         public int3 ChunkSize => new int3(chunkSize.x, chunkSize.y, chunkSize.z);
         public int DefaultCellSize => NormalizeCellSize(defaultCellSize);
         public int FinestCellSize => GetFinestCellSize();
         public int CoarsestCellSize => GetCoarsestCellSize();
         public float CoarsestLodStartDistance => GetLodStartDistanceForCellSize(CoarsestCellSize);
-        public float OctreeFocusRebuildDistance => Mathf.Max(1f, octreeFocusRebuildDistance);
+        public int LodCount => GetLodCount();
 
         public ScalarFieldSettings ScalarFieldSettings => new ScalarFieldSettings
         {
@@ -49,7 +38,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
         public int GetCellSizeForWorldDistance(float worldDistance)
         {
             int lodIndex = GetLodIndexForWorldDistance(worldDistance);
-            return NormalizeCellSize(GetCellSizeAt(lodIndex));
+            return NormalizeCellSize(GetCellSizeAtLod(lodIndex));
         }
 
         private void OnValidate()
@@ -59,16 +48,15 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
                 Mathf.Max(1, chunkSize.y),
                 Mathf.Max(1, chunkSize.z));
             ValidateCellSizes();
-            ValidateOctreeDetailDistances();
+            ValidateLodDistances();
             defaultCellSize = NormalizeCellSize(defaultCellSize);
-            octreeFocusRebuildDistance = Mathf.Max(1f, octreeFocusRebuildDistance);
         }
 
         private void ValidateCellSizes()
         {
             if (cellSizes == null || cellSizes.Length == 0)
             {
-                cellSizes = new[] { 1, 4, 8, 16, 32, 64, 128, 256 };
+                cellSizes = new[] { 8, 32, 64 };
             }
 
             for (int i = 0; i < cellSizes.Length; i++)
@@ -77,28 +65,28 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
             }
         }
 
-        private void ValidateOctreeDetailDistances()
+        private void ValidateLodDistances()
         {
-            if (octreeDetailDistances == null || octreeDetailDistances.Length == 0)
+            if (lodDistances == null || lodDistances.Length == 0)
             {
-                octreeDetailDistances = new[] { 16f, 32f, 64f, 128f, 256f, 512f, 1024f, 2048f };
+                lodDistances = new[] { 256f, 768f, 2048f };
             }
 
             float previous = 0f;
-            for (int i = 0; i < octreeDetailDistances.Length; i++)
+            for (int i = 0; i < lodDistances.Length; i++)
             {
-                octreeDetailDistances[i] = Mathf.Max(previous, octreeDetailDistances[i]);
-                previous = octreeDetailDistances[i];
+                lodDistances[i] = Mathf.Max(previous, lodDistances[i]);
+                previous = lodDistances[i];
             }
         }
 
         private int GetLodIndexForWorldDistance(float worldDistance)
         {
             float normalizedDistance = Mathf.Max(0f, worldDistance);
-            int cellSizeCount = GetOctreeCellSizeCount();
+            int cellSizeCount = GetLodCount();
             for (int i = 0; i < cellSizeCount; i++)
             {
-                if (normalizedDistance <= GetMaxWorldDistanceForLodIndex(i))
+                if (normalizedDistance <= GetMaxWorldDistanceForLod(i))
                 {
                     return i;
                 }
@@ -107,17 +95,17 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
             return cellSizeCount - 1;
         }
 
-        private float GetMaxWorldDistanceForLodIndex(int lodIndex)
+        public float GetMaxWorldDistanceForLod(int lodIndex)
         {
-            if (octreeDetailDistances != null && lodIndex < octreeDetailDistances.Length)
+            if (lodDistances != null && lodIndex < lodDistances.Length)
             {
-                return Mathf.Max(0f, octreeDetailDistances[lodIndex]);
+                return Mathf.Max(0f, lodDistances[lodIndex]);
             }
 
             return float.PositiveInfinity;
         }
 
-        private int GetCellSizeAt(int lodIndex)
+        public int GetCellSizeAtLod(int lodIndex)
         {
             if (cellSizes == null || cellSizes.Length == 0)
             {
@@ -127,22 +115,22 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
             return cellSizes[math.clamp(lodIndex, 0, cellSizes.Length - 1)];
         }
 
-        private int GetOctreeCellSizeCount()
+        private int GetLodCount()
         {
             int cellSizeCount = cellSizes != null ? cellSizes.Length : 0;
-            int distanceCount = octreeDetailDistances != null ? octreeDetailDistances.Length : 0;
+            int distanceCount = lodDistances != null ? lodDistances.Length : 0;
             return math.max(1, math.min(cellSizeCount, distanceCount));
         }
 
         private float GetLodStartDistanceForCellSize(int targetCellSize)
         {
-            int cellSizeCount = GetOctreeCellSizeCount();
+            int cellSizeCount = GetLodCount();
             int normalizedTarget = NormalizeCellSize(targetCellSize);
             for (int i = 0; i < cellSizeCount; i++)
             {
-                if (NormalizeCellSize(GetCellSizeAt(i)) == normalizedTarget)
+                if (NormalizeCellSize(GetCellSizeAtLod(i)) == normalizedTarget)
                 {
-                    return i == 0 ? 0f : GetMaxWorldDistanceForLodIndex(i - 1);
+                    return i == 0 ? 0f : GetMaxWorldDistanceForLod(i - 1);
                 }
             }
 
