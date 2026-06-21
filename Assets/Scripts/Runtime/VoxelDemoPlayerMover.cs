@@ -8,20 +8,35 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
     [DisallowMultipleComponent]
     public sealed class VoxelDemoPlayerMover : MonoBehaviour
     {
-        [SerializeField, Min(0f)] private float moveSpeed = 12f;
-        [SerializeField, Min(0f)] private float verticalSpeed = 8f;
+        [SerializeField, Min(0f)] private float planetMoveSpeed = 20f;
+        [SerializeField, Min(0f)] private float spaceMoveSpeed = 100f;
         [SerializeField, Min(0f)] private float mouseSensitivity = 0.12f;
         [SerializeField] private bool lockCursorOnEnable = true;
         [SerializeField] private bool useUnscaledTime;
+        [Header("Planet Reference")]
+        [SerializeField] private bool usePlanetReferenceFrame = true;
+        [SerializeField] private VoxelSphereGenerator referencePlanet;
+        [SerializeField, Min(0f)] private float planetReferencePadding = 1000f;
+        [SerializeField, Min(0f)] private float planetUpAlignSpeed = 8f;
 
-        private float yaw;
-        private float pitch;
+        private Vector3 currentReferenceUp = Vector3.up;
+        private bool usingPlanetReference;
+        private bool usePlanetSpeedMode;
+
+        private void OnValidate()
+        {
+            planetMoveSpeed = Mathf.Max(0f, planetMoveSpeed);
+            spaceMoveSpeed = Mathf.Max(0f, spaceMoveSpeed);
+            mouseSensitivity = Mathf.Max(0f, mouseSensitivity);
+            planetReferencePadding = Mathf.Max(0f, planetReferencePadding);
+            planetUpAlignSpeed = Mathf.Max(0f, planetUpAlignSpeed);
+        }
 
         private void OnEnable()
         {
-            Vector3 eulerAngles = transform.rotation.eulerAngles;
-            yaw = eulerAngles.y;
-            pitch = NormalizeAngle(eulerAngles.x);
+            currentReferenceUp = transform.up.sqrMagnitude > 0.0001f
+                ? transform.up.normalized
+                : Vector3.up;
 
             if (lockCursorOnEnable)
             {
@@ -42,7 +57,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private void Update()
         {
             float deltaTime = useUnscaledTime ? Time.unscaledDeltaTime : Time.deltaTime;
-            UpdateRotation();
+            ToggleSpeedModeIfRequested();
+            Vector3 referenceUp = ResolveReferenceUp(deltaTime);
+            UpdateRotation(referenceUp);
 
             Vector3 input = new Vector3(
                 GetAxis(KeyBinding.Right, KeyBinding.Left),
@@ -60,22 +77,103 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 horizontal.Normalize();
             }
 
-            Vector3 movement = (transform.right * horizontal.x + transform.forward * horizontal.z) * moveSpeed
-                + Vector3.up * (input.y * verticalSpeed);
+            Vector3 directionalMovement = transform.right * horizontal.x + transform.forward * horizontal.z;
+            if (directionalMovement.sqrMagnitude > 1f)
+            {
+                directionalMovement.Normalize();
+            }
+
+            float moveSpeed = usePlanetSpeedMode ? planetMoveSpeed : spaceMoveSpeed;
+            Vector3 movement = directionalMovement * moveSpeed
+                + referenceUp * (input.y * moveSpeed);
             transform.position += movement * deltaTime;
         }
 
-        private void UpdateRotation()
+        private void UpdateRotation(Vector3 referenceUp)
         {
             Vector2 mouseDelta = GetMouseDelta();
+            AlignToReferenceUp(referenceUp);
             if (mouseDelta.sqrMagnitude <= 0f)
             {
                 return;
             }
 
-            yaw += mouseDelta.x * mouseSensitivity;
-            pitch = Mathf.Clamp(pitch - mouseDelta.y * mouseSensitivity, -89f, 89f);
-            transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
+            float yawDelta = mouseDelta.x * mouseSensitivity;
+            float pitchDelta = -mouseDelta.y * mouseSensitivity;
+            transform.rotation = Quaternion.AngleAxis(yawDelta, referenceUp) * transform.rotation;
+            transform.rotation = Quaternion.AngleAxis(pitchDelta, transform.right) * transform.rotation;
+            AlignToReferenceUp(referenceUp);
+        }
+
+        private Vector3 ResolveReferenceUp(float deltaTime)
+        {
+            Vector3 targetUp = Vector3.up;
+            Vector3 planetUp = Vector3.up;
+            VoxelSphereGenerator planet = ResolveReferencePlanet();
+            usingPlanetReference = usePlanetReferenceFrame && TryGetPlanetReferenceUp(planet, out planetUp);
+            if (usingPlanetReference)
+            {
+                targetUp = planetUp;
+            }
+
+            if (planetUpAlignSpeed <= 0f)
+            {
+                currentReferenceUp = targetUp;
+                return currentReferenceUp;
+            }
+
+            float t = 1f - Mathf.Exp(-planetUpAlignSpeed * Mathf.Max(0f, deltaTime));
+            currentReferenceUp = Vector3.Slerp(currentReferenceUp, targetUp, t).normalized;
+            return currentReferenceUp;
+        }
+
+        private VoxelSphereGenerator ResolveReferencePlanet()
+        {
+            if (referencePlanet == null)
+            {
+                referencePlanet = FindFirstObjectByType<VoxelSphereGenerator>();
+            }
+
+            return referencePlanet;
+        }
+
+        private bool TryGetPlanetReferenceUp(VoxelSphereGenerator planet, out Vector3 up)
+        {
+            if (planet == null)
+            {
+                up = Vector3.up;
+                return false;
+            }
+
+            Vector3 fromCenter = transform.position - planet.Center;
+            float maxDistance = planet.MaximumTerrainRadius + planetReferencePadding;
+            if (fromCenter.sqrMagnitude > maxDistance * maxDistance)
+            {
+                up = Vector3.up;
+                return false;
+            }
+
+            up = fromCenter.sqrMagnitude > 0.0001f ? fromCenter.normalized : Vector3.up;
+            return true;
+        }
+
+        private void ToggleSpeedModeIfRequested()
+        {
+            if (WasSpeedTogglePressed())
+            {
+                usePlanetSpeedMode = !usePlanetSpeedMode;
+            }
+        }
+
+        private void AlignToReferenceUp(Vector3 referenceUp)
+        {
+            Vector3 forward = transform.forward;
+            if (Mathf.Abs(Vector3.Dot(forward.normalized, referenceUp)) > 0.999f)
+            {
+                return;
+            }
+
+            transform.rotation = Quaternion.LookRotation(forward, referenceUp);
         }
 
         private static Vector2 GetMouseDelta()
@@ -90,9 +188,16 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 #endif
         }
 
-        private static float NormalizeAngle(float angle)
+        private static bool WasSpeedTogglePressed()
         {
-            return angle > 180f ? angle - 360f : angle;
+#if ENABLE_INPUT_SYSTEM
+            Keyboard keyboard = Keyboard.current;
+            return keyboard != null && keyboard.qKey.wasPressedThisFrame;
+#elif ENABLE_LEGACY_INPUT_MANAGER
+            return Input.GetKeyDown(KeyCode.Q);
+#else
+            return false;
+#endif
         }
 
         private static float GetAxis(KeyBinding positive, KeyBinding negative)
@@ -133,7 +238,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 case KeyBinding.Up:
                     return keyboard.eKey.isPressed;
                 case KeyBinding.Down:
-                    return keyboard.qKey.isPressed;
+                    return keyboard.leftCtrlKey.isPressed || keyboard.rightCtrlKey.isPressed;
                 default:
                     return false;
             }
@@ -151,7 +256,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 case KeyBinding.Up:
                     return Input.GetKey(KeyCode.E);
                 case KeyBinding.Down:
-                    return Input.GetKey(KeyCode.Q);
+                    return Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
                 default:
                     return false;
             }

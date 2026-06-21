@@ -28,6 +28,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private const int MaxCombinedMeshBucketCount = 64;
         private const int SegmentLodCount = 3;
         private const int ActiveSegmentLodIndex = 2;
+        private const int MinDeferredSegmentLodChunksBuiltPerFrame = 400;
         private static readonly ProfilerMarker RebuildDesiredMarker = new ProfilerMarker("VoxelEngine.RebuildDesiredChunks");
         private static readonly ProfilerMarker BuildRequestsMarker = new ProfilerMarker("VoxelEngine.BuildCellRequests");
         private static readonly ProfilerMarker StartChunkBuildMarker = new ProfilerMarker("VoxelEngine.StartChunkBuild");
@@ -58,7 +59,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [SerializeField, Min(0)] private int neverLayerCullChunkDistance = 3;
         [SerializeField, Min(1)] private int maxChunkBuildsStartedPerFrame = 8;
         [SerializeField, Min(1)] private int maxConcurrentChunkBuilds = 32;
-        [SerializeField, Min(1)] private int maxDeferredSegmentLodChunksBuiltPerFrame = 1;
+        [SerializeField, Min(MinDeferredSegmentLodChunksBuiltPerFrame)] private int maxDeferredSegmentLodChunksBuiltPerFrame = MinDeferredSegmentLodChunksBuiltPerFrame;
 
         private readonly Dictionary<int3, VoxelChunkState> activeChunks = new Dictionary<int3, VoxelChunkState>();
         private readonly Dictionary<int3, int> declaredChunkRefCounts = new Dictionary<int3, int>();
@@ -142,7 +143,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             maxChunkBuildsStartedPerFrame = Mathf.Max(1, maxChunkBuildsStartedPerFrame);
             maxConcurrentChunkBuilds = Mathf.Max(1, maxConcurrentChunkBuilds);
-            maxDeferredSegmentLodChunksBuiltPerFrame = Mathf.Max(1, maxDeferredSegmentLodChunksBuiltPerFrame);
+            maxDeferredSegmentLodChunksBuiltPerFrame = Mathf.Max(
+                MinDeferredSegmentLodChunksBuiltPerFrame,
+                maxDeferredSegmentLodChunksBuiltPerFrame);
             nearCombinedMeshBucketCount = Mathf.Clamp(nearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount);
             maxCombinedMeshBucketsRebuiltPerFrame = Mathf.Max(1, maxCombinedMeshBucketsRebuiltPerFrame);
             farHemisphereRefreshAngle = Mathf.Clamp(farHemisphereRefreshAngle, 0f, 90f);
@@ -1527,7 +1530,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             int builtChunks = 0;
-            while (builtChunks < maxDeferredSegmentLodChunksBuiltPerFrame)
+            int chunkBudget = Mathf.Max(
+                MinDeferredSegmentLodChunksBuiltPerFrame,
+                maxDeferredSegmentLodChunksBuiltPerFrame);
+            while (builtChunks < chunkBudget)
             {
                 if (!activeDeferredSegmentLodBuild.active && !TryStartNextDeferredSegmentLodBuild())
                 {

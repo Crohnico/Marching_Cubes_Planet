@@ -167,7 +167,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Jobs
             float3 localOrigin = new float3(chunkOrigin.x, chunkOrigin.y, chunkOrigin.z);
             int vertexIndex = vertices.Length;
             float3 normal = math.normalizesafe(math.cross(b - a, c - a), new float3(0f, 1f, 0f));
-            float2 uv = scalarField.GetAtlasUv(cellCenter);
+            float3 triangleCenter = (a + b + c) / 3f;
+            float2 uv = scalarField.GetAtlasUv(triangleCenter, normal);
             vertices.AddNoResize(a - localOrigin);
             vertices.AddNoResize(b - localOrigin);
             vertices.AddNoResize(c - localOrigin);
@@ -178,7 +179,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Jobs
             uvs.AddNoResize(uv);
             uvs.AddNoResize(uv);
 
-            int layerIndex = scalarField.GetLayerIndex((a + b + c) / 3f);
+            int layerIndex = scalarField.GetLayerIndex(triangleCenter);
             if (layerIndex == 0)
             {
                 interiorIndices.AddNoResize(vertexIndex);

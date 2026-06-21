@@ -199,7 +199,7 @@ MonoBehaviour:
   neverLayerCullChunkDistance: 3
   maxChunkBuildsStartedPerFrame: 32
   maxConcurrentChunkBuilds: 32
-  maxDeferredSegmentLodChunksBuiltPerFrame: 1
+  maxDeferredSegmentLodChunksBuiltPerFrame: 8
 --- !u!4 &181062082
 Transform:
   m_ObjectHideFlags: 0
@@ -971,7 +971,7 @@ MonoBehaviour:
   neverLayerCullChunkDistance: 3
   maxChunkBuildsStartedPerFrame: 32
   maxConcurrentChunkBuilds: 32
-  maxDeferredSegmentLodChunksBuiltPerFrame: 1
+  maxDeferredSegmentLodChunksBuiltPerFrame: 8
 --- !u!4 &1723249798
 Transform:
   m_ObjectHideFlags: 0
@@ -1285,11 +1285,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7fbe43d6dd814c9428b9abf5e4f5e8c1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.VoxelEngine.Runtime.VoxelDemoPlayerMover
-  moveSpeed: 100
-  verticalSpeed: 8
+  planetMoveSpeed: 20
+  spaceMoveSpeed: 100
   mouseSensitivity: 0.12
   lockCursorOnEnable: 1
   useUnscaledTime: 0
+  usePlanetReferenceFrame: 1
+  referencePlanet: {fileID: 0}
+  planetReferencePadding: 512
+  planetUpAlignSpeed: 8
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
