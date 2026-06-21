@@ -1,4 +1,3 @@
-using System;
 using MarchingCubesPlanet.VoxelEngine.Data;
 using Unity.Mathematics;
 using UnityEngine;
@@ -12,17 +11,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [SerializeField] private Transform target;
         [SerializeField] private Camera chunkCullingCamera;
         [SerializeField] private bool enableChunkCulling = true;
-        [SerializeField, Min(0f)] private float viewPositionUpdateThreshold = 1f;
-        [SerializeField, Range(0f, 45f)] private float viewAngleUpdateThreshold = 1f;
 
         private bool hasCurrentChunk;
-        private bool hasCurrentViewPose;
         private int3 currentChunk;
-        private Vector3 currentViewPosition;
-        private Quaternion currentViewRotation = Quaternion.identity;
-
-        public event Action<int3> OnChunkChanged;
-        public event Action OnViewChanged;
 
         public int3 CurrentChunk => currentChunk;
         public bool HasCurrentChunk => hasCurrentChunk;
@@ -67,7 +58,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private void Update()
         {
             UpdateChunk();
-            UpdateView();
         }
 
         private void UpdateChunk()
@@ -86,42 +76,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             currentChunk = nextChunk;
             hasCurrentChunk = true;
-            OnChunkChanged?.Invoke(currentChunk);
-        }
-
-        private void UpdateView()
-        {
-            if (!EnableChunkCulling)
-            {
-                hasCurrentViewPose = false;
-                return;
-            }
-
-            Transform viewTransform = chunkCullingCamera.transform;
-            Vector3 nextPosition = viewTransform.position;
-            Quaternion nextRotation = viewTransform.rotation;
-            if (hasCurrentViewPose
-                && !HasViewMoved(nextPosition)
-                && !HasViewRotated(nextRotation))
-            {
-                return;
-            }
-
-            currentViewPosition = nextPosition;
-            currentViewRotation = nextRotation;
-            hasCurrentViewPose = true;
-            OnViewChanged?.Invoke();
-        }
-
-        private bool HasViewMoved(Vector3 nextPosition)
-        {
-            float threshold = viewPositionUpdateThreshold;
-            return (nextPosition - currentViewPosition).sqrMagnitude >= threshold * threshold;
-        }
-
-        private bool HasViewRotated(Quaternion nextRotation)
-        {
-            return Quaternion.Angle(currentViewRotation, nextRotation) >= viewAngleUpdateThreshold;
         }
     }
 }

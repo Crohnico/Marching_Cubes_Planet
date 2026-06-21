@@ -7,80 +7,236 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
     [DisallowMultipleComponent]
     public sealed class VoxelSegmentLodMeshCache : MonoBehaviour
     {
-        private const int NoPendingLod = -1;
+        [SerializeField] private GameObject pivot;
+        [SerializeField] private GameObject lodContainer;
+        [SerializeField] private GameObject lod0;
+        [SerializeField] private GameObject lod1;
+        [SerializeField] private GameObject lod2;
 
-        [SerializeField] private Mesh[] lodMeshes = new Mesh[3];
-        [SerializeField] private int activeLodIndex = -1;
-        [SerializeField] private int pendingLodIndex = NoPendingLod;
+        private Material material;
+        private Transform detailFocus;
+        private VoxelEngineConfig config;
+        private Action delayedAction;
+        private int activeLodIndex = -1;
 
         public event Action<VoxelSegmentLodMeshCache, int> LodMeshReceived;
+        public Transform PivotTransform => EnsurePivot().transform;
 
-        public int ActiveLodIndex => activeLodIndex;
-        public int PendingLodIndex => pendingLodIndex;
-
-        public void EnsureCapacity(int lodCount)
+        public void Configure(Material sharedMaterial, Transform focus, VoxelEngineConfig voxelConfig)
         {
-            if (lodMeshes != null && lodMeshes.Length == lodCount)
+            material = sharedMaterial;
+            detailFocus = focus;
+            config = voxelConfig;
+            EnsurePivot();
+            EnsureLodContainer();
+            ReparentLod(lod0);
+            ReparentLod(lod1);
+            ReparentLod(lod2);
+        }
+
+        private void Update()
+        {
+            if (detailFocus == null || config == null)
             {
                 return;
             }
 
-            Mesh[] nextMeshes = new Mesh[lodCount];
-            if (lodMeshes != null)
+            if (pivot != null && !pivot.activeInHierarchy)
             {
-                int copyCount = Mathf.Min(lodMeshes.Length, nextMeshes.Length);
-                for (int i = 0; i < copyCount; i++)
-                {
-                    nextMeshes[i] = lodMeshes[i];
-                }
+                return;
             }
 
-            lodMeshes = nextMeshes;
-        }
-
-        public Mesh GetMesh(int lodIndex)
-        {
-            return lodMeshes != null && lodIndex >= 0 && lodIndex < lodMeshes.Length
-                ? lodMeshes[lodIndex]
-                : null;
+            LoadLOD(ResolveLodIndex());
         }
 
         public void SetMesh(int lodIndex, Mesh mesh)
         {
-            if (lodIndex < 0)
+            if (mesh == null)
+            {
+                GameObject existingLod = GetLod(lodIndex);
+                if (existingLod != null)
+                {
+                    existingLod.SetActive(false);
+                }
+
+                return;
+            }
+
+            GameObject lod = GetOrCreateLod(lodIndex);
+            if (lod == null)
             {
                 return;
             }
 
-            EnsureCapacity(Mathf.Max(lodIndex + 1, lodMeshes != null ? lodMeshes.Length : 0));
-            lodMeshes[lodIndex] = mesh;
-            if (mesh != null)
+            MeshFilter meshFilter = lod.GetComponent<MeshFilter>();
+            if (meshFilter.sharedMesh == mesh)
             {
-                LodMeshReceived?.Invoke(this, lodIndex);
+                return;
             }
 
-            if (pendingLodIndex == lodIndex && HasRenderableMesh(lodIndex))
+            meshFilter.sharedMesh = mesh;
+            lod.GetComponent<MeshRenderer>().sharedMaterial = material;
+            lod.SetActive(true);
+            lod.SetActive(false);
+
+            delayedAction?.Invoke();
+            delayedAction = null;
+            LodMeshReceived?.Invoke(this, lodIndex);
+        }
+
+        public bool LoadLOD(int lodIndex)
+        {
+            if (lodIndex < 0 || lodIndex > 2)
             {
-                LoadLOD(lodIndex);
+                activeLodIndex = -1;
+                delayedAction = null;
+                lod0?.SetActive(false);
+                lod1?.SetActive(false);
+                lod2?.SetActive(false);
+                return false;
+            }
+
+            GameObject lod = GetLod(lodIndex);
+            if (lod == null)
+            {
+                delayedAction = () => LoadLOD(lodIndex);
+                return false;
+            }
+
+            if (activeLodIndex == lodIndex)
+            {
+                return true;
+            }
+
+            lod0?.SetActive(lodIndex == 0);
+            lod1?.SetActive(lodIndex == 1);
+            lod2?.SetActive(lodIndex == 2);
+            activeLodIndex = lodIndex;
+            return true;
+        }
+
+        private GameObject GetOrCreateLod(int lodIndex)
+        {
+            GameObject lod = GetLod(lodIndex);
+            if (lod != null)
+            {
+                ReparentLod(lod);
+                return lod;
+            }
+
+            Transform existing = EnsureLodContainer().transform.Find($"LOD_{lodIndex}");
+            if (existing == null)
+            {
+                existing = transform.Find($"LOD_{lodIndex}");
+            }
+
+            if (existing != null)
+            {
+                lod = existing.gameObject;
+                ReparentLod(lod);
+                if (!lod.TryGetComponent(out MeshFilter _))
+                {
+                    lod.AddComponent<MeshFilter>();
+                }
+
+                if (!lod.TryGetComponent(out MeshRenderer _))
+                {
+                    lod.AddComponent<MeshRenderer>();
+                }
+
+                SetLod(lodIndex, lod);
+                return lod;
+            }
+
+            lod = new GameObject($"LOD_{lodIndex}");
+            lod.transform.SetParent(EnsureLodContainer().transform, false);
+            lod.AddComponent<MeshFilter>();
+            lod.AddComponent<MeshRenderer>();
+            SetLod(lodIndex, lod);
+            return lod;
+        }
+
+        private void ReparentLod(GameObject lod)
+        {
+            if (lod == null)
+            {
+                return;
+            }
+
+            Transform parent = EnsureLodContainer().transform;
+            if (lod.transform.parent != parent)
+            {
+                lod.transform.SetParent(parent, false);
             }
         }
 
-        public bool HasRenderableMesh(int lodIndex)
+        public void SetPivotActive(bool active)
         {
-            Mesh mesh = GetMesh(lodIndex);
-            return mesh != null && mesh.vertexCount > 0;
+            GameObject owner = EnsurePivot();
+            if (owner.activeSelf != active)
+            {
+                owner.SetActive(active);
+            }
         }
 
-        public int ResolveLodIndex(Vector3 focusWorldPosition, VoxelEngineConfig config, int lodCount, int fallbackLodIndex)
+        private GameObject EnsurePivot()
         {
-            int safeLodCount = Mathf.Max(1, lodCount);
-            if (config == null)
+            if (pivot != null)
             {
-                return Mathf.Clamp(fallbackLodIndex, 0, safeLodCount - 1);
+                return pivot;
             }
 
-            float squaredDistance = (focusWorldPosition - transform.position).sqrMagnitude;
-            for (int lodIndex = 0; lodIndex < safeLodCount; lodIndex++)
+            Transform existing = transform.Find("Pivot");
+            pivot = existing != null ? existing.gameObject : new GameObject("Pivot");
+            pivot.transform.SetParent(transform, false);
+            pivot.transform.localPosition = Vector3.zero;
+            pivot.transform.localRotation = Quaternion.identity;
+            pivot.transform.localScale = Vector3.one;
+            return pivot;
+        }
+
+        private GameObject EnsureLodContainer()
+        {
+            if (lodContainer != null)
+            {
+                return lodContainer;
+            }
+
+            Transform existing = EnsurePivot().transform.Find("LOD_Container");
+            lodContainer = existing != null ? existing.gameObject : new GameObject("LOD_Container");
+            lodContainer.transform.SetParent(EnsurePivot().transform, false);
+            lodContainer.transform.localPosition = Vector3.zero;
+            lodContainer.transform.localRotation = Quaternion.identity;
+            lodContainer.transform.localScale = Vector3.one;
+            return lodContainer;
+        }
+
+        private GameObject GetLod(int lodIndex)
+        {
+            switch (lodIndex)
+            {
+                case 0: return lod0;
+                case 1: return lod1;
+                case 2: return lod2;
+                default: return null;
+            }
+        }
+
+        private void SetLod(int lodIndex, GameObject lod)
+        {
+            switch (lodIndex)
+            {
+                case 0: lod0 = lod; break;
+                case 1: lod1 = lod; break;
+                case 2: lod2 = lod; break;
+            }
+        }
+
+        private int ResolveLodIndex()
+        {
+            float squaredDistance = (detailFocus.position - transform.position).sqrMagnitude;
+            int lodCount = Mathf.Clamp(config.LodCount, 1, 3);
+            for (int lodIndex = 0; lodIndex < lodCount; lodIndex++)
             {
                 float maxDistance = config.GetMaxWorldDistanceForLod(lodIndex);
                 if (squaredDistance <= maxDistance * maxDistance)
@@ -89,64 +245,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 }
             }
 
-            return safeLodCount - 1;
-        }
-
-        public bool LoadLOD(int lodIndex)
-        {
-            if (lodIndex < 0)
-            {
-                pendingLodIndex = NoPendingLod;
-                return false;
-            }
-
-            if (!HasRenderableMesh(lodIndex))
-            {
-                pendingLodIndex = lodIndex;
-                return false;
-            }
-
-            pendingLodIndex = NoPendingLod;
-            ApplyActiveMesh(
-                GetComponent<MeshFilter>(),
-                GetComponent<MeshRenderer>(),
-                GetComponent<MeshRenderer>() != null ? GetComponent<MeshRenderer>().sharedMaterial : null,
-                lodIndex,
-                true);
-            return true;
-        }
-
-        public void ApplyActiveMesh(MeshFilter meshFilter, MeshRenderer meshRenderer, Material material, int lodIndex, bool visible)
-        {
-            Mesh mesh = GetMesh(lodIndex);
-            bool renderable = visible && mesh != null && mesh.vertexCount > 0;
-            Mesh desiredMesh = renderable ? mesh : meshFilter != null ? meshFilter.sharedMesh : null;
-
-            if (activeLodIndex == lodIndex
-                && meshFilter != null
-                && meshFilter.sharedMesh == desiredMesh
-                && meshRenderer != null
-                && meshRenderer.enabled == renderable
-                && meshRenderer.sharedMaterial == material)
-            {
-                return;
-            }
-
-            activeLodIndex = lodIndex;
-
-            if (meshFilter != null)
-            {
-                if (renderable)
-                {
-                    meshFilter.sharedMesh = mesh;
-                }
-            }
-
-            if (meshRenderer != null)
-            {
-                meshRenderer.sharedMaterial = material;
-                meshRenderer.enabled = renderable;
-            }
+            return lodCount - 1;
         }
     }
 }

@@ -239,24 +239,34 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             float waterRadius = SeaSurfaceRadius + waterRadiusPadding;
             Vector3 waterCenter = Center;
             Vector3 waterHemisphereDirection = GetWaterHemisphereDirection(waterCenter);
-            bool geometryChanged = forceRebuild
+            bool useNearWater = chunkManager != null && chunkManager.IsNearCombinedRenderingActive;
+            bool shapeChanged = forceRebuild
                 || waterMeshDirty
                 || (waterCenter - lastWaterCenter).sqrMagnitude > 0.0001f
-                || Mathf.Abs(waterRadius - lastWaterRadius) > 0.0001f
-                || !hasLastWaterHemisphereDirection
+                || Mathf.Abs(waterRadius - lastWaterRadius) > 0.0001f;
+            bool hemisphereChanged = !hasLastWaterHemisphereDirection
                 || Vector3.Dot(lastWaterHemisphereDirection, waterHemisphereDirection) < 0.998f;
+            bool rebuildFarWater = shapeChanged || (!useNearWater && hemisphereChanged);
+            bool rebuildNearWater = shapeChanged;
 
-            if (geometryChanged)
+            if (rebuildFarWater || rebuildNearWater)
             {
-                RebuildWaterMeshes(waterCenter, waterRadius, waterHemisphereDirection);
-                lastWaterCenter = waterCenter;
-                lastWaterRadius = waterRadius;
-                lastWaterHemisphereDirection = waterHemisphereDirection;
-                hasLastWaterHemisphereDirection = true;
+                RebuildWaterMeshes(waterCenter, waterRadius, waterHemisphereDirection, rebuildFarWater, rebuildNearWater);
+                if (shapeChanged)
+                {
+                    lastWaterCenter = waterCenter;
+                    lastWaterRadius = waterRadius;
+                }
+
+                if (rebuildFarWater)
+                {
+                    lastWaterHemisphereDirection = waterHemisphereDirection;
+                    hasLastWaterHemisphereDirection = true;
+                }
+
                 waterMeshDirty = false;
             }
 
-            bool useNearWater = chunkManager != null && chunkManager.IsNearCombinedRenderingActive;
             SetWaterActive(!useNearWater, useNearWater);
         }
 
@@ -332,47 +342,60 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             return child;
         }
 
-        private void RebuildWaterMeshes(Vector3 waterCenter, float waterRadius, Vector3 hemisphereDirection)
+        private void RebuildWaterMeshes(
+            Vector3 waterCenter,
+            float waterRadius,
+            Vector3 hemisphereDirection,
+            bool rebuildFarWater,
+            bool rebuildNearWater)
         {
             int targetWaterSegmentCount = GetWaterSegmentCount();
             int normalizedLongitudeSegments = Mathf.Max(targetWaterSegmentCount, waterLongitudeSegments);
             int longitudeSegmentsPerWaterSegment = Mathf.Max(1, Mathf.CeilToInt(normalizedLongitudeSegments / (float)targetWaterSegmentCount));
             int totalLongitudeSegments = longitudeSegmentsPerWaterSegment * targetWaterSegmentCount;
 
-            farWaterMesh = ReplaceWaterMesh(
-                farWaterObject,
-                farWaterMesh,
-                BuildWaterSphereMesh(
-                    "Water_Far_Mesh",
-                    farWaterObject.transform,
-                    waterCenter,
-                    waterRadius,
-                    0,
-                    1,
-                    waterLatitudeSegments,
-                    totalLongitudeSegments,
-                    hemisphereDirection,
-                    false));
-
-            for (int i = 0; i < targetWaterSegmentCount; i++)
+            if (rebuildFarWater)
             {
-                GameObject segment = nearWaterSegments[i];
-                MeshFilter meshFilter = segment.GetComponent<MeshFilter>();
-                Mesh previousMesh = meshFilter.sharedMesh;
-                Mesh nextMesh = BuildWaterSphereMesh(
-                    $"Water_Near_{i:00}_Mesh",
-                    segment.transform,
-                    waterCenter,
-                    waterRadius,
-                    i,
-                    targetWaterSegmentCount,
-                    waterLatitudeSegments,
-                    totalLongitudeSegments,
-                    hemisphereDirection,
-                    true);
-                meshFilter.sharedMesh = nextMesh;
-                segment.GetComponent<MeshRenderer>().sharedMaterial = waterMaterial;
-                DestroyMesh(previousMesh);
+                farWaterMesh = ReplaceWaterMesh(
+                    farWaterObject,
+                    farWaterMesh,
+                    BuildWaterSphereMesh(
+                        "Water_Far_Mesh",
+                        farWaterObject.transform,
+                        waterCenter,
+                        waterRadius,
+                        0,
+                        1,
+                        waterLatitudeSegments,
+                        totalLongitudeSegments,
+                        hemisphereDirection,
+                        true,
+                        false));
+            }
+
+            if (rebuildNearWater)
+            {
+                for (int i = 0; i < targetWaterSegmentCount; i++)
+                {
+                    GameObject segment = nearWaterSegments[i];
+                    MeshFilter meshFilter = segment.GetComponent<MeshFilter>();
+                    Mesh previousMesh = meshFilter.sharedMesh;
+                    Mesh nextMesh = BuildWaterSphereMesh(
+                        $"Water_Near_{i:00}_Mesh",
+                        segment.transform,
+                        waterCenter,
+                        waterRadius,
+                        i,
+                        targetWaterSegmentCount,
+                        waterLatitudeSegments,
+                        totalLongitudeSegments,
+                        hemisphereDirection,
+                        false,
+                        true);
+                    meshFilter.sharedMesh = nextMesh;
+                    segment.GetComponent<MeshRenderer>().sharedMaterial = waterMaterial;
+                    DestroyMesh(previousMesh);
+                }
             }
         }
 
@@ -395,6 +418,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             int latitudeSegments,
             int longitudeSegments,
             Vector3 hemisphereDirection,
+            bool cullToHemisphere,
             bool useWorldSegmentPartition)
         {
             float startLongitude = useWorldSegmentPartition ? 0f : Mathf.PI * 2f * segmentIndex / segmentCount;
@@ -439,8 +463,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     int b = a + 1;
                     int c = a + row;
                     int d = c + 1;
-                    AddWaterTriangleIfVisible(triangles, worldVertices, worldNormals, hemisphereDirection, segmentIndex, useWorldSegmentPartition, a, b, c);
-                    AddWaterTriangleIfVisible(triangles, worldVertices, worldNormals, hemisphereDirection, segmentIndex, useWorldSegmentPartition, b, d, c);
+                    AddWaterTriangleIfVisible(triangles, worldVertices, worldNormals, hemisphereDirection, cullToHemisphere, segmentIndex, useWorldSegmentPartition, a, b, c);
+                    AddWaterTriangleIfVisible(triangles, worldVertices, worldNormals, hemisphereDirection, cullToHemisphere, segmentIndex, useWorldSegmentPartition, b, d, c);
                 }
             }
 
@@ -478,16 +502,20 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             List<Vector3> worldVertices,
             List<Vector3> worldNormals,
             Vector3 hemisphereDirection,
+            bool cullToHemisphere,
             int segmentIndex,
             bool useWorldSegmentPartition,
             int a,
             int b,
             int c)
         {
-            Vector3 faceDirection = (worldNormals[a] + worldNormals[b] + worldNormals[c]) / 3f;
-            if (Vector3.Dot(faceDirection, hemisphereDirection) < 0f)
+            if (cullToHemisphere)
             {
-                return;
+                Vector3 faceDirection = (worldNormals[a] + worldNormals[b] + worldNormals[c]) / 3f;
+                if (Vector3.Dot(faceDirection, hemisphereDirection) < 0f)
+                {
+                    return;
+                }
             }
 
             if (useWorldSegmentPartition && chunkManager != null)
@@ -508,7 +536,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             if (farWaterObject != null)
             {
-                farWaterObject.SetActive(farActive);
+                if (farWaterObject.activeSelf != farActive)
+                {
+                    farWaterObject.SetActive(farActive);
+                }
+
                 if (farWaterObject.TryGetComponent(out MeshRenderer renderer))
                 {
                     renderer.sharedMaterial = waterMaterial;
@@ -524,7 +556,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 }
 
                 bool active = nearActive && i < GetWaterSegmentCount();
-                segment.SetActive(active);
+                if (segment.activeSelf != active)
+                {
+                    segment.SetActive(active);
+                }
+
                 if (segment.TryGetComponent(out MeshRenderer renderer))
                 {
                     renderer.sharedMaterial = waterMaterial;
