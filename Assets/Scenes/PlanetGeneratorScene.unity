@@ -186,7 +186,6 @@ MonoBehaviour:
   fallbackAnchor: {fileID: 2099919847}
   material: {fileID: 2100000, guid: b8e3496436244a8a9ecb657377f06a41, type: 2}
   generateOnEnable: 1
-  completeInitialBuildSynchronously: 1
   useChunkCullingForRendering: 1
   usePlanetActionRadius: 1
   useChunkCullingForBuildQueue: 0
@@ -194,18 +193,13 @@ MonoBehaviour:
   nearCombinedMeshBucketCount: 64
   maxCombinedMeshBucketsRebuiltPerFrame: 2
   useSegmentLodSelection: 1
-  lod0CellSize: 8
-  lod1CellSize: 32
-  lod2CellSize: 64
-  lod0WorldDistance: 256
-  lod1WorldDistance: 768
-  segmentLodActivationDistance: 4096
+  drawSegmentGizmos: 1
   farHemisphereRefreshAngle: 5
   useRadialLayerCulling: 1
   neverLayerCullChunkDistance: 3
   maxChunkBuildsStartedPerFrame: 32
-  maxChunkSwapsPerFrame: 32
   maxConcurrentChunkBuilds: 32
+  maxDeferredSegmentLodChunksBuiltPerFrame: 1
 --- !u!4 &181062082
 Transform:
   m_ObjectHideFlags: 0
@@ -819,7 +813,7 @@ Camera:
     width: 1
     height: 1
   near clip plane: 0.3
-  far clip plane: 100000
+  far clip plane: 1e+15
   field of view: 100
   orthographic: 0
   orthographic size: 700
@@ -964,7 +958,6 @@ MonoBehaviour:
   fallbackAnchor: {fileID: 2099919847}
   material: {fileID: 2100000, guid: b8e3496436244a8a9ecb657377f06a41, type: 2}
   generateOnEnable: 1
-  completeInitialBuildSynchronously: 1
   useChunkCullingForRendering: 1
   usePlanetActionRadius: 1
   useChunkCullingForBuildQueue: 0
@@ -972,18 +965,13 @@ MonoBehaviour:
   nearCombinedMeshBucketCount: 64
   maxCombinedMeshBucketsRebuiltPerFrame: 6
   useSegmentLodSelection: 1
-  lod0CellSize: 8
-  lod1CellSize: 32
-  lod2CellSize: 64
-  lod0WorldDistance: 256
-  lod1WorldDistance: 768
-  segmentLodActivationDistance: 4096
+  drawSegmentGizmos: 1
   farHemisphereRefreshAngle: 5
   useRadialLayerCulling: 1
   neverLayerCullChunkDistance: 3
   maxChunkBuildsStartedPerFrame: 32
-  maxChunkSwapsPerFrame: 32
   maxConcurrentChunkBuilds: 32
+  maxDeferredSegmentLodChunksBuiltPerFrame: 1
 --- !u!4 &1723249798
 Transform:
   m_ObjectHideFlags: 0
@@ -1284,9 +1272,7 @@ MonoBehaviour:
   config: {fileID: 11400000, guid: 32b514a84acaa3e46b4ec4da86f6bddb, type: 2}
   target: {fileID: 2099919847}
   chunkCullingCamera: {fileID: 1381584315}
-  enableChunkCulling: 0
-  viewPositionUpdateThreshold: 1
-  viewAngleUpdateThreshold: 1
+  enableChunkCulling: 1
 --- !u!114 &2099919849
 MonoBehaviour:
   m_ObjectHideFlags: 0

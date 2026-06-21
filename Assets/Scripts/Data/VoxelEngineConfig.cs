@@ -47,21 +47,16 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
                 Mathf.Max(1, chunkSize.x),
                 Mathf.Max(1, chunkSize.y),
                 Mathf.Max(1, chunkSize.z));
-            ValidateCellSizes();
+            EnsureCellSizes();
             ValidateLodDistances();
-            defaultCellSize = NormalizeCellSize(defaultCellSize);
+            defaultCellSize = Mathf.Max(1, defaultCellSize);
         }
 
-        private void ValidateCellSizes()
+        private void EnsureCellSizes()
         {
             if (cellSizes == null || cellSizes.Length == 0)
             {
                 cellSizes = new[] { 8, 32, 64 };
-            }
-
-            for (int i = 0; i < cellSizes.Length; i++)
-            {
-                cellSizes[i] = NormalizeCellSize(cellSizes[i]);
             }
         }
 

@@ -19,6 +19,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private Action delayedAction;
         private int activeLodIndex = -1;
 
+        public event Action<VoxelSegmentLodMeshCache, int> LodMeshRequested;
         public event Action<VoxelSegmentLodMeshCache, int> LodMeshReceived;
         public Transform PivotTransform => EnsurePivot().transform;
 
@@ -100,6 +101,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             if (lod == null)
             {
                 delayedAction = () => LoadLOD(lodIndex);
+                LodMeshRequested?.Invoke(this, lodIndex);
                 return false;
             }
 

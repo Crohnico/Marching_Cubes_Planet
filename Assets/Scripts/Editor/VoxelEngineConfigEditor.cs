@@ -34,7 +34,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Editor
                 int normalizedCellSize = NormalizeCellSize(chunkSize.vector3IntValue, cellSize);
                 EditorGUILayout.LabelField(
                     $"<= {maxDistance:0.##}u",
-                    $"Cell {normalizedCellSize}");
+                    normalizedCellSize == cellSize
+                        ? $"Cell {normalizedCellSize}"
+                        : $"Cell {cellSize} -> {normalizedCellSize}");
             }
 
             serializedObject.ApplyModifiedProperties();
