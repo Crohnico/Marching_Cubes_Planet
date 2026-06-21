@@ -12,15 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a257bf530dc928845849fd4985748e47, type: 3}
   m_Name: VoxelEngineConfig
   m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.VoxelEngine.Data.VoxelEngineConfig
-  chunkSize: {x: 128, y: 128, z: 128}
-  cellSizes: 01000000040000000800000010000000200000004000000080000000
+  chunkSize: {x: 64, y: 64, z: 64}
+  cellSizes: 0400000008000000100000002000000040000000
   octreeDetailDistances:
   - 32
   - 64
   - 128
-  - 256
-  - 512
   - 1024
-  - 8192
+  - 2048
   defaultCellSize: 1
   octreeFocusRebuildDistance: 8

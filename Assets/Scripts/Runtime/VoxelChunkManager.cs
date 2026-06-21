@@ -68,6 +68,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private readonly List<CombineInstance> combineInstances = new List<CombineInstance>();
         private readonly List<Vector3> meshUploadVertices = new List<Vector3>(65536);
         private readonly List<Vector3> meshUploadNormals = new List<Vector3>(65536);
+        private readonly List<Vector2> meshUploadUvs = new List<Vector2>(65536);
         private readonly List<int> meshUploadInteriorIndices = new List<int>(65536);
         private readonly List<int> meshUploadTransitionIndices = new List<int>(65536);
         private readonly List<int> meshUploadSurfaceIndices = new List<int>(65536);
@@ -829,6 +830,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 NativeArray<VoxelCell> cells = new NativeArray<VoxelCell>(cellCount, Allocator.Persistent);
                 NativeList<float3> vertices = new NativeList<float3>(cellCount * MaxVerticesPerCell, Allocator.Persistent);
                 NativeList<float3> normals = new NativeList<float3>(cellCount * MaxVerticesPerCell, Allocator.Persistent);
+                NativeList<float2> uvs = new NativeList<float2>(cellCount * MaxVerticesPerCell, Allocator.Persistent);
                 NativeList<int> interiorIndices = new NativeList<int>(cellCount * MaxVerticesPerCell, Allocator.Persistent);
                 NativeList<int> transitionIndices = new NativeList<int>(cellCount * MaxVerticesPerCell, Allocator.Persistent);
                 NativeList<int> surfaceIndices = new NativeList<int>(cellCount * MaxVerticesPerCell, Allocator.Persistent);
@@ -859,6 +861,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     scalarField = scalarField,
                     vertices = vertices,
                     normals = normals,
+                    uvs = uvs,
                     interiorIndices = interiorIndices,
                     transitionIndices = transitionIndices,
                     surfaceIndices = surfaceIndices
@@ -876,6 +879,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     cells = cells,
                     vertices = vertices,
                     normals = normals,
+                    uvs = uvs,
                     interiorIndices = interiorIndices,
                     transitionIndices = transitionIndices,
                     surfaceIndices = surfaceIndices,
@@ -914,6 +918,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                         BuildChunkName(pendingBuild.chunkCoord, pendingBuild.cellSize),
                         pendingBuild.vertices,
                         pendingBuild.normals,
+                        pendingBuild.uvs,
                         pendingBuild.interiorIndices,
                         pendingBuild.transitionIndices,
                         pendingBuild.surfaceIndices,
@@ -1235,6 +1240,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             string meshName,
             NativeList<float3> vertices,
             NativeList<float3> normals,
+            NativeList<float2> uvs,
             NativeList<int> interiorIndices,
             NativeList<int> transitionIndices,
             NativeList<int> surfaceIndices,
@@ -1262,12 +1268,14 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
                 CopyToVector3List(vertices, meshUploadVertices);
                 CopyToVector3List(normals, meshUploadNormals);
+                CopyToVector2List(uvs, meshUploadUvs);
                 CopyToIntList(interiorIndices, meshUploadInteriorIndices);
                 CopyToIntList(transitionIndices, meshUploadTransitionIndices);
                 CopyToIntList(surfaceIndices, meshUploadSurfaceIndices);
 
                 mesh.SetVertices(meshUploadVertices);
                 mesh.SetNormals(meshUploadNormals);
+                mesh.SetUVs(0, meshUploadUvs);
                 mesh.subMeshCount = LayerSubMeshCount;
                 mesh.SetTriangles(meshUploadInteriorIndices, InteriorSubMesh, false);
                 mesh.SetTriangles(meshUploadTransitionIndices, TransitionSubMesh, false);
@@ -1285,6 +1293,17 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             {
                 float3 value = source[i];
                 destination.Add(new Vector3(value.x, value.y, value.z));
+            }
+        }
+
+        private static void CopyToVector2List(NativeList<float2> source, List<Vector2> destination)
+        {
+            EnsureListCapacity(destination, source.Length);
+            destination.Clear();
+            for (int i = 0; i < source.Length; i++)
+            {
+                float2 value = source[i];
+                destination.Add(new Vector2(value.x, value.y));
             }
         }
 
@@ -2161,6 +2180,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 pendingBuild.normals.Dispose();
             }
 
+            if (pendingBuild.uvs.IsCreated)
+            {
+                pendingBuild.uvs.Dispose();
+            }
+
             if (pendingBuild.interiorIndices.IsCreated)
             {
                 pendingBuild.interiorIndices.Dispose();
@@ -2352,6 +2376,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             public NativeArray<VoxelCell> cells;
             public NativeList<float3> vertices;
             public NativeList<float3> normals;
+            public NativeList<float2> uvs;
             public NativeList<int> interiorIndices;
             public NativeList<int> transitionIndices;
             public NativeList<int> surfaceIndices;

@@ -136,7 +136,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &181062080
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -153,11 +153,19 @@ MonoBehaviour:
   centerOverride: {fileID: 181062082}
   center: {x: 18, y: 18, z: 18}
   radius: 750
+  seed: 13476
+  planetNoiseProfile: {fileID: 11400000, guid: 2dd69f92af7543a0989cf853dc2f8a92, type: 2}
   isoLevel: 0
   surfaceLayerDepth: 64
   transitionLayerDepth: 192
   declareOnlySurfaceChunks: 1
   chunkDeclarationPadding: 0
+  generateWater: 1
+  waterMaterial: {fileID: 2100000, guid: db4838b550f348d593fc4a0abb2167dc, type: 2}
+  waterSegmentCount: 32
+  waterLatitudeSegments: 32
+  waterLongitudeSegments: 64
+  waterRadiusPadding: 0.25
 --- !u!114 &181062081
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -679,11 +687,19 @@ MonoBehaviour:
   centerOverride: {fileID: 0}
   center: {x: 18, y: 18, z: 18}
   radius: 1000
+  seed: 12527
+  planetNoiseProfile: {fileID: 11400000, guid: 83f75cc858032894b9d90fa4efad76a9, type: 2}
   isoLevel: 0
   surfaceLayerDepth: 64
   transitionLayerDepth: 192
   declareOnlySurfaceChunks: 1
   chunkDeclarationPadding: 0
+  generateWater: 1
+  waterMaterial: {fileID: 2100000, guid: db4838b550f348d593fc4a0abb2167dc, type: 2}
+  waterSegmentCount: 32
+  waterLatitudeSegments: 32
+  waterLongitudeSegments: 64
+  waterRadiusPadding: 0.25
 --- !u!114 &1723249797
 MonoBehaviour:
   m_ObjectHideFlags: 0

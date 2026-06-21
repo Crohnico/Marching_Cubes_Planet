@@ -19,6 +19,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Jobs
         public ScalarFieldSettings scalarField;
         public NativeList<float3> vertices;
         public NativeList<float3> normals;
+        public NativeList<float2> uvs;
         public NativeList<int> interiorIndices;
         public NativeList<int> transitionIndices;
         public NativeList<int> surfaceIndices;
@@ -52,6 +53,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Jobs
                     int edgeB = triangulation[rowStart + edgeIndexOffset + 1];
                     int edgeC = triangulation[rowStart + edgeIndexOffset + 2];
                     AddMarchingCubesTriangle(
+                        cell,
                         InterpolateEdge(cell, edgeA),
                         InterpolateEdge(cell, edgeB),
                         InterpolateEdge(cell, edgeC));
@@ -147,29 +149,34 @@ namespace MarchingCubesPlanet.VoxelEngine.Jobs
         private void AddCellTriangle(VoxelCell cell, int cornerA, int cornerB, int cornerC)
         {
             AddTriangle(
+                GetCellCenter(cell),
                 GetCornerPosition(cell, cornerA),
                 GetCornerPosition(cell, cornerB),
                 GetCornerPosition(cell, cornerC));
         }
 
-        private void AddMarchingCubesTriangle(float3 a, float3 b, float3 c)
+        private void AddMarchingCubesTriangle(VoxelCell cell, float3 a, float3 b, float3 c)
         {
             // The table winding assumes the opposite inside/outside bit convention.
             // In this engine corner bit 1 means solid, so partial cells need reversed winding.
-            AddTriangle(a, c, b);
+            AddTriangle(GetCellCenter(cell), a, c, b);
         }
 
-        private void AddTriangle(float3 a, float3 b, float3 c)
+        private void AddTriangle(float3 cellCenter, float3 a, float3 b, float3 c)
         {
             float3 localOrigin = new float3(chunkOrigin.x, chunkOrigin.y, chunkOrigin.z);
             int vertexIndex = vertices.Length;
             float3 normal = math.normalizesafe(math.cross(b - a, c - a), new float3(0f, 1f, 0f));
+            float2 uv = scalarField.GetAtlasUv(cellCenter);
             vertices.AddNoResize(a - localOrigin);
             vertices.AddNoResize(b - localOrigin);
             vertices.AddNoResize(c - localOrigin);
             normals.AddNoResize(normal);
             normals.AddNoResize(normal);
             normals.AddNoResize(normal);
+            uvs.AddNoResize(uv);
+            uvs.AddNoResize(uv);
+            uvs.AddNoResize(uv);
 
             int layerIndex = scalarField.GetLayerIndex((a + b + c) / 3f);
             if (layerIndex == 0)
@@ -214,6 +221,15 @@ namespace MarchingCubesPlanet.VoxelEngine.Jobs
         {
             int3 position = cell.origin + GetCornerOffset(cornerIndex, cell.size);
             return new float3(position.x, position.y, position.z);
+        }
+
+        private static float3 GetCellCenter(VoxelCell cell)
+        {
+            float halfSize = cell.size * 0.5f;
+            return new float3(
+                cell.origin.x + halfSize,
+                cell.origin.y + halfSize,
+                cell.origin.z + halfSize);
         }
 
         private static int3 GetCornerOffset(int index, int size)
