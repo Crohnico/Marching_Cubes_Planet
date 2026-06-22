@@ -1,5 +1,3 @@
-using MarchingCubesPlanet.VoxelEngine.Data;
-using Unity.Mathematics;
 using UnityEngine;
 
 namespace MarchingCubesPlanet.VoxelEngine.Runtime
@@ -11,12 +9,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [SerializeField] private Camera chunkCullingCamera;
         [SerializeField] private bool enableChunkCulling = true;
 
-        private bool hasCurrentChunk;
-        private int3 currentChunk;
-        private VoxelEngineConfig config;
-
-        public int3 CurrentChunk => currentChunk;
-        public bool HasCurrentChunk => hasCurrentChunk;
         public Camera ChunkCullingCamera => chunkCullingCamera;
         public bool EnableChunkCulling => enableChunkCulling && chunkCullingCamera != null;
         public Transform TrackedTarget => target != null ? target : transform;
@@ -28,9 +20,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             chunkCullingCamera = GetComponentInChildren<Camera>();
         }
 
-        public void Configure(VoxelEngineConfig nextConfig, Transform nextTarget, Camera nextChunkCullingCamera = null)
+        public void Configure(Transform nextTarget, Camera nextChunkCullingCamera = null)
         {
-            config = nextConfig;
             target = nextTarget;
             if (nextChunkCullingCamera != null)
             {
@@ -40,51 +31,13 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             {
                 chunkCullingCamera = GetComponentInChildren<Camera>();
             }
-
-            hasCurrentChunk = false;
-            UpdateChunk();
         }
 
         private void OnEnable()
         {
-            EnsureConfig();
             if (chunkCullingCamera == null)
             {
                 chunkCullingCamera = GetComponentInChildren<Camera>();
-            }
-
-            UpdateChunk();
-        }
-
-        private void Update()
-        {
-            UpdateChunk();
-        }
-
-        private void UpdateChunk()
-        {
-            EnsureConfig();
-            if (config == null)
-            {
-                return;
-            }
-
-            Vector3 position = TrackedPosition;
-            int3 nextChunk = VoxelChunkUtility.GetChunkCoords(new float3(position.x, position.y, position.z), config.ChunkSize);
-            if (hasCurrentChunk && nextChunk.Equals(currentChunk))
-            {
-                return;
-            }
-
-            currentChunk = nextChunk;
-            hasCurrentChunk = true;
-        }
-
-        private void EnsureConfig()
-        {
-            if (config == null)
-            {
-                config = Resources.Load<VoxelEngineConfig>(VoxelEngineConfig.ResourceName);
             }
         }
     }

@@ -19,7 +19,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Editor
             Camera playerCamera = CreatePlayerCamera(player.transform);
             PlayerChunkTracker tracker = player.AddComponent<PlayerChunkTracker>();
             player.AddComponent<VoxelDemoPlayerMover>();
-            tracker.Configure(config, player.transform, playerCamera);
+            tracker.Configure(player.transform, playerCamera);
 
             GameObject engine = new GameObject("Voxel Sphere Engine");
             VoxelChunkManager manager = engine.AddComponent<VoxelChunkManager>();
@@ -41,7 +41,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Editor
             Camera playerCamera = CreatePlayerCamera(player.transform);
             PlayerChunkTracker tracker = player.AddComponent<PlayerChunkTracker>();
             player.AddComponent<VoxelDemoPlayerMover>();
-            tracker.Configure(config, player.transform, playerCamera);
+            tracker.Configure(player.transform, playerCamera);
 
             Selection.activeGameObject = player;
             Undo.RegisterCreatedObjectUndo(player, "Create Voxel Demo Player");
