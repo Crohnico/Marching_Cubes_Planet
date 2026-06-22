@@ -8,7 +8,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
     [DisallowMultipleComponent]
     public sealed class VoxelSphereGenerator : MonoBehaviour
     {
-        [SerializeField] private PlanetManager chunkManager;
+        [SerializeField] private VoxelChunkManager chunkManager;
         [SerializeField, Min(0.01f)] private float radius = 14f;
         [SerializeField] private int seed = 12345;
         [SerializeField] private Material terrainMaterial;
@@ -40,7 +40,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             TryGetComponent(out chunkManager);
         }
 
-        public void Configure(PlanetManager nextChunkManager)
+        public void Configure(VoxelChunkManager nextChunkManager)
         {
             chunkManager = nextChunkManager;
         }
@@ -61,7 +61,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             };
         }
 
-        public void DeclareOccupiedChunks(PlanetManager manager, int3 chunkSize)
+        public void DeclareOccupiedChunks(VoxelChunkManager manager, int3 chunkSize)
         {
             if (manager == null)
             {
@@ -121,7 +121,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
         }
 
-        private void ReleaseDeclaredChunks(PlanetManager manager)
+        private void ReleaseDeclaredChunks(VoxelChunkManager manager)
         {
             foreach (int3 chunkCoord in declaredChunks)
             {
@@ -136,7 +136,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             if (chunkManager == null)
             {
-                Debug.LogWarning("VoxelSphereGenerator necesita un PlanetManager asignado.", this);
+                Debug.LogWarning("VoxelSphereGenerator necesita un VoxelChunkManager asignado.", this);
                 return;
             }
 

@@ -31,10 +31,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Editor
                 EditorSceneManager.OpenScene(DefaultScenePath);
             }
 
-            PlanetManager manager = Object.FindFirstObjectByType<PlanetManager>();
+            VoxelChunkManager manager = Object.FindFirstObjectByType<VoxelChunkManager>();
             if (manager == null)
             {
-                Finish("Voxel benchmark failed: no PlanetManager found.", exitWhenDone, 1);
+                Finish("Voxel benchmark failed: no VoxelChunkManager found.", exitWhenDone, 1);
                 return;
             }
 
