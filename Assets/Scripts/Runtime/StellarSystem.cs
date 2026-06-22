@@ -13,7 +13,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [SerializeField, Min(1)] private int startupFarChunkBuildsPerFrame = 8;
         [SerializeField] private List<PlanetManager> planets = new List<PlanetManager>();
 
-        public string SystemDataUrl => FileManager.CombineUrl("Universe", ResolveSystemId());
+        public string SystemDataUrl => FileManager.CombineUrl("StellarSystems", ResolveSystemId());
 
         private IEnumerator Start()
         {

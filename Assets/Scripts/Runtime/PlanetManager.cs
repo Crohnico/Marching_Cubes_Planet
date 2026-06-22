@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using MarchingCubesPlanet.VoxelEngine.Data;
 using MarchingCubesPlanet.VoxelEngine.Jobs;
 using MarchingCubesPlanet.VoxelEngine.MarchingCubes;
@@ -88,6 +89,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private Coroutine startupCoroutine;
         private bool startupInProgress;
         private bool startupDone;
+        private string activeSystemId;
         private PlanetData planetData = new PlanetData();
         private MarchingCubesCaseTable caseTable;
         private VoxelEngineConfig config;
@@ -265,6 +267,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         public IEnumerator Initialize(string systemId, int startupFarChunkBuildsPerFrame)
         {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            activeSystemId = systemId;
             if (startupDone)
             {
                 yield break;
@@ -280,15 +284,20 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 yield break;
             }
 
-            if (TryLoadExistingPlanetDataOrThrow(systemId))
+            LogStartup($"Initialize begin. system={ResolveSystemId(systemId)}, planet={ResolvePlanetId()}, budget={startupFarChunkBuildsPerFrame}.");
+            bool loadedPlanetData = TryLoadExistingPlanetDataOrThrow(systemId);
+            LogStartup($"PlanetData {(loadedPlanetData ? "loaded" : "missing; will generate")} at {stopwatch.ElapsedMilliseconds}ms.");
+            if (loadedPlanetData)
             {
                 yield return RunStagedStartup(false, startupFarChunkBuildsPerFrame, false);
                 ValidateLoadedPlanetDataBuiltFarOrThrow(systemId);
+                LogStartup($"Initialize complete from disk in {stopwatch.ElapsedMilliseconds}ms.");
                 yield break;
             }
 
             yield return RunStagedStartup(false, startupFarChunkBuildsPerFrame, true);
             SavePlanetData(systemId);
+            LogStartup($"Initialize complete after generation in {stopwatch.ElapsedMilliseconds}ms.");
         }
 
         [ContextMenu("Clear Generated Chunks")]
@@ -312,11 +321,14 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             int startupFarChunkBuildsPerFrame,
             bool refreshDeclaredChunks)
         {
+            Stopwatch stopwatch = Stopwatch.StartNew();
             startupInProgress = true;
             startupDone = false;
+            LogStartup($"Staged startup begin. refreshDeclaredChunks={refreshDeclaredChunks}.");
             EnsureConfig();
             EnsureCaseTable();
             EnsureCombinedRenderer();
+            LogStartup($"Core runtime ensured at {stopwatch.ElapsedMilliseconds}ms.");
 
             if (clearExisting)
             {
@@ -331,22 +343,51 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             {
                 RefreshDeclaredChunks();
                 RefreshPlanetDataSnapshot();
+                LogStartup($"Declared chunks refreshed. declared={declaredChunks.Count}, planetDataChunks={planetData.chunks.Count}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
             }
             else
             {
                 ApplyPlanetDataToDeclaredChunks();
+                LogStartup($"Declared chunks loaded from PlanetData. declared={declaredChunks.Count}, planetDataChunks={planetData.chunks.Count}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
+                if (TryLoadStartupFarMeshFromDisk())
+                {
+                    LogStartup($"Startup Far loaded from disk; skipped desired chunk build. activeChunks={activeChunks.Count}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
+                    startupInProgress = false;
+                    startupDone = true;
+                    startupCoroutine = null;
+                    yield break;
+                }
             }
 
             yield return null;
 
-            RebuildDesiredChunkSet();
+            if (refreshDeclaredChunks || !TryRebuildDesiredChunkSetFromPlanetData())
+            {
+                RebuildDesiredChunkSet();
+                LogStartup($"Desired chunk set rebuilt from runtime. desired={desiredChunkStates.Count}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
+            }
+            else
+            {
+                LogStartup($"Desired chunk set rebuilt from PlanetData. desired={desiredChunkStates.Count}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
+            }
+
+            if (refreshDeclaredChunks)
+            {
+                RefreshPlanetDataBuildStateFromDesiredStates();
+                LogStartup($"PlanetData build state populated from Far desired state. chunks={planetData.chunks.Count}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
+            }
+
+            int chunksBeforeBuild = activeChunks.Count;
             yield return BuildDesiredChunksBudgeted(
                 centerChunk,
                 Mathf.Max(1, startupFarChunkBuildsPerFrame));
+            LogStartup($"Desired chunks built. activeBefore={chunksBeforeBuild}, activeAfter={activeChunks.Count}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
 
             RebuildFarCombinedMesh();
+            LogStartup($"Far mesh ready. farVertices={GetFarCombinedMeshVertexCount()}, visibleVertices={GetVisibleCombinedMeshVertexCount()}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
             MarkCombinedRendererVisibilityDirty();
             ApplyCombinedRendererVisibility();
+            LogStartup($"Renderer visibility applied. visibleRendering={IsVisibleCombinedMeshRenderingActive()}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
 
             startupInProgress = false;
             startupDone = true;
@@ -355,12 +396,24 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         public string GetPlanetDataUrl(string systemId)
         {
-            return FileManager.CombineUrl("Universe", ResolveSystemId(systemId), ResolvePlanetId(), "PlanetData");
+            return FileManager.CombineUrl("StellarSystems", ResolveSystemId(systemId), "Planets", ResolvePlanetId(), "PlanetData");
+        }
+
+        private string GetFarMeshUrl()
+        {
+            return FileManager.CombineUrl(
+                "StellarSystems",
+                ResolveSystemId(activeSystemId),
+                "Planets",
+                ResolvePlanetId(),
+                "Far",
+                "far.meshbin");
         }
 
         private bool TryLoadExistingPlanetDataOrThrow(string systemId)
         {
             string url = GetPlanetDataUrl(systemId);
+            Stopwatch stopwatch = Stopwatch.StartNew();
             byte[] binary = FileManager.GetFile(url);
             if (binary == null)
             {
@@ -370,11 +423,12 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             try
             {
                 planetData = PlanetData.FromBinary(binary);
+                LogStartup($"PlanetData read from {url}. bytes={binary.Length}, declared={planetData.declaredChunks.Count}, chunks={planetData.chunks.Count}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
             }
             catch (System.Exception exception)
             {
                 string message = $"PlanetData could not be loaded for {ResolvePlanetId()} at {url}. {exception.Message}";
-                Debug.LogError(message, this);
+                UnityEngine.Debug.LogError(message, this);
                 throw new System.InvalidOperationException(message, exception);
             }
 
@@ -405,7 +459,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void FailPlanetDataLoad(string message)
         {
-            Debug.LogError(message, this);
+            UnityEngine.Debug.LogError(message, this);
             throw new System.InvalidOperationException(message);
         }
 
@@ -413,12 +467,20 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             try
             {
-                FileManager.SaveFile(GetPlanetDataUrl(systemId), planetData.ToBinary());
+                Stopwatch stopwatch = Stopwatch.StartNew();
+                byte[] binary = planetData.ToBinary();
+                FileManager.SaveFile(GetPlanetDataUrl(systemId), binary);
+                LogStartup($"PlanetData saved. bytes={binary.Length}, declared={planetData.declaredChunks.Count}, chunks={planetData.chunks.Count}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
             }
             catch (System.Exception exception)
             {
-                Debug.LogWarning($"Could not save PlanetData for {ResolvePlanetId()}. {exception.Message}", this);
+                UnityEngine.Debug.LogWarning($"Could not save PlanetData for {ResolvePlanetId()}. {exception.Message}", this);
             }
+        }
+
+        private void LogStartup(string message)
+        {
+            UnityEngine.Debug.Log($"[PlanetStartup:{ResolvePlanetId()}] {message}", this);
         }
 
         private void ApplyPlanetDataToDeclaredChunks()
@@ -599,6 +661,36 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 MarkChunkVisibilityDirty();
                 RemoveUndesiredChunks();
             }
+        }
+
+        private bool TryRebuildDesiredChunkSetFromPlanetData()
+        {
+            if (planetData == null || planetData.chunks.Count == 0)
+            {
+                return false;
+            }
+
+            desiredChunks.Clear();
+            desiredChunkStates.Clear();
+            for (int i = 0; i < planetData.chunks.Count; i++)
+            {
+                PlanetChunkBuildData chunk = planetData.chunks[i];
+                if (chunk.cellSize <= 0)
+                {
+                    desiredChunks.Clear();
+                    desiredChunkStates.Clear();
+                    return false;
+                }
+
+                desiredChunks.Add(chunk.coord);
+                desiredChunkStates[chunk.coord] = new DesiredChunkState(
+                    chunk.cellSize,
+                    chunk.detailFocusKey);
+            }
+
+            MarkChunkVisibilityDirty();
+            RemoveUndesiredChunks();
+            return true;
         }
 
         private void BuildDesiredChunksSynchronously(int3 centerChunk)
@@ -1288,6 +1380,23 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     segmentId = GetSegmentIndexForChunkCoord(
                         chunkCoord,
                         Mathf.Clamp(NearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount))
+                });
+            }
+        }
+
+        private void RefreshPlanetDataBuildStateFromDesiredStates()
+        {
+            int segmentCount = Mathf.Clamp(NearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount);
+            planetData.declaredChunks = new HashSet<int3>(declaredChunks);
+            planetData.chunks.Clear();
+            foreach (KeyValuePair<int3, DesiredChunkState> pair in desiredChunkStates)
+            {
+                planetData.chunks.Add(new PlanetChunkBuildData
+                {
+                    coord = pair.Key,
+                    segmentId = GetSegmentIndexForChunkCoord(pair.Key, segmentCount),
+                    cellSize = pair.Value.cellSize,
+                    detailFocusKey = pair.Value.detailFocusKey
                 });
             }
         }

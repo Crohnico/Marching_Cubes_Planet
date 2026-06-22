@@ -28,6 +28,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
             {
                 WriteInt3(writer, chunks[i].coord);
                 writer.Write(chunks[i].segmentId);
+                writer.Write(chunks[i].cellSize);
+                WriteInt3(writer, chunks[i].detailFocusKey);
             }
 
             return stream.ToArray();
@@ -57,7 +59,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
                 data.chunks.Add(new PlanetChunkBuildData
                 {
                     coord = ReadInt3(reader),
-                    segmentId = reader.ReadInt32()
+                    segmentId = reader.ReadInt32(),
+                    cellSize = reader.ReadInt32(),
+                    detailFocusKey = ReadInt3(reader)
                 });
             }
 
@@ -81,5 +85,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
     {
         public int3 coord;
         public int segmentId;
+        public int cellSize;
+        public int3 detailFocusKey;
     }
 }

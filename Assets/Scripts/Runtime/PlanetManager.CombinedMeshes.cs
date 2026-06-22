@@ -550,7 +550,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             EnsureVisibleCombinedMeshBucket();
             EnsureFarCombinedMeshBucket();
-            RebuildCombinedMeshBucket(farCombinedMeshBucket, 0, false, false);
+            Mesh farMesh = GetOrBuildFarCombinedMesh();
+            DeliverFarCombinedMesh(farMesh);
             RebuildVisibleFarMesh();
             if (TryGetCurrentFarHemisphereDirection(out Vector3 direction))
             {
@@ -560,6 +561,99 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             farCombinedMeshDirty = false;
             MarkCombinedRendererVisibilityDirty();
+        }
+
+        private Mesh GetOrBuildFarCombinedMesh()
+        {
+            if (TryLoadFarCombinedMeshFromDisk(out Mesh cachedMesh))
+            {
+                return cachedMesh;
+            }
+
+            string url = GetFarMeshUrl();
+            System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            RebuildCombinedMeshBucket(farCombinedMeshBucket, 0, false, false);
+            Debug.Log($"[PlanetStartup:{ResolvePlanetId()}] Far mesh built from active chunks. activeChunks={activeChunks.Count}, vertices={farCombinedMeshBucket.mesh.vertexCount}, elapsed={stopwatch.ElapsedMilliseconds}ms.", this);
+            SaveFarCombinedMesh(farCombinedMeshBucket.mesh, url);
+            return farCombinedMeshBucket.mesh;
+        }
+
+        private bool TryLoadStartupFarMeshFromDisk()
+        {
+            EnsureVisibleCombinedMeshBucket();
+            EnsureFarCombinedMeshBucket();
+            if (!TryLoadFarCombinedMeshFromDisk(out Mesh mesh))
+            {
+                return false;
+            }
+
+            DeliverFarCombinedMesh(mesh);
+            RebuildVisibleFarMesh();
+            farCombinedMeshDirty = false;
+            MarkCombinedRendererVisibilityDirty();
+            ApplyCombinedRendererVisibility();
+            return true;
+        }
+
+        private bool TryLoadFarCombinedMeshFromDisk(out Mesh mesh)
+        {
+            string url = GetFarMeshUrl();
+            System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            byte[] binary = FileManager.GetFile(url);
+            if (binary == null)
+            {
+                mesh = null;
+                return false;
+            }
+
+            try
+            {
+                mesh = MeshBinarySerializer.FromBinary(binary, "VoxelCombinedMesh_Far");
+                Debug.Log($"[PlanetStartup:{ResolvePlanetId()}] Far mesh loaded from {url}. bytes={binary.Length}, vertices={mesh.vertexCount}, elapsed={stopwatch.ElapsedMilliseconds}ms.", this);
+                return true;
+            }
+            catch (System.Exception exception)
+            {
+                string message = $"Far mesh could not be loaded for {ResolvePlanetId()} at {url}. {exception.Message}";
+                Debug.LogError(message, this);
+                throw new System.InvalidOperationException(message, exception);
+            }
+        }
+
+        private void DeliverFarCombinedMesh(Mesh mesh)
+        {
+            if (mesh == null || farCombinedMeshBucket.mesh == mesh)
+            {
+                return;
+            }
+
+            Mesh previousMesh = farCombinedMeshBucket.mesh;
+            farCombinedMeshBucket.mesh = mesh;
+            farCombinedMeshBucket.meshFilter.sharedMesh = mesh;
+            if (previousMesh != null && previousMesh != mesh)
+            {
+                DestroyUnityObject(previousMesh);
+            }
+        }
+
+        private void SaveFarCombinedMesh(Mesh mesh, string url)
+        {
+            if (mesh == null)
+            {
+                return;
+            }
+
+            try
+            {
+                System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                byte[] binary = MeshBinarySerializer.ToBinary(mesh);
+                FileManager.SaveFile(url, binary);
+                Debug.Log($"[PlanetStartup:{ResolvePlanetId()}] Far mesh saved to {url}. bytes={binary.Length}, vertices={mesh.vertexCount}, elapsed={stopwatch.ElapsedMilliseconds}ms.", this);
+            }
+            catch (System.Exception exception)
+            {
+                Debug.LogWarning($"Could not save Far mesh for {ResolvePlanetId()} at {url}. {exception.Message}", this);
+            }
         }
 
         private void RebuildVisibleFarMesh()
@@ -578,6 +672,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private bool ShouldApplyVisibleFarCuts()
         {
             return !useNearCombinedMeshes
+                && activeChunks.Count > 0
                 && UseRadialLayerCulling;
         }
 
