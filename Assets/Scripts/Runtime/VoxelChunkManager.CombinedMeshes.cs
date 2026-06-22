@@ -13,6 +13,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private void EnsureCombinedRenderer()
         {
             RefreshPlanetActionRadiusState();
+            RemoveLegacyRootRendererComponents();
+            EnsureVisibleCombinedMeshBucket();
             EnsureFarCombinedMeshBucket();
             EnsureNearCombinedMeshBucketCount(NearCombinedMeshBucketCount);
 
@@ -127,11 +129,53 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             if (farCombinedMeshBucket == null)
             {
-                farCombinedMeshBucket = CreateCombinedMeshBucket(gameObject, "VoxelCombinedMesh_Far", true);
+                farCombinedMeshBucket = CreateCombinedMeshBucket(
+                    GetOrCreateRenderChild("FarMesh", transform),
+                    "VoxelCombinedMesh_Far",
+                    true,
+                    false);
             }
 
-            farCombinedMeshBucket.meshRenderer.sharedMaterial = TerrainMaterial;
+            ConfigurePlanetCenteredRenderTransform(farCombinedMeshBucket.owner.transform);
             farCombinedMeshBucket.meshFilter.sharedMesh = farCombinedMeshBucket.mesh;
+        }
+
+        private void EnsureVisibleCombinedMeshBucket()
+        {
+            if (visibleCombinedMeshBucket == null)
+            {
+                visibleCombinedMeshBucket = CreateCombinedMeshBucket(
+                    GetOrCreateRenderChild("VisibleMesh", transform),
+                    "VisibleMesh_Mesh",
+                    true,
+                    true);
+            }
+
+            ConfigurePlanetCenteredRenderTransform(visibleCombinedMeshBucket.owner.transform);
+            visibleCombinedMeshBucket.meshRenderer.sharedMaterial = TerrainMaterial;
+            visibleCombinedMeshBucket.meshFilter.sharedMesh = visibleCombinedMeshBucket.mesh;
+        }
+
+        private void RemoveLegacyRootRendererComponents()
+        {
+            if (TryGetComponent(out MeshFilter meshFilter))
+            {
+                meshFilter.sharedMesh = null;
+                DestroyUnityObject(meshFilter);
+            }
+
+            if (TryGetComponent(out MeshRenderer meshRenderer))
+            {
+                DestroyUnityObject(meshRenderer);
+            }
+        }
+
+        private void ConfigurePlanetCenteredRenderTransform(Transform renderTransform)
+        {
+            renderTransform.SetParent(transform, false);
+            renderTransform.localPosition = GetSpherePositionInManagerLocal();
+            renderTransform.localRotation = Quaternion.identity;
+            renderTransform.localScale = Vector3.one;
         }
 
         private void EnsureNearCombinedMeshBucketCount(int requiredBucketCount)
@@ -143,6 +187,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 CombinedMeshBucket bucket = CreateCombinedMeshBucket(
                     CreateCombinedMeshBucketObject(bucketIndex),
                     $"VoxelCombinedMesh_Near_{bucketIndex:00}",
+                    false,
                     false);
                 EnsureSegmentLodCache(bucket);
                 nearCombinedMeshBuckets.Add(bucket);
@@ -150,34 +195,37 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         }
 
-        private CombinedMeshBucket CreateCombinedMeshBucket(GameObject bucketOwner, string meshName, bool createRenderer)
+        private CombinedMeshBucket CreateCombinedMeshBucket(
+            GameObject bucketOwner,
+            string meshName,
+            bool createMeshFilter,
+            bool createRenderer)
         {
             MeshFilter meshFilter = null;
             MeshRenderer meshRenderer = null;
-            if (createRenderer)
+            if (createMeshFilter)
             {
                 if (!bucketOwner.TryGetComponent(out meshFilter))
                 {
                     meshFilter = bucketOwner.AddComponent<MeshFilter>();
                 }
+            }
+            else if (bucketOwner.TryGetComponent(out MeshFilter existingMeshFilter))
+            {
+                existingMeshFilter.sharedMesh = null;
+                DestroyUnityObject(existingMeshFilter);
+            }
 
+            if (createRenderer)
+            {
                 if (!bucketOwner.TryGetComponent(out meshRenderer))
                 {
                     meshRenderer = bucketOwner.AddComponent<MeshRenderer>();
                 }
             }
-            else
+            else if (bucketOwner.TryGetComponent(out MeshRenderer existingMeshRenderer))
             {
-                if (bucketOwner.TryGetComponent(out MeshFilter existingMeshFilter))
-                {
-                    existingMeshFilter.sharedMesh = null;
-                    DestroyUnityObject(existingMeshFilter);
-                }
-
-                if (bucketOwner.TryGetComponent(out MeshRenderer existingMeshRenderer))
-                {
-                    DestroyUnityObject(existingMeshRenderer);
-                }
+                DestroyUnityObject(existingMeshRenderer);
             }
 
             Mesh mesh = new Mesh
@@ -212,15 +260,46 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private GameObject CreateCombinedMeshBucketObject(int bucketIndex)
         {
             string bucketName = $"VoxelCombinedMesh_Near_{bucketIndex:00}";
-            Transform existing = transform.Find(bucketName);
+            Transform root = EnsureNearMeshesRoot().transform;
+            Transform existing = root.Find(bucketName);
+            if (existing == null)
+            {
+                existing = transform.Find(bucketName);
+            }
+
             GameObject bucketOwner = existing != null
                 ? existing.gameObject
                 : new GameObject(bucketName);
-            bucketOwner.transform.SetParent(transform, false);
+            bucketOwner.transform.SetParent(root, false);
             UpdateNearCombinedMeshBucketTransform(bucketIndex, bucketOwner);
             bucketOwner.transform.localRotation = Quaternion.identity;
             bucketOwner.transform.localScale = Vector3.one;
             return bucketOwner;
+        }
+
+        private GameObject EnsureNearMeshesRoot()
+        {
+            if (nearMeshesRoot != null)
+            {
+                return nearMeshesRoot;
+            }
+
+            nearMeshesRoot = GetOrCreateRenderChild("NearMeshes", transform);
+            nearMeshesRoot.transform.localPosition = Vector3.zero;
+            nearMeshesRoot.transform.localRotation = Quaternion.identity;
+            nearMeshesRoot.transform.localScale = Vector3.one;
+            return nearMeshesRoot;
+        }
+
+        private static GameObject GetOrCreateRenderChild(string childName, Transform parent)
+        {
+            Transform existing = parent.Find(childName);
+            GameObject child = existing != null ? existing.gameObject : new GameObject(childName);
+            child.transform.SetParent(parent, false);
+            child.transform.localPosition = Vector3.zero;
+            child.transform.localRotation = Quaternion.identity;
+            child.transform.localScale = Vector3.one;
+            return child;
         }
 
         private void UpdateNearCombinedMeshBucketTransform(int bucketIndex, GameObject bucketOwner)
@@ -292,30 +371,35 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 }
             }
 
-            bool showFarMesh = !showNearMeshes
+            bool showVisibleMesh = !showNearMeshes
                 || !hasVisibleSegment
                 || !hasReadyVisibleSegment;
-            if (farCombinedMeshBucket != null)
+            if (visibleCombinedMeshBucket != null)
             {
-                if (!farCombinedMeshBucket.owner.activeSelf)
+                if (visibleCombinedMeshBucket.owner.activeSelf != showVisibleMesh)
                 {
-                    farCombinedMeshBucket.owner.SetActive(true);
+                    visibleCombinedMeshBucket.owner.SetActive(showVisibleMesh);
                 }
 
-                if (farCombinedMeshBucket.meshRenderer.enabled != showFarMesh)
+                if (visibleCombinedMeshBucket.meshRenderer.enabled != showVisibleMesh)
                 {
-                    farCombinedMeshBucket.meshRenderer.enabled = showFarMesh;
+                    visibleCombinedMeshBucket.meshRenderer.enabled = showVisibleMesh;
                 }
 
-                if (farCombinedMeshBucket.meshRenderer.sharedMaterial != TerrainMaterial)
+                if (visibleCombinedMeshBucket.meshRenderer.sharedMaterial != TerrainMaterial)
                 {
-                    farCombinedMeshBucket.meshRenderer.sharedMaterial = TerrainMaterial;
+                    visibleCombinedMeshBucket.meshRenderer.sharedMaterial = TerrainMaterial;
                 }
 
-                if (farCombinedMeshBucket.meshFilter.sharedMesh != farCombinedMeshBucket.mesh)
+                if (visibleCombinedMeshBucket.meshFilter.sharedMesh != visibleCombinedMeshBucket.mesh)
                 {
-                    farCombinedMeshBucket.meshFilter.sharedMesh = farCombinedMeshBucket.mesh;
+                    visibleCombinedMeshBucket.meshFilter.sharedMesh = visibleCombinedMeshBucket.mesh;
                 }
+            }
+
+            if (farCombinedMeshBucket != null && !farCombinedMeshBucket.owner.activeSelf)
+            {
+                farCombinedMeshBucket.owner.SetActive(true);
             }
         }
 
@@ -396,8 +480,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void RebuildFarCombinedMesh()
         {
+            EnsureVisibleCombinedMeshBucket();
             EnsureFarCombinedMeshBucket();
-            RebuildCombinedMeshBucket(farCombinedMeshBucket, 0, false);
+            RebuildCombinedMeshBucket(farCombinedMeshBucket, 0, false, false);
+            RebuildVisibleFarMesh();
             if (TryGetCurrentFarHemisphereDirection(out Vector3 direction))
             {
                 lastFarHemisphereDirection = direction;
@@ -407,6 +493,44 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             farCombinedMeshDirty = false;
         }
 
+        private void RebuildVisibleFarMesh()
+        {
+            EnsureVisibleCombinedMeshBucket();
+            if (ShouldApplyVisibleFarCuts())
+            {
+                RebuildCombinedMeshBucket(visibleCombinedMeshBucket, 0, false, visibleCombinedMeshBucket.mesh, true);
+                visibleCombinedMeshBucket.meshFilter.sharedMesh = visibleCombinedMeshBucket.mesh;
+                return;
+            }
+
+            CopyFarMeshToVisibleMesh();
+        }
+
+        private bool ShouldApplyVisibleFarCuts()
+        {
+            return !useNearCombinedMeshes
+                && (ShouldCullRenderedChunks() || UseRadialLayerCulling);
+        }
+
+        private void CopyFarMeshToVisibleMesh()
+        {
+            if (farCombinedMeshBucket == null || farCombinedMeshBucket.mesh == null)
+            {
+                return;
+            }
+
+            Mesh previousMesh = visibleCombinedMeshBucket.mesh;
+            Mesh nextMesh = Instantiate(farCombinedMeshBucket.mesh);
+            nextMesh.name = "VisibleMesh_Mesh";
+            nextMesh.MarkDynamic();
+            visibleCombinedMeshBucket.mesh = nextMesh;
+            visibleCombinedMeshBucket.meshFilter.sharedMesh = nextMesh;
+            if (previousMesh != null && previousMesh != nextMesh && previousMesh != farCombinedMeshBucket.mesh)
+            {
+                DestroyUnityObject(previousMesh);
+            }
+        }
+
         private Matrix4x4 GetPlanetLocalToBucketLocalMatrix(CombinedMeshBucket bucket)
         {
             if (bucket == null || bucket.owner == null)
@@ -414,20 +538,34 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 return Matrix4x4.identity;
             }
 
-            return bucket.owner.transform.worldToLocalMatrix * transform.localToWorldMatrix;
+            return bucket.owner.transform.worldToLocalMatrix;
         }
 
 
         private void RebuildCombinedMeshBucket(CombinedMeshBucket bucket, int bucketIndex, bool nearBucket)
         {
-            RebuildCombinedMeshBucket(bucket, bucketIndex, nearBucket, bucket.mesh);
+            RebuildCombinedMeshBucket(bucket, bucketIndex, nearBucket, true);
             if (bucket.meshFilter != null)
             {
                 bucket.meshFilter.sharedMesh = bucket.mesh;
             }
         }
 
-        private void RebuildCombinedMeshBucket(CombinedMeshBucket bucket, int bucketIndex, bool nearBucket, Mesh targetMesh)
+        private void RebuildCombinedMeshBucket(
+            CombinedMeshBucket bucket,
+            int bucketIndex,
+            bool nearBucket,
+            bool applyFarCuts)
+        {
+            RebuildCombinedMeshBucket(bucket, bucketIndex, nearBucket, bucket.mesh, applyFarCuts);
+        }
+
+        private void RebuildCombinedMeshBucket(
+            CombinedMeshBucket bucket,
+            int bucketIndex,
+            bool nearBucket,
+            Mesh targetMesh,
+            bool applyFarCuts)
         {
             using (BuildCombineInstancesMarker.Auto())
             {
@@ -445,12 +583,12 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                         continue;
                     }
 
-                    if (!ShouldRenderChunk(state))
+                    if (!ShouldRenderChunk(state, nearBucket, applyFarCuts))
                     {
                         continue;
                     }
 
-                    AddChunkCombineInstances(state, planetLocalToBucketLocal, nearBucket);
+                    AddChunkCombineInstances(state, planetLocalToBucketLocal, nearBucket, applyFarCuts);
                 }
             }
 
@@ -511,7 +649,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             int3 chunkSize = config.ChunkSize;
             int3 chunkOrigin = VoxelChunkUtility.GetChunkOrigin(chunkCoord, chunkSize);
             Vector3 chunkCenter = ToVector3(chunkOrigin) + ToVector3(chunkSize) * 0.5f;
-            return GetSegmentIndexForLocalPosition(chunkCenter, safeBucketCount);
+            return GetSegmentIndexForWorldPosition(chunkCenter, safeBucketCount);
         }
 
         private int GetSegmentIndexForWorldPosition(Vector3 worldPosition, int bucketCount)
@@ -628,9 +766,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private int GetCombinedVertexCount()
         {
             int count = 0;
-            if (farCombinedMeshBucket != null && farCombinedMeshBucket.meshRenderer.enabled && farCombinedMeshBucket.mesh != null)
+            if (visibleCombinedMeshBucket != null
+                && visibleCombinedMeshBucket.meshRenderer.enabled
+                && visibleCombinedMeshBucket.mesh != null)
             {
-                count += farCombinedMeshBucket.mesh.vertexCount;
+                count += visibleCombinedMeshBucket.mesh.vertexCount;
             }
 
             for (int i = 0; i < activeCombinedMeshBucketCount && i < nearCombinedMeshBuckets.Count; i++)
@@ -650,9 +790,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private int GetCombinedTriangleCount()
         {
             int count = 0;
-            if (farCombinedMeshBucket != null && farCombinedMeshBucket.meshRenderer.enabled && farCombinedMeshBucket.mesh != null)
+            if (visibleCombinedMeshBucket != null
+                && visibleCombinedMeshBucket.meshRenderer.enabled
+                && visibleCombinedMeshBucket.mesh != null)
             {
-                count += GetMeshTriangleCount(farCombinedMeshBucket.mesh);
+                count += GetMeshTriangleCount(visibleCombinedMeshBucket.mesh);
             }
 
             for (int i = 0; i < activeCombinedMeshBucketCount && i < nearCombinedMeshBuckets.Count; i++)
@@ -682,9 +824,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             return count;
         }
 
-        private bool ShouldRenderChunk(VoxelChunkState state)
+        private bool ShouldRenderChunk(VoxelChunkState state, bool nearBucket, bool applyFarCuts)
         {
-            if (useNearCombinedMeshes)
+            if (nearBucket || !applyFarCuts)
             {
                 return true;
             }
@@ -692,9 +834,13 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             return IsChunkRenderVisible(state.chunkCoord);
         }
 
-        private void AddChunkCombineInstances(VoxelChunkState state, Matrix4x4 planetLocalToBucketLocal, bool nearBucket)
+        private void AddChunkCombineInstances(
+            VoxelChunkState state,
+            Matrix4x4 planetLocalToBucketLocal,
+            bool nearBucket,
+            bool applyFarCuts)
         {
-            int layerMask = nearBucket ? VoxelChunkLayerMask.All : GetChunkLayerMask(state);
+            int layerMask = nearBucket || !applyFarCuts ? VoxelChunkLayerMask.All : GetChunkLayerMask(state);
             Matrix4x4 chunkTransform = planetLocalToBucketLocal * Matrix4x4.Translate(ToVector3(state.chunkOrigin));
             AddChunkCombineInstance(state, InteriorSubMesh, VoxelChunkLayerMask.Interior, layerMask, chunkTransform);
             AddChunkCombineInstance(state, TransitionSubMesh, VoxelChunkLayerMask.Transition, layerMask, chunkTransform);
@@ -785,10 +931,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             combinedMeshesDirty = true;
-            if (!IsFarCombinedMeshCached())
-            {
-                farCombinedMeshDirty = true;
-            }
+            farCombinedMeshDirty = true;
         }
 
         private void MarkCombinedMeshDirty(int3 chunkCoord)
@@ -796,11 +939,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             combinedMeshesDirty = true;
             if (!useNearCombinedMeshes)
             {
-                if (!IsFarCombinedMeshCached())
-                {
-                    farCombinedMeshDirty = true;
-                }
-
+                farCombinedMeshDirty = true;
                 return;
             }
 
@@ -873,6 +1012,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 farCombinedMeshBucket.mesh.Clear();
             }
 
+            if (visibleCombinedMeshBucket != null && visibleCombinedMeshBucket.mesh != null)
+            {
+                visibleCombinedMeshBucket.mesh.Clear();
+            }
+
             for (int i = 0; i < nearCombinedMeshBuckets.Count; i++)
             {
                 CombinedMeshBucket bucket = nearCombinedMeshBuckets[i];
@@ -928,6 +1072,21 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 farCombinedMeshBucket = null;
             }
 
+            if (visibleCombinedMeshBucket != null)
+            {
+                if (visibleCombinedMeshBucket.meshFilter != null)
+                {
+                    visibleCombinedMeshBucket.meshFilter.sharedMesh = null;
+                }
+
+                if (visibleCombinedMeshBucket.mesh != null)
+                {
+                    DestroyUnityObject(visibleCombinedMeshBucket.mesh);
+                }
+
+                visibleCombinedMeshBucket = null;
+            }
+
             for (int i = 0; i < nearCombinedMeshBuckets.Count; i++)
             {
                 CombinedMeshBucket bucket = nearCombinedMeshBuckets[i];
@@ -959,6 +1118,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             nearCombinedMeshBuckets.Clear();
+            nearMeshesRoot = null;
             activeCombinedMeshBucketCount = 0;
             useNearCombinedMeshes = false;
             nearCombinedMeshesBuiltOnce = false;
@@ -969,5 +1129,3 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
     }
 }
-
-

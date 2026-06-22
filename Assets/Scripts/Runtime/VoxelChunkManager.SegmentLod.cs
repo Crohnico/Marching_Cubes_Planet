@@ -213,7 +213,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     generated = true,
                     dirty = false
                 };
-                AddChunkCombineInstances(chunkState, planetLocalToBucketLocal, true);
+                AddChunkCombineInstances(chunkState, planetLocalToBucketLocal, true, false);
             }
 
             Mesh mesh = new Mesh
@@ -470,7 +470,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 targetMesh.MarkDynamic();
             }
 
-            RebuildCombinedMeshBucket(bucket, bucketIndex, true, targetMesh);
+            RebuildCombinedMeshBucket(bucket, bucketIndex, true, targetMesh, false);
             return targetMesh;
         }
 
@@ -556,7 +556,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     generated = true,
                     dirty = false
                 };
-                AddChunkCombineInstances(chunkState, planetLocalToBucketLocal, true);
+                AddChunkCombineInstances(chunkState, planetLocalToBucketLocal, true, false);
             }
 
             Mesh mesh = new Mesh

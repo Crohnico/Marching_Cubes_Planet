@@ -67,7 +67,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private bool useNearCombinedMeshes;
         private bool nearCombinedMeshesBuiltOnce;
         private int activeCombinedMeshBucketCount;
+        private CombinedMeshBucket visibleCombinedMeshBucket;
         private CombinedMeshBucket farCombinedMeshBucket;
+        private GameObject nearMeshesRoot;
         private Vector3 lastFarHemisphereDirection;
         private bool hasLastFarHemisphereDirection;
         private readonly Plane[] chunkCullingFrustumPlanes = new Plane[6];
@@ -104,8 +106,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             EnsureConfig();
             EnsureCaseTable();
-            EnsureCombinedRenderer();
             hasPlanetActionRadiusState = false;
+            EnsureCombinedRenderer();
 
             if (generateOnEnable)
             {
@@ -126,6 +128,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void Update()
         {
+            RefreshPlanetActionRadiusState();
+            EnsureCombinedRenderer();
             UpdateChunkVisibilityIfNeeded();
             UpdateNearSegmentVisibility();
             ProcessDeferredSegmentLodBuilds();
@@ -308,6 +312,27 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             CombinedMeshBucket bucket = nearCombinedMeshBuckets[segmentIndex];
             EnsureSegmentLodCache(bucket);
             return bucket.lodCache != null ? bucket.lodCache.PivotTransform : bucket.owner.transform;
+        }
+
+        public Transform GetNearSegmentRootTransformOrNull(int segmentIndex)
+        {
+            if (segmentIndex < 0)
+            {
+                return null;
+            }
+
+            EnsureNearCombinedMeshBucketCount(NearCombinedMeshBucketCount);
+            return segmentIndex < nearCombinedMeshBuckets.Count
+                ? nearCombinedMeshBuckets[segmentIndex].owner.transform
+                : null;
+        }
+
+        public Transform GetVisibleMeshTransformOrNull()
+        {
+            EnsureVisibleCombinedMeshBucket();
+            return visibleCombinedMeshBucket != null && visibleCombinedMeshBucket.owner != null
+                ? visibleCombinedMeshBucket.owner.transform
+                : null;
         }
 
         public int GetNearSegmentIndexForWorldPosition(Vector3 worldPosition)
@@ -493,7 +518,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
             else
             {
+                MarkChunkVisibilityDirty();
                 combinedMeshesDirty = true;
+                farCombinedMeshDirty = true;
             }
 
             return true;

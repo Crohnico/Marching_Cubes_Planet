@@ -256,20 +256,51 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             if (farWaterObject == null)
             {
-                farWaterObject = EnsureWaterChild("Water_Far");
+                Transform visibleMeshParent = chunkManager != null
+                    ? chunkManager.GetVisibleMeshTransformOrNull()
+                    : null;
+                Transform desiredParent = visibleMeshParent != null ? visibleMeshParent : waterRoot.transform;
+                Transform existingFarWater = desiredParent.Find("WaterMesh") ?? waterRoot.transform.Find("Water_Far");
+                farWaterObject = existingFarWater != null
+                    ? existingFarWater.gameObject
+                    : EnsureWaterChild(desiredParent, "WaterMesh");
+                if (farWaterObject.transform.parent != desiredParent)
+                {
+                    farWaterObject.transform.SetParent(desiredParent, false);
+                }
+
+                farWaterObject.name = "WaterMesh";
+                EnsureWaterComponents(farWaterObject);
+            }
+            else
+            {
+                Transform visibleMeshParent = chunkManager != null
+                    ? chunkManager.GetVisibleMeshTransformOrNull()
+                    : null;
+                Transform desiredParent = visibleMeshParent != null ? visibleMeshParent : waterRoot.transform;
+                if (farWaterObject.transform.parent != desiredParent)
+                {
+                    farWaterObject.transform.SetParent(desiredParent, false);
+                    farWaterObject.transform.localPosition = Vector3.zero;
+                    farWaterObject.transform.localRotation = Quaternion.identity;
+                    farWaterObject.transform.localScale = Vector3.one;
+                }
+
+                farWaterObject.name = "WaterMesh";
+                EnsureWaterComponents(farWaterObject);
             }
 
             int targetWaterSegmentCount = GetWaterSegmentCount();
             while (nearWaterSegments.Count < targetWaterSegmentCount)
             {
                 int index = nearWaterSegments.Count;
-                nearWaterSegments.Add(EnsureWaterChild($"Water_Near_{index:00}"));
+                nearWaterSegments.Add(EnsureWaterChild(waterRoot.transform, $"Water_Near_{index:00}"));
             }
 
             for (int i = 0; i < nearWaterSegments.Count; i++)
             {
                 Transform segmentParent = i < targetWaterSegmentCount && chunkManager != null
-                    ? chunkManager.GetNearSegmentTransformOrNull(i)
+                    ? chunkManager.GetNearSegmentRootTransformOrNull(i)
                     : null;
                 Transform desiredParent = segmentParent != null ? segmentParent : waterRoot.transform;
                 GameObject segment = nearWaterSegments[i];
@@ -279,6 +310,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     segment.transform.localPosition = Vector3.zero;
                     segment.transform.localRotation = Quaternion.identity;
                     segment.transform.localScale = Vector3.one;
+                }
+
+                if (segment != null && segmentParent != null)
+                {
+                    segment.name = "Water";
                 }
             }
 
@@ -291,18 +327,24 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
         }
 
-        private GameObject EnsureWaterChild(string childName)
+        private GameObject EnsureWaterChild(Transform parent, string childName)
         {
-            Transform existing = waterRoot.transform.Find(childName);
+            Transform existing = parent.Find(childName);
             GameObject child = existing != null ? existing.gameObject : new GameObject(childName);
-            child.transform.SetParent(waterRoot.transform, false);
+            child.transform.SetParent(parent, false);
             child.transform.localPosition = Vector3.zero;
             child.transform.localRotation = Quaternion.identity;
             child.transform.localScale = Vector3.one;
 
-            if (!child.TryGetComponent(out MeshFilter meshFilter))
+            EnsureWaterComponents(child);
+            return child;
+        }
+
+        private void EnsureWaterComponents(GameObject child)
+        {
+            if (!child.TryGetComponent(out MeshFilter _))
             {
-                meshFilter = child.AddComponent<MeshFilter>();
+                child.AddComponent<MeshFilter>();
             }
 
             if (!child.TryGetComponent(out MeshRenderer meshRenderer))
@@ -311,7 +353,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             meshRenderer.sharedMaterial = waterMaterial;
-            return child;
         }
 
         private void RebuildWaterMeshes(
