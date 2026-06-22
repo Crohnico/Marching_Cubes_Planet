@@ -6,6 +6,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
     [CreateAssetMenu(menuName = "Voxel Engine/Voxel Engine Config")]
     public sealed class VoxelEngineConfig : ScriptableObject
     {
+        public const string ResourceName = "VoxelEngineConfig";
+        public const int MaxCombinedMeshBucketCount = 64;
+        public const int MinDeferredSegmentLodChunksBuiltPerFrame = 400;
+
         [SerializeField] private Vector3Int chunkSize = new Vector3Int(64, 64, 64);
         [SerializeField] private int[] cellSizes =
         {
@@ -20,6 +24,19 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
             2048f
         };
         [SerializeField, Min(1)] private int defaultCellSize = 8;
+        [Header("Runtime")]
+        [SerializeField] private bool useChunkCullingForRendering = true;
+        [SerializeField] private bool usePlanetActionRadius = true;
+        [SerializeField] private bool useSegmentedCombinedMeshesNearPlanet = true;
+        [SerializeField, Range(1, MaxCombinedMeshBucketCount)] private int nearCombinedMeshBucketCount = MaxCombinedMeshBucketCount;
+        [SerializeField, Min(1)] private int maxCombinedMeshBucketsRebuiltPerFrame = 2;
+        [Header("Segment LOD")]
+        [SerializeField] private bool useSegmentLodSelection = true;
+        [SerializeField] private bool useRadialLayerCulling = true;
+        [SerializeField, Min(0)] private int neverLayerCullChunkDistance = 3;
+        [SerializeField, Min(1)] private int maxChunkBuildsStartedPerFrame = 8;
+        [SerializeField, Min(1)] private int maxConcurrentChunkBuilds = 32;
+        [SerializeField, Min(MinDeferredSegmentLodChunksBuiltPerFrame)] private int maxDeferredSegmentLodChunksBuiltPerFrame = MinDeferredSegmentLodChunksBuiltPerFrame;
 
         public int3 ChunkSize => new int3(chunkSize.x, chunkSize.y, chunkSize.z);
         public int DefaultCellSize => NormalizeCellSize(defaultCellSize);
@@ -27,6 +44,19 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
         public int CoarsestCellSize => GetCoarsestCellSize();
         public float CoarsestLodStartDistance => GetLodStartDistanceForCellSize(CoarsestCellSize);
         public int LodCount => GetLodCount();
+        public bool UseChunkCullingForRendering => useChunkCullingForRendering;
+        public bool UsePlanetActionRadius => usePlanetActionRadius;
+        public bool UseSegmentedCombinedMeshesNearPlanet => useSegmentedCombinedMeshesNearPlanet;
+        public int NearCombinedMeshBucketCount => Mathf.Clamp(nearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount);
+        public int MaxCombinedMeshBucketsRebuiltPerFrame => Mathf.Max(1, maxCombinedMeshBucketsRebuiltPerFrame);
+        public bool UseSegmentLodSelection => useSegmentLodSelection;
+        public bool UseRadialLayerCulling => useRadialLayerCulling;
+        public int NeverLayerCullChunkDistance => Mathf.Max(0, neverLayerCullChunkDistance);
+        public int MaxChunkBuildsStartedPerFrame => Mathf.Max(1, maxChunkBuildsStartedPerFrame);
+        public int MaxConcurrentChunkBuilds => Mathf.Max(1, maxConcurrentChunkBuilds);
+        public int MaxDeferredSegmentLodChunksBuiltPerFrame => Mathf.Max(
+            MinDeferredSegmentLodChunksBuiltPerFrame,
+            maxDeferredSegmentLodChunksBuiltPerFrame);
 
         public ScalarFieldSettings ScalarFieldSettings => new ScalarFieldSettings
         {
@@ -50,6 +80,14 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
             EnsureCellSizes();
             ValidateLodDistances();
             defaultCellSize = Mathf.Max(1, defaultCellSize);
+            nearCombinedMeshBucketCount = Mathf.Clamp(nearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount);
+            maxCombinedMeshBucketsRebuiltPerFrame = Mathf.Max(1, maxCombinedMeshBucketsRebuiltPerFrame);
+            neverLayerCullChunkDistance = Mathf.Max(0, neverLayerCullChunkDistance);
+            maxChunkBuildsStartedPerFrame = Mathf.Max(1, maxChunkBuildsStartedPerFrame);
+            maxConcurrentChunkBuilds = Mathf.Max(1, maxConcurrentChunkBuilds);
+            maxDeferredSegmentLodChunksBuiltPerFrame = Mathf.Max(
+                MinDeferredSegmentLodChunksBuiltPerFrame,
+                maxDeferredSegmentLodChunksBuiltPerFrame);
         }
 
         private void EnsureCellSizes()

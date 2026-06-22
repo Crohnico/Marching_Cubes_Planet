@@ -7,13 +7,13 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
     [DisallowMultipleComponent]
     public sealed class PlayerChunkTracker : MonoBehaviour
     {
-        [SerializeField] private VoxelEngineConfig config;
         [SerializeField] private Transform target;
         [SerializeField] private Camera chunkCullingCamera;
         [SerializeField] private bool enableChunkCulling = true;
 
         private bool hasCurrentChunk;
         private int3 currentChunk;
+        private VoxelEngineConfig config;
 
         public int3 CurrentChunk => currentChunk;
         public bool HasCurrentChunk => hasCurrentChunk;
@@ -47,6 +47,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void OnEnable()
         {
+            EnsureConfig();
             if (chunkCullingCamera == null)
             {
                 chunkCullingCamera = GetComponentInChildren<Camera>();
@@ -62,6 +63,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void UpdateChunk()
         {
+            EnsureConfig();
             if (config == null)
             {
                 return;
@@ -76,6 +78,14 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             currentChunk = nextChunk;
             hasCurrentChunk = true;
+        }
+
+        private void EnsureConfig()
+        {
+            if (config == null)
+            {
+                config = Resources.Load<VoxelEngineConfig>(VoxelEngineConfig.ResourceName);
+            }
         }
     }
 }

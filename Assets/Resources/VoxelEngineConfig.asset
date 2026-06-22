@@ -19,3 +19,14 @@ MonoBehaviour:
   - 1000
   - 5000
   defaultCellSize: 1
+  useChunkCullingForRendering: 1
+  usePlanetActionRadius: 1
+  useSegmentedCombinedMeshesNearPlanet: 1
+  nearCombinedMeshBucketCount: 64
+  maxCombinedMeshBucketsRebuiltPerFrame: 6
+  useSegmentLodSelection: 1
+  useRadialLayerCulling: 1
+  neverLayerCullChunkDistance: 3
+  maxChunkBuildsStartedPerFrame: 32
+  maxConcurrentChunkBuilds: 32
+  maxDeferredSegmentLodChunksBuiltPerFrame: 400

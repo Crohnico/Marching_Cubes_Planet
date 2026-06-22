@@ -7,7 +7,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Editor
 {
     public static class VoxelDemoMenu
     {
-        private const string ConfigPath = "Assets/VoxelEngineConfig.asset";
+        private const string ConfigPath = "Assets/Resources/VoxelEngineConfig.asset";
 
         [MenuItem("GameObject/Voxel Engine/Complete Sphere Demo", false, 9)]
         public static void CreateCompleteSphereDemo()
@@ -66,6 +66,12 @@ namespace MarchingCubesPlanet.VoxelEngine.Editor
 
         private static VoxelEngineConfig GetOrCreateConfig()
         {
+            const string resourcesPath = "Assets/Resources";
+            if (!AssetDatabase.IsValidFolder(resourcesPath))
+            {
+                AssetDatabase.CreateFolder("Assets", "Resources");
+            }
+
             VoxelEngineConfig config = AssetDatabase.LoadAssetAtPath<VoxelEngineConfig>(ConfigPath);
             if (config != null)
             {

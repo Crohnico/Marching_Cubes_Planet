@@ -13,6 +13,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [SerializeField] private Vector3 center = new Vector3(18f, 18f, 18f);
         [SerializeField, Min(0.01f)] private float radius = 14f;
         [SerializeField] private int seed = 12345;
+        [SerializeField] private Material terrainMaterial;
         [SerializeField] private PlanetNoiseProfile planetNoiseProfile;
         [SerializeField] private float isoLevel;
         [SerializeField, Min(0f)] private float surfaceLayerDepth = 64f;
@@ -41,6 +42,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         public float Radius => radius;
         public Vector3 Center => centerOverride != null ? centerOverride.position : center;
+        public Material TerrainMaterial => terrainMaterial;
         public float SeaSurfaceRadius => Mathf.Max(0.01f, radius + GetSeaSurfaceOffset());
         public float MaximumTerrainRadius => GetMaximumTerrainRadius();
 
