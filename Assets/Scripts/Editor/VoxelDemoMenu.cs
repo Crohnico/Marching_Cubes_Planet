@@ -22,7 +22,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Editor
             tracker.Configure(player.transform, playerCamera);
 
             GameObject engine = new GameObject("Voxel Sphere Engine");
-            VoxelChunkManager manager = engine.AddComponent<VoxelChunkManager>();
+            PlanetManager manager = engine.AddComponent<PlanetManager>();
             VoxelSphereGenerator sphereGenerator = engine.AddComponent<VoxelSphereGenerator>();
             sphereGenerator.Configure(manager);
             manager.Configure(config, tracker, sphereGenerator, player.transform);
@@ -52,7 +52,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Editor
         {
             VoxelEngineConfig config = GetOrCreateConfig();
             GameObject engine = new GameObject("Voxel Sphere Engine");
-            VoxelChunkManager manager = engine.AddComponent<VoxelChunkManager>();
+            PlanetManager manager = engine.AddComponent<PlanetManager>();
             VoxelSphereGenerator sphereGenerator = engine.AddComponent<VoxelSphereGenerator>();
             PlayerChunkTracker tracker = Object.FindFirstObjectByType<PlayerChunkTracker>();
             Transform fallbackAnchor = tracker != null ? tracker.transform : engine.transform;

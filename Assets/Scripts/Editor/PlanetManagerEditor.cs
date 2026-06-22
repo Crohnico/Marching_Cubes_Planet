@@ -4,14 +4,14 @@ using UnityEngine;
 
 namespace MarchingCubesPlanet.VoxelEngine.Editor
 {
-    [CustomEditor(typeof(VoxelChunkManager))]
-    public sealed class VoxelChunkManagerEditor : UnityEditor.Editor
+    [CustomEditor(typeof(PlanetManager))]
+    public sealed class PlanetManagerEditor : UnityEditor.Editor
     {
         public override void OnInspectorGUI()
         {
             DrawDefaultInspector();
 
-            VoxelChunkManager manager = (VoxelChunkManager)target;
+            PlanetManager manager = (PlanetManager)target;
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Runtime State", EditorStyles.boldLabel);
@@ -23,6 +23,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Editor
                 EditorGUILayout.IntField("Visible Chunks", manager.VisibleChunkCount);
                 EditorGUILayout.IntField("Combined Vertices", manager.CombinedVertexCount);
                 EditorGUILayout.IntField("Combined Triangles", manager.CombinedTriangleCount);
+                EditorGUILayout.Toggle("Far Generated", manager.FarGenerated);
                 EditorGUILayout.Toggle("Render Culling Active", manager.IsRenderCullingActive);
                 EditorGUILayout.Toggle("Far Bridge Active", manager.IsFarBridgeActive);
                 EditorGUILayout.Toggle("Near Rendering Active", manager.IsNearCombinedRenderingActive);

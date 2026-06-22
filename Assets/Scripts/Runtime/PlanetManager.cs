@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using MarchingCubesPlanet.VoxelEngine.Data;
 using MarchingCubesPlanet.VoxelEngine.Jobs;
 using MarchingCubesPlanet.VoxelEngine.MarchingCubes;
@@ -12,7 +13,7 @@ using UnityEngine.Rendering;
 namespace MarchingCubesPlanet.VoxelEngine.Runtime
 {
     [DisallowMultipleComponent]
-    public sealed partial class VoxelChunkManager : MonoBehaviour
+    public sealed partial class PlanetManager : MonoBehaviour
     {
         private const int MaxVerticesPerCell = 36;
         private const int InteriorSubMesh = 0;
@@ -35,7 +36,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [SerializeField] private PlayerChunkTracker playerChunkTracker;
         [SerializeField] private VoxelSphereGenerator sphereGenerator;
         [SerializeField] private Transform fallbackAnchor;
-        [SerializeField] private bool generateOnEnable = true;
+        [SerializeField] private string planetId = string.Empty;
+        [SerializeField, Min(1)] private int maxFarChunksPerFrame = 16;
         [Header("Debug")]
         [SerializeField] private bool drawSegmentGizmos = true;
         [SerializeField, Range(0f, 90f)] private float farHemisphereRefreshAngle = 3f;
@@ -68,6 +70,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private bool nearCombinedMeshesBuiltOnce;
         private int activeCombinedMeshBucketCount;
         private CombinedMeshBucket farCombinedMeshBucket;
+        private GameObject farMeshOwner;
+        private MeshFilter farMeshFilter;
         private Vector3 lastFarHemisphereDirection;
         private bool hasLastFarHemisphereDirection;
         private readonly Plane[] chunkCullingFrustumPlanes = new Plane[6];
@@ -75,6 +79,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private bool lastShouldCullRenderedChunks;
         private bool hasPlanetActionRadiusState;
         private bool isInsidePlanetActionRadius = true;
+        private bool farGenerated;
+        private int generationVersion;
         private DeferredSegmentLodBuild activeDeferredSegmentLodBuild;
         private MarchingCubesCaseTable caseTable;
         private VoxelEngineConfig config;
@@ -88,8 +94,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         public bool IsRenderCullingActive => ShouldCullRenderedChunks();
         public bool IsFarBridgeActive => IsFarBridgeVisible();
         public bool IsNearCombinedRenderingActive => useNearCombinedMeshes && nearCombinedMeshesBuiltOnce;
+        public bool FarGenerated => farGenerated;
         public int NearSegmentCount => NearCombinedMeshBucketCount;
         public Vector3 DetailFocusPosition => GetCurrentDetailFocusVector3();
+        public string PlanetId => string.IsNullOrWhiteSpace(planetId) ? name : planetId;
         private Material TerrainMaterial => sphereGenerator != null ? sphereGenerator.TerrainMaterial : null;
         private bool UseChunkCullingForRendering => config == null || config.UseChunkCullingForRendering;
         private bool UsePlanetActionRadius => config == null || config.UsePlanetActionRadius;
@@ -102,15 +110,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void OnEnable()
         {
+            generationVersion++;
+            farGenerated = false;
             EnsureConfig();
             EnsureCaseTable();
-            EnsureCombinedRenderer();
             hasPlanetActionRadiusState = false;
-
-            if (generateOnEnable)
-            {
-                RebuildAroundCurrentAnchor();
-            }
         }
 
         private void Reset()
@@ -121,11 +125,17 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void OnValidate()
         {
+            maxFarChunksPerFrame = Mathf.Max(1, maxFarChunksPerFrame);
             farHemisphereRefreshAngle = Mathf.Clamp(farHemisphereRefreshAngle, 0f, 90f);
         }
 
         private void Update()
         {
+            if (!farGenerated)
+            {
+                return;
+            }
+
             UpdateChunkVisibilityIfNeeded();
             UpdateNearSegmentVisibility();
             ProcessDeferredSegmentLodBuilds();
@@ -147,6 +157,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void OnDisable()
         {
+            generationVersion++;
+            farGenerated = false;
             ClearChunks();
             DestroyCombinedMesh();
             if (caseTable.IsCreated)
@@ -215,14 +227,54 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             RebuildDesiredChunkSet();
             BuildDesiredChunksSynchronously(centerChunk);
             UpdateCombinedMesh(true);
+            farGenerated = true;
         }
 
         [ContextMenu("Generate")]
-        public void Generate()
+        public async void Generate()
         {
-            ClearCombinedMesh();
-            MarkAllChunksDirty();
-            RebuildAroundCurrentAnchor();
+            try
+            {
+                ClearCombinedMesh();
+                MarkAllChunksDirty();
+                generationVersion++;
+                await GenerateFarAsync(maxFarChunksPerFrame, generationVersion);
+            }
+            catch (System.Exception exception)
+            {
+                Debug.LogException(exception, this);
+            }
+        }
+
+        public async Task GenerateFarAsync(int maxChunksPerFrame)
+        {
+            generationVersion++;
+            await GenerateFarAsync(maxChunksPerFrame, generationVersion);
+        }
+
+        public Task GenerateFarAsync()
+        {
+            return GenerateFarAsync(maxFarChunksPerFrame);
+        }
+
+        private async Task GenerateFarAsync(int maxChunksPerFrame, int version)
+        {
+            farGenerated = false;
+            EnsureConfig();
+            EnsureCaseTable();
+            RefreshPlanetActionRadiusState();
+            int3 centerChunk = GetCurrentCenterChunk();
+            RefreshDeclaredChunks();
+
+            RebuildDesiredChunkSet();
+            await BuildDesiredChunksBudgeted(centerChunk, maxChunksPerFrame, version);
+            if (version != generationVersion || !isActiveAndEnabled)
+            {
+                return;
+            }
+
+            UpdateCombinedMesh(true);
+            farGenerated = true;
         }
 
         [ContextMenu("Clear Generated Chunks")]
@@ -358,6 +410,45 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 }
 
                 CompleteChunkBuild(StartChunkBuild(chunkCoord, desiredState));
+            }
+        }
+
+        private async Task BuildDesiredChunksBudgeted(int3 centerChunk, int maxChunksPerFrame, int version)
+        {
+            scratchChunkCoords.Clear();
+            foreach (KeyValuePair<int3, DesiredChunkState> pair in desiredChunkStates)
+            {
+                if (!IsChunkReady(pair.Key, pair.Value))
+                {
+                    scratchChunkCoords.Add(pair.Key);
+                }
+            }
+
+            scratchChunkCoords.Sort((a, b) => CompareChunkCoordsByPriority(a, b, centerChunk));
+
+            int safeBudget = Mathf.Max(1, maxChunksPerFrame);
+            int chunksBuiltThisFrame = 0;
+            for (int i = 0; i < scratchChunkCoords.Count; i++)
+            {
+                if (version != generationVersion || !isActiveAndEnabled)
+                {
+                    return;
+                }
+
+                int3 chunkCoord = scratchChunkCoords[i];
+                if (!desiredChunkStates.TryGetValue(chunkCoord, out DesiredChunkState desiredState)
+                    || IsChunkReady(chunkCoord, desiredState))
+                {
+                    continue;
+                }
+
+                CompleteChunkBuild(StartChunkBuild(chunkCoord, desiredState));
+                chunksBuiltThisFrame++;
+                if (chunksBuiltThisFrame >= safeBudget && i < scratchChunkCoords.Count - 1)
+                {
+                    chunksBuiltThisFrame = 0;
+                    await Task.Yield();
+                }
             }
         }
 
@@ -1099,7 +1190,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
         }
 
-        private static void DestroyUnityObject(Object target)
+        private static void DestroyUnityObject(UnityEngine.Object target)
         {
             if (target == null)
             {
@@ -1191,6 +1282,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             public MeshFilter meshFilter;
             public MeshRenderer meshRenderer;
             public Mesh mesh;
+            public Mesh renderMesh;
             public VoxelSegmentLodMeshCache lodCache;
             public Mesh[] lodMeshes;
             public bool[] lodDirty;

@@ -8,7 +8,7 @@ using UnityEngine.Rendering;
 
 namespace MarchingCubesPlanet.VoxelEngine.Runtime
 {
-    public sealed partial class VoxelChunkManager
+    public sealed partial class PlanetManager
     {
         private void UpdateSegmentLodCombinedMeshes()
         {
@@ -188,7 +188,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private Mesh CombineDeferredSegmentLodChunks(CombinedMeshBucket bucket, DeferredSegmentLodKey key)
         {
             combineInstances.Clear();
-            Matrix4x4 planetLocalToBucketLocal = GetPlanetLocalToBucketLocalMatrix(bucket);
+            Matrix4x4 worldToBucketLocal = GetWorldToBucketLocalMatrix(bucket);
             int3 chunkSize = config.ChunkSize;
             for (int i = 0; i < deferredSegmentLodChunkMeshes.Count; i++)
             {
@@ -213,7 +213,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     generated = true,
                     dirty = false
                 };
-                AddChunkCombineInstances(chunkState, planetLocalToBucketLocal, true);
+                AddChunkCombineInstances(chunkState, worldToBucketLocal, true);
             }
 
             Mesh mesh = new Mesh
@@ -525,7 +525,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             int cellSize = GetCellSizeForLodIndex(lodIndex);
             combineInstances.Clear();
             scratchSegmentLodChunkMeshes.Clear();
-            Matrix4x4 planetLocalToBucketLocal = GetPlanetLocalToBucketLocalMatrix(bucket);
+            Matrix4x4 worldToBucketLocal = GetWorldToBucketLocalMatrix(bucket);
 
             foreach (int3 chunkCoord in declaredChunks)
             {
@@ -556,7 +556,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     generated = true,
                     dirty = false
                 };
-                AddChunkCombineInstances(chunkState, planetLocalToBucketLocal, true);
+                AddChunkCombineInstances(chunkState, worldToBucketLocal, true);
             }
 
             Mesh mesh = new Mesh
