@@ -34,8 +34,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
         [SerializeField] private bool useSegmentLodSelection = true;
         [SerializeField] private bool useRadialLayerCulling = true;
         [SerializeField, Min(0)] private int neverLayerCullChunkDistance = 3;
-        [SerializeField, Min(1)] private int maxChunkBuildsStartedPerFrame = 8;
-        [SerializeField, Min(1)] private int maxConcurrentChunkBuilds = 32;
         [SerializeField, Min(MinDeferredSegmentLodChunksBuiltPerFrame)] private int maxDeferredSegmentLodChunksBuiltPerFrame = MinDeferredSegmentLodChunksBuiltPerFrame;
 
         public int3 ChunkSize => new int3(chunkSize.x, chunkSize.y, chunkSize.z);
@@ -52,8 +50,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
         public bool UseSegmentLodSelection => useSegmentLodSelection;
         public bool UseRadialLayerCulling => useRadialLayerCulling;
         public int NeverLayerCullChunkDistance => Mathf.Max(0, neverLayerCullChunkDistance);
-        public int MaxChunkBuildsStartedPerFrame => Mathf.Max(1, maxChunkBuildsStartedPerFrame);
-        public int MaxConcurrentChunkBuilds => Mathf.Max(1, maxConcurrentChunkBuilds);
         public int MaxDeferredSegmentLodChunksBuiltPerFrame => Mathf.Max(
             MinDeferredSegmentLodChunksBuiltPerFrame,
             maxDeferredSegmentLodChunksBuiltPerFrame);
@@ -83,8 +79,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
             nearCombinedMeshBucketCount = Mathf.Clamp(nearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount);
             maxCombinedMeshBucketsRebuiltPerFrame = Mathf.Max(1, maxCombinedMeshBucketsRebuiltPerFrame);
             neverLayerCullChunkDistance = Mathf.Max(0, neverLayerCullChunkDistance);
-            maxChunkBuildsStartedPerFrame = Mathf.Max(1, maxChunkBuildsStartedPerFrame);
-            maxConcurrentChunkBuilds = Mathf.Max(1, maxConcurrentChunkBuilds);
             maxDeferredSegmentLodChunksBuiltPerFrame = Mathf.Max(
                 MinDeferredSegmentLodChunksBuiltPerFrame,
                 maxDeferredSegmentLodChunksBuiltPerFrame);

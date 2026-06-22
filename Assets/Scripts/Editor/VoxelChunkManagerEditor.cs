@@ -19,8 +19,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Editor
             {
                 EditorGUILayout.IntField("Declared Chunks", manager.DeclaredChunkCount);
                 EditorGUILayout.IntField("Desired Chunks", manager.DesiredChunkCount);
-                EditorGUILayout.IntField("Queued Builds", manager.QueuedChunkBuildCount);
-                EditorGUILayout.IntField("Pending Builds", manager.PendingChunkBuildCount);
                 EditorGUILayout.IntField("Active Chunks", manager.ActiveChunkCount);
                 EditorGUILayout.IntField("Visible Chunks", manager.VisibleChunkCount);
                 EditorGUILayout.IntField("Combined Vertices", manager.CombinedVertexCount);

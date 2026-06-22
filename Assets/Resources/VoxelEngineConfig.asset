@@ -27,6 +27,4 @@ MonoBehaviour:
   useSegmentLodSelection: 1
   useRadialLayerCulling: 1
   neverLayerCullChunkDistance: 3
-  maxChunkBuildsStartedPerFrame: 32
-  maxConcurrentChunkBuilds: 32
   maxDeferredSegmentLodChunksBuiltPerFrame: 400
