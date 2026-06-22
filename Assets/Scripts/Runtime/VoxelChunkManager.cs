@@ -15,12 +15,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
     public sealed partial class VoxelChunkManager : MonoBehaviour
     {
         private const int MaxVerticesPerCell = 36;
-        private const byte BoundaryXMin = 1 << 0;
-        private const byte BoundaryXMax = 1 << 1;
-        private const byte BoundaryYMin = 1 << 2;
-        private const byte BoundaryYMax = 1 << 3;
-        private const byte BoundaryZMin = 1 << 4;
-        private const byte BoundaryZMax = 1 << 5;
         private const int InteriorSubMesh = 0;
         private const int TransitionSubMesh = 1;
         private const int SurfaceSubMesh = 2;
@@ -73,7 +67,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private bool useNearCombinedMeshes;
         private bool nearCombinedMeshesBuiltOnce;
         private int activeCombinedMeshBucketCount;
-        private int nextCombinedMeshBucketIndex;
         private CombinedMeshBucket farCombinedMeshBucket;
         private Vector3 lastFarHemisphereDirection;
         private bool hasLastFarHemisphereDirection;
@@ -100,10 +93,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private Material TerrainMaterial => sphereGenerator != null ? sphereGenerator.TerrainMaterial : null;
         private bool UseChunkCullingForRendering => config == null || config.UseChunkCullingForRendering;
         private bool UsePlanetActionRadius => config == null || config.UsePlanetActionRadius;
-        private bool UseSegmentedCombinedMeshesNearPlanet => config == null || config.UseSegmentedCombinedMeshesNearPlanet;
         private int NearCombinedMeshBucketCount => config != null ? config.NearCombinedMeshBucketCount : MaxCombinedMeshBucketCount;
-        private int MaxCombinedMeshBucketsRebuiltPerFrame => config != null ? config.MaxCombinedMeshBucketsRebuiltPerFrame : 2;
-        private bool UseSegmentLodSelection => config == null || config.UseSegmentLodSelection;
         private bool UseRadialLayerCulling => config == null || config.UseRadialLayerCulling;
         private int NeverLayerCullChunkDistance => config != null ? config.NeverLayerCullChunkDistance : 3;
         private int MaxDeferredSegmentLodChunksBuiltPerFrame => config != null
@@ -336,9 +326,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 foreach (int3 chunkCoord in declaredChunks)
                 {
                     int cellSize = ResolveCellSizeForChunk(chunkCoord);
-                    BoundaryRefinement boundaryRefinement = GetBoundaryRefinement(chunkCoord, cellSize);
                     desiredChunks.Add(chunkCoord);
-                    desiredChunkStates[chunkCoord] = new DesiredChunkState(cellSize, boundaryRefinement, detailFocusKey);
+                    desiredChunkStates[chunkCoord] = new DesiredChunkState(cellSize, detailFocusKey);
                 }
 
                 MarkChunkVisibilityDirty();
@@ -378,13 +367,12 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 && state.generated
                 && !state.dirty
                 && state.cellSize == desiredState.cellSize
-                && state.boundaryRefinement.Equals(desiredState.boundaryRefinement)
                 && state.detailFocusKey.Equals(desiredState.detailFocusKey);
         }
 
         private void UpdateChunkVisibilityIfNeeded()
         {
-            if (UseSegmentLodSelection && useNearCombinedMeshes)
+            if (useNearCombinedMeshes)
             {
                 chunkVisibilityDirty = false;
                 lastShouldCullRenderedChunks = ShouldCullRenderedChunks();
@@ -415,7 +403,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void UpdateNearSegmentVisibility()
         {
-            if (!UseSegmentLodSelection || !useNearCombinedMeshes || !nearCombinedMeshesBuiltOnce)
+            if (!useNearCombinedMeshes || !nearCombinedMeshesBuiltOnce)
             {
                 return;
             }
@@ -538,12 +526,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 return true;
             }
 
-            if (UseSegmentLodSelection)
-            {
-                return IsCurrentFocusInsideSegmentLodActivationRadius();
-            }
-
-            return sphereGenerator.ContainsActionPoint(GetCurrentDetailFocusVector3(), config);
+            return IsCurrentFocusInsideSegmentLodActivationRadius();
         }
 
         private bool IsCurrentFocusInsideSegmentLodActivationRadius()
@@ -673,17 +656,13 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             {
                 int3 chunkSize = config.ChunkSize;
                 int3 chunkOrigin = VoxelChunkUtility.GetChunkOrigin(chunkCoord, chunkSize);
-                float3 detailFocus = GetCurrentDetailFocus();
                 using (BuildRequestsMarker.Auto())
                 {
                     BuildCellRequests(
                         cellRequestBuffer,
                         chunkOrigin,
                         chunkSize,
-                        desiredState.cellSize,
-                        detailFocus,
-                        config,
-                        desiredState.boundaryRefinement);
+                        desiredState.cellSize);
                 }
 
                 int cellCount = cellRequestBuffer.Count;
@@ -733,7 +712,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 {
                     chunkCoord = chunkCoord,
                     cellSize = desiredState.cellSize,
-                    boundaryRefinement = desiredState.boundaryRefinement,
                     detailFocusKey = desiredState.detailFocusKey,
                     chunkOrigin = chunkOrigin,
                     chunkSize = chunkSize,
@@ -760,7 +738,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 {
                     DesiredChunkState completedState = new DesiredChunkState(
                         chunkBuild.cellSize,
-                        chunkBuild.boundaryRefinement,
                         chunkBuild.detailFocusKey);
                     bool isStillDesired = desiredChunkStates.TryGetValue(chunkBuild.chunkCoord, out DesiredChunkState desiredState)
                         && desiredState.Equals(completedState);
@@ -784,7 +761,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     {
                         chunkCoord = chunkBuild.chunkCoord,
                         cellSize = chunkBuild.cellSize,
-                        boundaryRefinement = chunkBuild.boundaryRefinement,
                         detailFocusKey = chunkBuild.detailFocusKey,
                         owner = gameObject,
                         mesh = mesh,
@@ -816,67 +792,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
         }
 
-        private BoundaryRefinement GetBoundaryRefinement(int3 chunkCoord, int cellSize)
-        {
-            BoundaryRefinement refinement = BoundaryRefinement.Empty;
-            if (cellSize <= 1)
-            {
-                return refinement;
-            }
-
-            AddBoundaryRefinement(ref refinement, chunkCoord, new int3(-1, 0, 0), cellSize, BoundaryXMin);
-            AddBoundaryRefinement(ref refinement, chunkCoord, new int3(1, 0, 0), cellSize, BoundaryXMax);
-            AddBoundaryRefinement(ref refinement, chunkCoord, new int3(0, -1, 0), cellSize, BoundaryYMin);
-            AddBoundaryRefinement(ref refinement, chunkCoord, new int3(0, 1, 0), cellSize, BoundaryYMax);
-            AddBoundaryRefinement(ref refinement, chunkCoord, new int3(0, 0, -1), cellSize, BoundaryZMin);
-            AddBoundaryRefinement(ref refinement, chunkCoord, new int3(0, 0, 1), cellSize, BoundaryZMax);
-            return refinement;
-        }
-
-        private void AddBoundaryRefinement(
-            ref BoundaryRefinement refinement,
-            int3 chunkCoord,
-            int3 direction,
-            int cellSize,
-            byte side)
-        {
-            int3 neighborCoord = chunkCoord + direction;
-            if (!declaredChunks.Contains(neighborCoord))
-            {
-                return;
-            }
-
-            int neighborCellSize = ResolveCellSizeForChunk(neighborCoord);
-            if (neighborCellSize >= cellSize)
-            {
-                return;
-            }
-
-            refinement.Set(side, GetSharedBoundaryCellSize(cellSize, neighborCellSize));
-        }
-
         private static int GetChunkDistance(int3 chunkOffset)
         {
             return math.max(math.abs(chunkOffset.x), math.max(math.abs(chunkOffset.y), math.abs(chunkOffset.z)));
-        }
-
-        private static int GetSharedBoundaryCellSize(int cellSize, int neighborCellSize)
-        {
-            return math.max(1, GreatestCommonDivisor(cellSize, neighborCellSize));
-        }
-
-        private static int GreatestCommonDivisor(int a, int b)
-        {
-            a = math.abs(a);
-            b = math.abs(b);
-            while (b != 0)
-            {
-                int remainder = a % b;
-                a = b;
-                b = remainder;
-            }
-
-            return math.max(1, a);
         }
 
         private static void BuildCellRequests(
@@ -884,9 +802,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             int3 chunkOrigin,
             int3 chunkSize,
             int maximumCellSize,
-            float3 detailFocus,
-            VoxelEngineConfig config,
-            BoundaryRefinement boundaryRefinement,
             bool clearRequests = true)
         {
             int normalizedMaximumCellSize = math.max(1, maximumCellSize);
@@ -899,11 +814,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             AddCells(
                 requests,
                 chunkOrigin,
-                chunkOrigin,
                 chunkSize,
-                chunkSize,
-                normalizedMaximumCellSize,
-                boundaryRefinement);
+                normalizedMaximumCellSize);
         }
 
         private static int NormalizeCellSizeForChunk(int requestedSize, int3 chunkSize)
@@ -925,11 +837,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private static void AddCells(
             List<VoxelCellBuildRequest> requests,
             int3 origin,
-            int3 chunkOrigin,
             int3 size,
-            int3 chunkSize,
-            int cellSize,
-            BoundaryRefinement boundaryRefinement)
+            int cellSize)
         {
             for (int x = 0; x < size.x; x += cellSize)
             {
@@ -946,42 +855,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     }
                 }
             }
-        }
-
-        private static byte GetChunkBoundarySides(int3 localOrigin, int cellSize, int3 chunkSize)
-        {
-            byte sides = 0;
-            if (localOrigin.x == 0)
-            {
-                sides |= BoundaryXMin;
-            }
-
-            if (localOrigin.x + cellSize == chunkSize.x)
-            {
-                sides |= BoundaryXMax;
-            }
-
-            if (localOrigin.y == 0)
-            {
-                sides |= BoundaryYMin;
-            }
-
-            if (localOrigin.y + cellSize == chunkSize.y)
-            {
-                sides |= BoundaryYMax;
-            }
-
-            if (localOrigin.z == 0)
-            {
-                sides |= BoundaryZMin;
-            }
-
-            if (localOrigin.z + cellSize == chunkSize.z)
-            {
-                sides |= BoundaryZMax;
-            }
-
-            return sides;
         }
 
         private Mesh BuildMesh(
@@ -1360,7 +1233,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             public int3 chunkCoord;
             public int cellSize;
-            public BoundaryRefinement boundaryRefinement;
             public int3 detailFocusKey;
             public GameObject owner;
             public Mesh mesh;
@@ -1429,20 +1301,17 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private struct DesiredChunkState
         {
             public int cellSize;
-            public BoundaryRefinement boundaryRefinement;
             public int3 detailFocusKey;
 
-            public DesiredChunkState(int cellSize, BoundaryRefinement boundaryRefinement, int3 detailFocusKey)
+            public DesiredChunkState(int cellSize, int3 detailFocusKey)
             {
                 this.cellSize = cellSize;
-                this.boundaryRefinement = boundaryRefinement;
                 this.detailFocusKey = detailFocusKey;
             }
 
             public bool Equals(DesiredChunkState other)
             {
                 return cellSize == other.cellSize
-                    && boundaryRefinement.Equals(other.boundaryRefinement)
                     && detailFocusKey.Equals(other.detailFocusKey);
             }
         }
@@ -1451,7 +1320,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             public int3 chunkCoord;
             public int cellSize;
-            public BoundaryRefinement boundaryRefinement;
             public int3 detailFocusKey;
             public int3 chunkOrigin;
             public int3 chunkSize;
@@ -1520,80 +1388,5 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             public const int All = Interior | Transition | Surface;
         }
 
-        private struct BoundaryRefinement
-        {
-            public byte sides;
-            public int xMinCellSize;
-            public int xMaxCellSize;
-            public int yMinCellSize;
-            public int yMaxCellSize;
-            public int zMinCellSize;
-            public int zMaxCellSize;
-
-            public static BoundaryRefinement Empty => default;
-
-            public void Set(byte side, int cellSize)
-            {
-                sides |= side;
-                switch (side)
-                {
-                    case BoundaryXMin:
-                        xMinCellSize = cellSize;
-                        break;
-                    case BoundaryXMax:
-                        xMaxCellSize = cellSize;
-                        break;
-                    case BoundaryYMin:
-                        yMinCellSize = cellSize;
-                        break;
-                    case BoundaryYMax:
-                        yMaxCellSize = cellSize;
-                        break;
-                    case BoundaryZMin:
-                        zMinCellSize = cellSize;
-                        break;
-                    case BoundaryZMax:
-                        zMaxCellSize = cellSize;
-                        break;
-                }
-            }
-
-            public int GetSmallestCellSizeForSides(byte touchedSides, int fallbackCellSize)
-            {
-                int result = fallbackCellSize;
-                result = GetSmallestCellSizeForSide(touchedSides, BoundaryXMin, xMinCellSize, result);
-                result = GetSmallestCellSizeForSide(touchedSides, BoundaryXMax, xMaxCellSize, result);
-                result = GetSmallestCellSizeForSide(touchedSides, BoundaryYMin, yMinCellSize, result);
-                result = GetSmallestCellSizeForSide(touchedSides, BoundaryYMax, yMaxCellSize, result);
-                result = GetSmallestCellSizeForSide(touchedSides, BoundaryZMin, zMinCellSize, result);
-                result = GetSmallestCellSizeForSide(touchedSides, BoundaryZMax, zMaxCellSize, result);
-                return result;
-            }
-
-            public bool Equals(BoundaryRefinement other)
-            {
-                return sides == other.sides
-                    && xMinCellSize == other.xMinCellSize
-                    && xMaxCellSize == other.xMaxCellSize
-                    && yMinCellSize == other.yMinCellSize
-                    && yMaxCellSize == other.yMaxCellSize
-                    && zMinCellSize == other.zMinCellSize
-                    && zMaxCellSize == other.zMaxCellSize;
-            }
-
-            private static int GetSmallestCellSizeForSide(byte touchedSides, byte side, int cellSize, int current)
-            {
-                if ((touchedSides & side) == 0 || cellSize <= 0)
-                {
-                    return current;
-                }
-
-                return math.min(current, cellSize);
-            }
-        }
     }
 }
-
-
-
-

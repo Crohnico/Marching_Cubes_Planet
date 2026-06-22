@@ -27,11 +27,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
         [Header("Runtime")]
         [SerializeField] private bool useChunkCullingForRendering = true;
         [SerializeField] private bool usePlanetActionRadius = true;
-        [SerializeField] private bool useSegmentedCombinedMeshesNearPlanet = true;
         [SerializeField, Range(1, MaxCombinedMeshBucketCount)] private int nearCombinedMeshBucketCount = MaxCombinedMeshBucketCount;
-        [SerializeField, Min(1)] private int maxCombinedMeshBucketsRebuiltPerFrame = 2;
         [Header("Segment LOD")]
-        [SerializeField] private bool useSegmentLodSelection = true;
         [SerializeField] private bool useRadialLayerCulling = true;
         [SerializeField, Min(0)] private int neverLayerCullChunkDistance = 3;
         [SerializeField, Min(MinDeferredSegmentLodChunksBuiltPerFrame)] private int maxDeferredSegmentLodChunksBuiltPerFrame = MinDeferredSegmentLodChunksBuiltPerFrame;
@@ -44,10 +41,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
         public int LodCount => GetLodCount();
         public bool UseChunkCullingForRendering => useChunkCullingForRendering;
         public bool UsePlanetActionRadius => usePlanetActionRadius;
-        public bool UseSegmentedCombinedMeshesNearPlanet => useSegmentedCombinedMeshesNearPlanet;
         public int NearCombinedMeshBucketCount => Mathf.Clamp(nearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount);
-        public int MaxCombinedMeshBucketsRebuiltPerFrame => Mathf.Max(1, maxCombinedMeshBucketsRebuiltPerFrame);
-        public bool UseSegmentLodSelection => useSegmentLodSelection;
         public bool UseRadialLayerCulling => useRadialLayerCulling;
         public int NeverLayerCullChunkDistance => Mathf.Max(0, neverLayerCullChunkDistance);
         public int MaxDeferredSegmentLodChunksBuiltPerFrame => Mathf.Max(
@@ -77,7 +71,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
             ValidateLodDistances();
             defaultCellSize = Mathf.Max(1, defaultCellSize);
             nearCombinedMeshBucketCount = Mathf.Clamp(nearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount);
-            maxCombinedMeshBucketsRebuiltPerFrame = Mathf.Max(1, maxCombinedMeshBucketsRebuiltPerFrame);
             neverLayerCullChunkDistance = Mathf.Max(0, neverLayerCullChunkDistance);
             maxDeferredSegmentLodChunksBuiltPerFrame = Mathf.Max(
                 MinDeferredSegmentLodChunksBuiltPerFrame,

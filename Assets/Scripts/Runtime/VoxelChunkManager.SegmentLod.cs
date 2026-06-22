@@ -52,7 +52,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void ProcessDeferredSegmentLodBuilds()
         {
-            if (!UseSegmentLodSelection || !useNearCombinedMeshes || !nearCombinedMeshesBuiltOnce)
+            if (!useNearCombinedMeshes || !nearCombinedMeshesBuiltOnce)
             {
                 return;
             }
@@ -171,7 +171,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 CombinedMeshBucket bucket = nearCombinedMeshBuckets[key.bucketIndex];
                 Mesh mesh = CombineDeferredSegmentLodChunks(bucket, key);
                 InstallSegmentLodMesh(bucket, key.bucketIndex, key.lodIndex, mesh);
-                ApplyCombinedRendererVisibility(false);
+                ApplyCombinedRendererVisibility();
             }
 
             for (int i = 0; i < deferredSegmentLodChunkMeshes.Count; i++)
@@ -204,7 +204,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 {
                     chunkCoord = chunkCoord,
                     cellSize = activeDeferredSegmentLodBuild.cellSize,
-                    boundaryRefinement = BoundaryRefinement.Empty,
                     owner = gameObject,
                     mesh = chunkMesh,
                     altIndices = BuildAltIndicesFromMesh(chunkMesh),
@@ -339,7 +338,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void HandleSegmentLodMeshRequested(VoxelSegmentLodMeshCache cache, int lodIndex)
         {
-            if (!UseSegmentLodSelection || cache == null || lodIndex < 0 || lodIndex >= GetSegmentLodCount())
+            if (cache == null || lodIndex < 0 || lodIndex >= GetSegmentLodCount())
             {
                 return;
             }
@@ -362,7 +361,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             RebuildSegmentLodCombinedMeshBucket(bucket, bucketIndex, lodIndex);
             bucket.activeLodIndex = lodIndex;
             cache.LoadLOD(lodIndex);
-            ApplyCombinedRendererVisibility(false);
+            ApplyCombinedRendererVisibility();
         }
 
         private int FindSegmentLodCacheBucketIndex(VoxelSegmentLodMeshCache cache)
@@ -549,7 +548,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 {
                     chunkCoord = chunkCoord,
                     cellSize = cellSize,
-                    boundaryRefinement = BoundaryRefinement.Empty,
                     owner = gameObject,
                     mesh = chunkMesh,
                     altIndices = altIndices,
@@ -605,10 +603,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 cellRequestBuffer,
                 chunkOrigin,
                 chunkSize,
-                cellSize,
-                default,
-                config,
-                BoundaryRefinement.Empty);
+                cellSize);
 
             if (cellRequestBuffer.Count == 0)
             {
@@ -742,4 +737,3 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         }
     }
 }
-

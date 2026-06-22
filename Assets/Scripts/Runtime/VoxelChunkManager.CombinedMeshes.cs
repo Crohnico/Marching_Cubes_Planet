@@ -26,7 +26,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             {
                 useNearCombinedMeshes = shouldUseNearMeshes;
                 activeCombinedMeshBucketCount = desiredBucketCount;
-                nextCombinedMeshBucketIndex = 0;
                 combinedMeshLayoutDirty = true;
                 if (useNearCombinedMeshes)
                 {
@@ -58,90 +57,19 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             using (CombineMeshMarker.Auto())
             {
                 EnsureCombinedRenderer();
-                if (UseSegmentLodSelection && useNearCombinedMeshes)
-                {
-                    if (force || farCombinedMeshDirty || !IsFarCombinedMeshCached())
-                    {
-                        RebuildFarCombinedMesh();
-                    }
-
-                    UpdateSegmentLodCombinedMeshes();
-                    return;
-                }
-
-                if (force || combinedMeshLayoutDirty)
-                {
-                    if (useNearCombinedMeshes)
-                    {
-                        ClearActiveNearCombinedMeshes();
-                        MarkAllNearCombinedMeshesDirty();
-                    }
-                    else if (force || farCombinedMeshBucket == null || farCombinedMeshBucket.mesh == null)
-                    {
-                        farCombinedMeshDirty = true;
-                    }
-
-                    combinedMeshLayoutDirty = false;
-                }
-
-                bool needsFarBridge = useNearCombinedMeshes && !nearCombinedMeshesBuiltOnce;
-                if ((!useNearCombinedMeshes || needsFarBridge || force)
-                    && (force || farCombinedMeshDirty || !IsFarCombinedMeshCached()))
+                if (force || farCombinedMeshDirty || !IsFarCombinedMeshCached())
                 {
                     RebuildFarCombinedMesh();
                 }
 
-                int rebuiltBucketCount = 0;
-                int rebuildBudget = force
-                    ? activeCombinedMeshBucketCount
-                    : Mathf.Max(1, MaxCombinedMeshBucketsRebuiltPerFrame);
-                if (useNearCombinedMeshes && activeCombinedMeshBucketCount > 0)
-                {
-                    int bucketVisitCount = activeCombinedMeshBucketCount;
-                    int startBucketIndex = force
-                        ? 0
-                        : Mathf.Clamp(nextCombinedMeshBucketIndex, 0, activeCombinedMeshBucketCount - 1);
-                    for (int visitIndex = 0; visitIndex < bucketVisitCount; visitIndex++)
-                    {
-                        int bucketIndex = force
-                            ? visitIndex
-                            : (startBucketIndex + visitIndex) % activeCombinedMeshBucketCount;
-                        CombinedMeshBucket bucket = nearCombinedMeshBuckets[bucketIndex];
-                        if (!force && !bucket.dirty)
-                        {
-                            continue;
-                        }
-
-                        if (!force && rebuiltBucketCount >= rebuildBudget)
-                        {
-                            break;
-                        }
-
-                        bucket.dirty = false;
-                        rebuiltBucketCount++;
-                        nextCombinedMeshBucketIndex = (bucketIndex + 1) % activeCombinedMeshBucketCount;
-                    }
-                }
-
-                combinedMeshesDirty = HasDirtyCombinedMeshBucket();
-                if (useNearCombinedMeshes && !combinedMeshesDirty)
-                {
-                    nearCombinedMeshesBuiltOnce = true;
-                }
-
-                ApplyCombinedRendererVisibility();
+                UpdateSegmentLodCombinedMeshes();
             }
         }
 
 
         private bool ShouldUseNearCombinedMeshes()
         {
-            if (!UseSegmentedCombinedMeshesNearPlanet || ShouldThrottlePlanetUpdatesOutsideActionRadius())
-            {
-                return false;
-            }
-
-            return true;
+            return !ShouldThrottlePlanetUpdatesOutsideActionRadius();
         }
 
         private void RefreshFarHemisphereIfNeeded()
@@ -308,7 +236,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             bucketOwner.transform.localPosition = segmentCenter;
         }
 
-        private void ApplyCombinedRendererVisibility(bool forceMissingActiveLods = true)
+        private void ApplyCombinedRendererVisibility()
         {
             bool showNearMeshes = useNearCombinedMeshes && nearCombinedMeshesBuiltOnce;
             bool hasVisibleSegment = false;
@@ -328,7 +256,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     && i < activeCombinedMeshBucketCount
                     && IsNearSegmentVisible(i, shouldCullNearFrustum);
 
-                if (UseSegmentLodSelection && useNearCombinedMeshes)
+                if (useNearCombinedMeshes)
                 {
                     EnsureSegmentLodCacheIfNeeded(bucket);
                     if (!bucket.owner.activeSelf)
@@ -341,7 +269,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                         bucket.lodCache.SetPivotActive(active);
                     }
 
-                    ApplySegmentLodVisibility(bucket, i, active, forceMissingActiveLods);
+                    ApplySegmentLodVisibility(bucket, i, active);
                     if (active && IsSegmentLodActive(bucket))
                     {
                         hasReadyVisibleSegment = true;
@@ -363,20 +291,15 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
                     if (bucket.lodCache != null)
                     {
-                        bucket.lodCache.SetPivotActive(active);
-                    }
-
-                    ApplySegmentLodVisibility(bucket, i, active, forceMissingActiveLods);
-                    if (active && IsSegmentLodActive(bucket))
-                    {
-                        hasVisibleSegment = true;
-                        hasReadyVisibleSegment = true;
+                        bucket.lodCache.SetPivotActive(false);
+                        bucket.lodCache.LoadLOD(-1);
                     }
                 }
             }
 
             bool showFarMesh = !showNearMeshes
-                || (UseSegmentLodSelection && (!hasVisibleSegment || !hasReadyVisibleSegment));
+                || !hasVisibleSegment
+                || !hasReadyVisibleSegment;
             if (farCombinedMeshBucket != null)
             {
                 if (!farCombinedMeshBucket.owner.activeSelf)
@@ -468,8 +391,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private void ApplySegmentLodVisibility(
             CombinedMeshBucket bucket,
             int bucketIndex,
-            bool segmentActive,
-            bool forceMissingActiveLods)
+            bool segmentActive)
         {
             EnsureSegmentLodCacheIfNeeded(bucket);
             int activeLod = segmentActive ? ResolveLodIndexForSegment(bucketIndex) : -1;
@@ -572,11 +494,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private int ResolveCellSizeForChunk(int3 chunkCoord)
         {
-            if (!UseSegmentLodSelection)
-            {
-                return NormalizeCellSizeForChunk(config.CoarsestCellSize, config.ChunkSize);
-            }
-
             int requestedCellSize = GetCellSizeForLodIndex(ResolveActiveSegmentLodIndex());
             return NormalizeCellSizeForChunk(requestedCellSize, config.ChunkSize);
         }
@@ -772,7 +689,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private bool ShouldRenderChunk(VoxelChunkState state)
         {
-            if (UseSegmentLodSelection && useNearCombinedMeshes)
+            if (useNearCombinedMeshes)
             {
                 return true;
             }
@@ -933,19 +850,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
         }
 
-        private bool HasDirtyCombinedMeshBucket()
-        {
-            for (int i = 0; i < activeCombinedMeshBucketCount && i < nearCombinedMeshBuckets.Count; i++)
-            {
-                if (nearCombinedMeshBuckets[i].dirty)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
         private bool IsFarCombinedMeshCached()
         {
             return farCombinedMeshBucket != null
@@ -956,42 +860,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private bool IsFarBridgeVisible()
         {
             return useNearCombinedMeshes && !nearCombinedMeshesBuiltOnce;
-        }
-
-        private void ClearActiveNearCombinedMeshes()
-        {
-            for (int i = 0; i < activeCombinedMeshBucketCount && i < nearCombinedMeshBuckets.Count; i++)
-            {
-                CombinedMeshBucket bucket = nearCombinedMeshBuckets[i];
-                if (bucket.mesh != null)
-                {
-                    bucket.mesh.Clear();
-                }
-
-                if (bucket.lodMeshes == null)
-                {
-                    continue;
-                }
-
-                for (int lodIndex = 0; lodIndex < bucket.lodMeshes.Length; lodIndex++)
-                {
-                    Mesh mesh = bucket.lodMeshes[lodIndex];
-                    if (mesh != null)
-                    {
-                        mesh.Clear();
-                    }
-
-                    if (bucket.lodCached != null && lodIndex < bucket.lodCached.Length)
-                    {
-                        bucket.lodCached[lodIndex] = false;
-                    }
-
-                    if (bucket.lodCache != null)
-                    {
-                        bucket.lodCache.SetMesh(lodIndex, null);
-                    }
-                }
-            }
         }
 
         private static void EnsureCombineInstanceBuffer(CombinedMeshBucket bucket, int requiredLength)
