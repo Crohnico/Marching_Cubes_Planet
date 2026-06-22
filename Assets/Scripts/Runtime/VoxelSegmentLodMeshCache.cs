@@ -60,9 +60,17 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             meshFilter.sharedMesh = mesh;
-            lod.GetComponent<MeshRenderer>().sharedMaterial = material;
-            lod.SetActive(true);
-            lod.SetActive(false);
+            MeshRenderer meshRenderer = lod.GetComponent<MeshRenderer>();
+            if (meshRenderer.sharedMaterial != material)
+            {
+                meshRenderer.sharedMaterial = material;
+            }
+
+            bool shouldBeActive = activeLodIndex == lodIndex;
+            if (lod.activeSelf != shouldBeActive)
+            {
+                lod.SetActive(shouldBeActive);
+            }
 
             delayedAction?.Invoke();
             delayedAction = null;
@@ -74,9 +82,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             {
                 activeLodIndex = -1;
                 delayedAction = null;
-                lod0?.SetActive(false);
-                lod1?.SetActive(false);
-                lod2?.SetActive(false);
+                SetLodActiveIfNeeded(lod0, false);
+                SetLodActiveIfNeeded(lod1, false);
+                SetLodActiveIfNeeded(lod2, false);
                 return false;
             }
 
@@ -93,11 +101,19 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 return true;
             }
 
-            lod0?.SetActive(lodIndex == 0);
-            lod1?.SetActive(lodIndex == 1);
-            lod2?.SetActive(lodIndex == 2);
+            SetLodActiveIfNeeded(lod0, lodIndex == 0);
+            SetLodActiveIfNeeded(lod1, lodIndex == 1);
+            SetLodActiveIfNeeded(lod2, lodIndex == 2);
             activeLodIndex = lodIndex;
             return true;
+        }
+
+        private static void SetLodActiveIfNeeded(GameObject lod, bool active)
+        {
+            if (lod != null && lod.activeSelf != active)
+            {
+                lod.SetActive(active);
+            }
         }
 
         private GameObject GetOrCreateLod(int lodIndex)

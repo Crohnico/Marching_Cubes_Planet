@@ -8,7 +8,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
     [DisallowMultipleComponent]
     public sealed class VoxelSphereGenerator : MonoBehaviour
     {
-        [SerializeField] private VoxelChunkManager chunkManager;
+        [SerializeField] private PlanetManager chunkManager;
         [SerializeField, Min(0.01f)] private float radius = 14f;
         [SerializeField] private int seed = 12345;
         [SerializeField] private Material terrainMaterial;
@@ -40,7 +40,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             TryGetComponent(out chunkManager);
         }
 
-        public void Configure(VoxelChunkManager nextChunkManager)
+        public void Configure(PlanetManager nextChunkManager)
         {
             chunkManager = nextChunkManager;
         }
@@ -61,7 +61,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             };
         }
 
-        public void DeclareOccupiedChunks(VoxelChunkManager manager, int3 chunkSize)
+        public void DeclareOccupiedChunks(PlanetManager manager, int3 chunkSize)
         {
             if (manager == null)
             {
@@ -121,7 +121,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
         }
 
-        private void ReleaseDeclaredChunks(VoxelChunkManager manager)
+        private void ReleaseDeclaredChunks(PlanetManager manager)
         {
             foreach (int3 chunkCoord in declaredChunks)
             {
@@ -136,7 +136,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             if (chunkManager == null)
             {
-                Debug.LogWarning("VoxelSphereGenerator necesita un VoxelChunkManager asignado.", this);
+                Debug.LogWarning("VoxelSphereGenerator necesita un PlanetManager asignado.", this);
                 return;
             }
 
@@ -354,7 +354,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 meshRenderer = child.AddComponent<MeshRenderer>();
             }
 
-            meshRenderer.sharedMaterial = waterMaterial;
+            AssignWaterMaterialIfNeeded(meshRenderer);
         }
 
         private void RebuildWaterMeshes(
@@ -408,7 +408,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                         false,
                         true);
                     meshFilter.sharedMesh = nextMesh;
-                    segment.GetComponent<MeshRenderer>().sharedMaterial = waterMaterial;
+                    AssignWaterMaterialIfNeeded(segment.GetComponent<MeshRenderer>());
                     DestroyMesh(previousMesh);
                 }
             }
@@ -418,7 +418,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             MeshFilter meshFilter = owner.GetComponent<MeshFilter>();
             meshFilter.sharedMesh = nextMesh;
-            owner.GetComponent<MeshRenderer>().sharedMaterial = waterMaterial;
+            AssignWaterMaterialIfNeeded(owner.GetComponent<MeshRenderer>());
             DestroyMesh(previousMesh);
             return nextMesh;
         }
@@ -558,7 +558,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
                 if (farWaterObject.TryGetComponent(out MeshRenderer renderer))
                 {
-                    renderer.sharedMaterial = waterMaterial;
+                    AssignWaterMaterialIfNeeded(renderer);
                 }
             }
 
@@ -578,8 +578,16 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
                 if (segment.TryGetComponent(out MeshRenderer renderer))
                 {
-                    renderer.sharedMaterial = waterMaterial;
+                    AssignWaterMaterialIfNeeded(renderer);
                 }
+            }
+        }
+
+        private void AssignWaterMaterialIfNeeded(MeshRenderer meshRenderer)
+        {
+            if (meshRenderer != null && meshRenderer.sharedMaterial != waterMaterial)
+            {
+                meshRenderer.sharedMaterial = waterMaterial;
             }
         }
 

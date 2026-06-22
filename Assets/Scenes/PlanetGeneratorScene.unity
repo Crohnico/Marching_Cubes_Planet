@@ -168,11 +168,11 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 16479debd3ae1ff49b23ef1dfc40d66d, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.VoxelEngine.Runtime.VoxelChunkManager
+  m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.VoxelEngine.Runtime.PlanetManager
   playerChunkTracker: {fileID: 2099919848}
   sphereGenerator: {fileID: 181062080}
   fallbackAnchor: {fileID: 2099919847}
-  generateOnEnable: 1
+  PlanetID: moon
   drawSegmentGizmos: 1
   farHemisphereRefreshAngle: 5
 --- !u!4 &181062082
@@ -680,11 +680,11 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 16479debd3ae1ff49b23ef1dfc40d66d, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.VoxelEngine.Runtime.VoxelChunkManager
+  m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.VoxelEngine.Runtime.PlanetManager
   playerChunkTracker: {fileID: 2099919848}
   sphereGenerator: {fileID: 1723249796}
   fallbackAnchor: {fileID: 2099919847}
-  generateOnEnable: 1
+  PlanetID: planet
   drawSegmentGizmos: 1
   farHemisphereRefreshAngle: 5
 --- !u!4 &1723249798
@@ -773,6 +773,54 @@ MonoBehaviour:
   referencePlanet: {fileID: 0}
   planetReferencePadding: 512
   planetUpAlignSpeed: 8
+--- !u!1 &310000001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 310000002}
+  - component: {fileID: 310000003}
+  m_Layer: 0
+  m_Name: Stellar System
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &310000002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 310000001}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &310000003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 310000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d8c5f6039f5d4fd4a9c19e5b8124d7cb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.VoxelEngine.Runtime.StellarSystem
+  ID: demo-system
+  player: {fileID: 2099919847}
+  startupFarChunkBuildsPerFrame: 1000
+  planets: []
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -782,3 +830,4 @@ SceneRoots:
   - {fileID: 2099919847}
   - {fileID: 1723249798}
   - {fileID: 181062082}
+  - {fileID: 310000002}

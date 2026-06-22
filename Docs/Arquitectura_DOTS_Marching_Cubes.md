@@ -510,7 +510,7 @@ Despues del Job, el hilo principal copia esos buffers al `Mesh` de Unity.
 
 ### Render agregado
 
-Cada chunk conserva su mesh individual como dato de runtime, pero no crea un `MeshRenderer` propio. El `VoxelChunkManager` mantiene un unico `MeshFilter`/`MeshRenderer` con un mesh combinado y un solo material.
+Cada chunk conserva su mesh individual como dato de runtime, pero no crea un `MeshRenderer` propio. El `PlanetManager` mantiene un unico `MeshFilter`/`MeshRenderer` con un mesh combinado y un solo material.
 
 Regla:
 
@@ -871,7 +871,7 @@ Assets/
       MarchingCubes16Resolver.cs
       MarchingCubes32Resolver.cs
     Runtime/
-      VoxelChunkManager.cs
+      PlanetManager.cs
       VoxelChunkMesh.cs
       PlayerChunkTracker.cs
       VoxelEngineBootstrap.cs

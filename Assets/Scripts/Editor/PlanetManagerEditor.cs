@@ -4,14 +4,14 @@ using UnityEngine;
 
 namespace MarchingCubesPlanet.VoxelEngine.Editor
 {
-    [CustomEditor(typeof(VoxelChunkManager))]
-    public sealed class VoxelChunkManagerEditor : UnityEditor.Editor
+    [CustomEditor(typeof(PlanetManager))]
+    public sealed class PlanetManagerEditor : UnityEditor.Editor
     {
         public override void OnInspectorGUI()
         {
             DrawDefaultInspector();
 
-            VoxelChunkManager manager = (VoxelChunkManager)target;
+            PlanetManager manager = (PlanetManager)target;
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Runtime State", EditorStyles.boldLabel);

@@ -8,7 +8,7 @@ using UnityEngine.Rendering;
 
 namespace MarchingCubesPlanet.VoxelEngine.Runtime
 {
-    public sealed partial class VoxelChunkManager
+    public sealed partial class PlanetManager
     {
         private void UpdateSegmentLodCombinedMeshes()
         {
@@ -16,6 +16,16 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             if (combinedMeshLayoutDirty)
             {
                 CancelDeferredSegmentLodBuilds();
+            }
+
+            if (!useNearCombinedMeshes || activeCombinedMeshBucketCount <= 0)
+            {
+                nearCombinedMeshesBuiltOnce = false;
+                combinedMeshLayoutDirty = false;
+                combinedMeshesDirty = farCombinedMeshDirty;
+                MarkCombinedRendererVisibilityDirty();
+                ApplyCombinedRendererVisibility();
+                return;
             }
 
             for (int i = 0; i < activeCombinedMeshBucketCount && i < nearCombinedMeshBuckets.Count; i++)
@@ -34,6 +44,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             combinedMeshLayoutDirty = false;
             combinedMeshesDirty = false;
             nearCombinedMeshesBuiltOnce = true;
+            MarkCombinedRendererVisibilityDirty();
             ApplyCombinedRendererVisibility();
         }
 
@@ -171,6 +182,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 CombinedMeshBucket bucket = nearCombinedMeshBuckets[key.bucketIndex];
                 Mesh mesh = CombineDeferredSegmentLodChunks(bucket, key);
                 InstallSegmentLodMesh(bucket, key.bucketIndex, key.lodIndex, mesh);
+                MarkCombinedRendererVisibilityDirty();
                 ApplyCombinedRendererVisibility();
             }
 
@@ -360,6 +372,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             RebuildSegmentLodCombinedMeshBucket(bucket, bucketIndex, lodIndex);
             bucket.activeLodIndex = lodIndex;
             cache.LoadLOD(lodIndex);
+            MarkCombinedRendererVisibilityDirty();
             ApplyCombinedRendererVisibility();
         }
 

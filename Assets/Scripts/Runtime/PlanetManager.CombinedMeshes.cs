@@ -8,7 +8,7 @@ using UnityEngine.Rendering;
 
 namespace MarchingCubesPlanet.VoxelEngine.Runtime
 {
-    public sealed partial class VoxelChunkManager
+    public sealed partial class PlanetManager
     {
         private void EnsureCombinedRenderer()
         {
@@ -23,20 +23,30 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 ? Mathf.Clamp(NearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount)
                 : 0;
 
-            if (useNearCombinedMeshes != shouldUseNearMeshes
+            if (!combinedMeshRenderModeInitialized
+                || useNearCombinedMeshes != shouldUseNearMeshes
                 || activeCombinedMeshBucketCount != desiredBucketCount)
             {
+                combinedMeshRenderModeInitialized = true;
                 useNearCombinedMeshes = shouldUseNearMeshes;
                 activeCombinedMeshBucketCount = desiredBucketCount;
                 combinedMeshLayoutDirty = true;
+                MarkCombinedRendererVisibilityDirty();
                 if (useNearCombinedMeshes)
                 {
                     nearCombinedMeshesBuiltOnce = false;
+                    hasLastNearVisibilityFocusKey = false;
                     MarkAllNearCombinedMeshesDirty();
                 }
+                else
+                {
+                    nearCombinedMeshesBuiltOnce = false;
+                    hasLastNearVisibilityFocusKey = false;
+                    farCombinedMeshDirty = true;
+                    combinedMeshesDirty = true;
+                    CancelDeferredSegmentLodBuilds();
+                }
             }
-
-            ApplyCombinedRendererVisibility();
         }
 
         private void UpdateCombinedMeshForView()
@@ -134,10 +144,14 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     "VoxelCombinedMesh_Far",
                     true,
                     false);
+                MarkCombinedRendererVisibilityDirty();
             }
 
             ConfigurePlanetCenteredRenderTransform(farCombinedMeshBucket.owner.transform);
-            farCombinedMeshBucket.meshFilter.sharedMesh = farCombinedMeshBucket.mesh;
+            if (farCombinedMeshBucket.meshFilter.sharedMesh != farCombinedMeshBucket.mesh)
+            {
+                farCombinedMeshBucket.meshFilter.sharedMesh = farCombinedMeshBucket.mesh;
+            }
         }
 
         private void EnsureVisibleCombinedMeshBucket()
@@ -149,11 +163,19 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     "VisibleMesh_Mesh",
                     true,
                     true);
+                MarkCombinedRendererVisibilityDirty();
             }
 
             ConfigurePlanetCenteredRenderTransform(visibleCombinedMeshBucket.owner.transform);
-            visibleCombinedMeshBucket.meshRenderer.sharedMaterial = TerrainMaterial;
-            visibleCombinedMeshBucket.meshFilter.sharedMesh = visibleCombinedMeshBucket.mesh;
+            if (visibleCombinedMeshBucket.meshRenderer.sharedMaterial != TerrainMaterial)
+            {
+                visibleCombinedMeshBucket.meshRenderer.sharedMaterial = TerrainMaterial;
+            }
+
+            if (visibleCombinedMeshBucket.meshFilter.sharedMesh != visibleCombinedMeshBucket.mesh)
+            {
+                visibleCombinedMeshBucket.meshFilter.sharedMesh = visibleCombinedMeshBucket.mesh;
+            }
         }
 
         private void RemoveLegacyRootRendererComponents()
@@ -172,10 +194,26 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void ConfigurePlanetCenteredRenderTransform(Transform renderTransform)
         {
-            renderTransform.SetParent(transform, false);
-            renderTransform.localPosition = GetSpherePositionInManagerLocal();
-            renderTransform.localRotation = Quaternion.identity;
-            renderTransform.localScale = Vector3.one;
+            if (renderTransform.parent != transform)
+            {
+                renderTransform.SetParent(transform, false);
+            }
+
+            Vector3 localPosition = GetSpherePositionInManagerLocal();
+            if ((renderTransform.localPosition - localPosition).sqrMagnitude > 0.000001f)
+            {
+                renderTransform.localPosition = localPosition;
+            }
+
+            if (renderTransform.localRotation != Quaternion.identity)
+            {
+                renderTransform.localRotation = Quaternion.identity;
+            }
+
+            if (renderTransform.localScale != Vector3.one)
+            {
+                renderTransform.localScale = Vector3.one;
+            }
         }
 
         private void EnsureNearCombinedMeshBucketCount(int requiredBucketCount)
@@ -317,6 +355,12 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void ApplyCombinedRendererVisibility()
         {
+            if (!combinedRendererVisibilityDirty)
+            {
+                return;
+            }
+
+            combinedRendererVisibilityDirty = false;
             bool showNearMeshes = useNearCombinedMeshes && nearCombinedMeshesBuiltOnce;
             bool hasVisibleSegment = false;
             bool hasReadyVisibleSegment = false;
@@ -327,7 +371,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 GeometryUtility.CalculateFrustumPlanes(playerChunkTracker.ChunkCullingCamera, chunkCullingFrustumPlanes);
             }
 
-            bool planetVisibleInFrustum = !shouldCullRenderFrustum
+            bool shouldCullVisibleMeshFrustum = showNearMeshes && shouldCullRenderFrustum;
+            bool planetVisibleInFrustum = !shouldCullVisibleMeshFrustum
                 || GeometryUtility.TestPlanesAABB(chunkCullingFrustumPlanes, BuildPlanetWorldBounds());
             bool shouldCullNearFrustum = showNearMeshes && shouldCullRenderFrustum;
 
@@ -514,6 +559,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             farCombinedMeshDirty = false;
+            MarkCombinedRendererVisibilityDirty();
         }
 
         private void RebuildVisibleFarMesh()
@@ -532,7 +578,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private bool ShouldApplyVisibleFarCuts()
         {
             return !useNearCombinedMeshes
-                && (ShouldCullRenderedChunks() || UseRadialLayerCulling);
+                && UseRadialLayerCulling;
         }
 
         private void CopyFarMeshToVisibleMesh()
@@ -854,7 +900,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 return true;
             }
 
-            return IsChunkRenderVisible(state.chunkCoord);
+            return GetChunkLayerMask(state) != VoxelChunkLayerMask.None;
         }
 
         private void AddChunkCombineInstances(
@@ -942,6 +988,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void MarkCombinedMeshDirty()
         {
+            MarkCombinedRendererVisibilityDirty();
             if (useNearCombinedMeshes)
             {
                 MarkAllNearCombinedMeshesDirty();
@@ -960,6 +1007,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private void MarkCombinedMeshDirty(int3 chunkCoord)
         {
             combinedMeshesDirty = true;
+            MarkCombinedRendererVisibilityDirty();
             if (!useNearCombinedMeshes)
             {
                 farCombinedMeshDirty = true;
@@ -987,10 +1035,16 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private void MarkAllNearCombinedMeshesDirty()
         {
             combinedMeshesDirty = true;
+            MarkCombinedRendererVisibilityDirty();
             for (int i = 0; i < nearCombinedMeshBuckets.Count; i++)
             {
                 MarkNearCombinedMeshBucketDirty(nearCombinedMeshBuckets[i]);
             }
+        }
+
+        private void MarkCombinedRendererVisibilityDirty()
+        {
+            combinedRendererVisibilityDirty = true;
         }
 
         private static void MarkNearCombinedMeshBucketDirty(CombinedMeshBucket bucket)
@@ -1012,6 +1066,20 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             return farCombinedMeshBucket != null
                 && farCombinedMeshBucket.mesh != null
                 && farCombinedMeshBucket.mesh.vertexCount > 0;
+        }
+
+        private int GetFarCombinedMeshVertexCount()
+        {
+            return farCombinedMeshBucket != null && farCombinedMeshBucket.mesh != null
+                ? farCombinedMeshBucket.mesh.vertexCount
+                : 0;
+        }
+
+        private int GetVisibleCombinedMeshVertexCount()
+        {
+            return visibleCombinedMeshBucket != null && visibleCombinedMeshBucket.mesh != null
+                ? visibleCombinedMeshBucket.mesh.vertexCount
+                : 0;
         }
 
         private bool IsFarBridgeVisible()
@@ -1074,6 +1142,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             farCombinedMeshDirty = true;
             nearCombinedMeshesBuiltOnce = false;
+            hasLastNearVisibilityFocusKey = false;
+            MarkCombinedRendererVisibilityDirty();
             MarkAllNearCombinedMeshesDirty();
         }
 
@@ -1145,9 +1215,12 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             activeCombinedMeshBucketCount = 0;
             useNearCombinedMeshes = false;
             nearCombinedMeshesBuiltOnce = false;
+            combinedMeshRenderModeInitialized = false;
+            hasLastNearVisibilityFocusKey = false;
             farCombinedMeshDirty = true;
             combinedMeshLayoutDirty = true;
             combinedMeshesDirty = true;
+            MarkCombinedRendererVisibilityDirty();
         }
 
     }
