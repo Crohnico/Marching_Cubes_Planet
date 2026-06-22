@@ -171,7 +171,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             float radius = sphereGenerator != null
                 ? Mathf.Max(0.01f, sphereGenerator.MaximumTerrainRadius)
                 : 1f;
-            Vector3 center = sphereGenerator != null ? sphereGenerator.Center : Vector3.zero;
+            Vector3 center = GetSpherePositionInManagerLocal();
             Vector3 size = new Vector3(
                 (radius * 2f) / grid.x,
                 (radius * 2f) / grid.y,
@@ -518,7 +518,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             Vector3 focus = GetCurrentDetailFocusVector3();
             float effectiveRadius = Mathf.Max(0f, sphereGenerator.Radius + GetMaximumConfiguredLodDistance());
-            return (focus - sphereGenerator.Center).sqrMagnitude <= effectiveRadius * effectiveRadius;
+            return (focus - GetSpherePosition()).sqrMagnitude <= effectiveRadius * effectiveRadius;
         }
 
         private float GetMaximumConfiguredLodDistance()
@@ -845,9 +845,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             NativeList<int> interiorIndices,
             NativeList<int> transitionIndices,
             NativeList<int> surfaceIndices,
-            out VoxelChunkAltIndices altIndices,
-            bool transformVerticesToLocal = false,
-            Matrix4x4 worldToLocalMatrix = default)
+            out VoxelChunkAltIndices altIndices)
         {
             using (UploadMeshMarker.Auto())
             {
@@ -867,16 +865,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     return mesh;
                 }
 
-                if (transformVerticesToLocal)
-                {
-                    CopyToVector3List(vertices, meshUploadVertices, worldToLocalMatrix);
-                    CopyNormalsToVector3List(normals, meshUploadNormals, worldToLocalMatrix);
-                }
-                else
-                {
-                    CopyToVector3List(vertices, meshUploadVertices);
-                    CopyToVector3List(normals, meshUploadNormals);
-                }
+                CopyToVector3List(vertices, meshUploadVertices);
+                CopyToVector3List(normals, meshUploadNormals);
 
                 Bounds bounds = CalculateBounds(meshUploadVertices);
                 CopyToVector2List(uvs, meshUploadUvs);
@@ -921,28 +911,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
         }
 
-        private static void CopyToVector3List(NativeList<float3> source, List<Vector3> destination, Matrix4x4 transformMatrix)
-        {
-            EnsureListCapacity(destination, source.Length);
-            destination.Clear();
-            for (int i = 0; i < source.Length; i++)
-            {
-                float3 value = source[i];
-                destination.Add(transformMatrix.MultiplyPoint3x4(new Vector3(value.x, value.y, value.z)));
-            }
-        }
-
-        private static void CopyNormalsToVector3List(NativeList<float3> source, List<Vector3> destination, Matrix4x4 transformMatrix)
-        {
-            EnsureListCapacity(destination, source.Length);
-            destination.Clear();
-            for (int i = 0; i < source.Length; i++)
-            {
-                float3 value = source[i];
-                destination.Add(transformMatrix.MultiplyVector(new Vector3(value.x, value.y, value.z)).normalized);
-            }
-        }
-
         private static void CopyToVector2List(NativeList<float2> source, List<Vector2> destination)
         {
             EnsureListCapacity(destination, source.Length);
@@ -970,24 +938,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             {
                 list.Capacity = requiredCapacity;
             }
-        }
-
-        private static Bounds CalculateBounds(NativeList<float3> vertices)
-        {
-            float3 min = vertices[0];
-            float3 max = vertices[0];
-            for (int i = 1; i < vertices.Length; i++)
-            {
-                float3 vertex = vertices[i];
-                min = math.min(min, vertex);
-                max = math.max(max, vertex);
-            }
-
-            float3 center = (min + max) * 0.5f;
-            float3 size = max - min;
-            return new Bounds(
-                new Vector3(center.x, center.y, center.z),
-                new Vector3(size.x, size.y, size.z));
         }
 
         private void MarkChunkVisibilityDirty()
@@ -1129,6 +1079,16 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             return sphereGenerator != null
                 ? sphereGenerator.BuildScalarFieldSettings()
                 : config.ScalarFieldSettings;
+        }
+
+        private Vector3 GetSpherePosition()
+        {
+            return sphereGenerator != null ? sphereGenerator.transform.position : Vector3.zero;
+        }
+
+        private Vector3 GetSpherePositionInManagerLocal()
+        {
+            return sphereGenerator != null ? transform.InverseTransformPoint(sphereGenerator.transform.position) : Vector3.zero;
         }
 
         private static void DestroyChunk(VoxelChunkState state)

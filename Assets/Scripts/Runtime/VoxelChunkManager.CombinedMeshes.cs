@@ -106,7 +106,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private bool TryGetCurrentFarHemisphereDirection(out Vector3 direction)
         {
-            Vector3 delta = GetCurrentDetailFocusVector3() - sphereGenerator.Center;
+            Vector3 delta = GetCurrentDetailFocusVector3() - GetSpherePosition();
             float squaredMagnitude = delta.sqrMagnitude;
             if (squaredMagnitude <= 0.0001f)
             {
@@ -344,7 +344,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             Vector3 playerPosition = GetCurrentDetailFocusVector3();
-            Vector3 sphereCenter = sphereGenerator.Center;
+            Vector3 sphereCenter = GetSpherePosition();
             float sphereRadius = sphereGenerator.Radius;
             if ((playerPosition - sphereCenter).sqrMagnitude < sphereRadius * sphereRadius)
             {
@@ -534,7 +534,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             Vector3 localCenter = sphereGenerator != null
-                ? localPosition - sphereGenerator.Center
+                ? localPosition - GetSpherePositionInManagerLocal()
                 : localPosition;
             float radius = sphereGenerator != null
                 ? Mathf.Max(0.01f, sphereGenerator.MaximumTerrainRadius)
@@ -557,7 +557,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             int safeBucketCount = Mathf.Clamp(bucketCount, 1, MaxCombinedMeshBucketCount);
             if (!TryGetCombinedMeshBucketGrid(safeBucketCount, out int3 grid))
             {
-                return sphereGenerator != null ? sphereGenerator.Center : Vector3.zero;
+                return GetSpherePositionInManagerLocal();
             }
 
             int clampedIndex = Mathf.Clamp(segmentIndex, 0, safeBucketCount - 1);
@@ -573,7 +573,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 (y + 0.5f) / grid.y,
                 (z + 0.5f) / grid.z);
             Vector3 localCenter = normalizedCenter * (radius * 2f) - Vector3.one * radius;
-            return sphereGenerator != null ? sphereGenerator.Center + localCenter : localCenter;
+            return sphereGenerator != null ? GetSpherePositionInManagerLocal() + localCenter : localCenter;
         }
 
         private Bounds GetSegmentBounds(int segmentIndex, int bucketCount)
@@ -734,7 +734,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             Vector3 playerPosition = GetCurrentDetailFocusVector3();
-            Vector3 sphereCenter = sphereGenerator.Center;
+            Vector3 sphereCenter = GetSpherePosition();
             float sphereRadius = sphereGenerator.Radius;
             bool playerInside = (playerPosition - sphereCenter).sqrMagnitude < sphereRadius * sphereRadius;
             if (playerInside)

@@ -9,24 +9,14 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
     public sealed class VoxelSphereGenerator : MonoBehaviour
     {
         [SerializeField] private VoxelChunkManager chunkManager;
-        [SerializeField] private Transform centerOverride;
-        [SerializeField] private Vector3 center = new Vector3(18f, 18f, 18f);
         [SerializeField, Min(0.01f)] private float radius = 14f;
         [SerializeField] private int seed = 12345;
         [SerializeField] private Material terrainMaterial;
         [SerializeField] private PlanetNoiseProfile planetNoiseProfile;
-        [SerializeField] private float isoLevel;
-        [SerializeField, Min(0f)] private float surfaceLayerDepth = 64f;
-        [SerializeField, Min(0f)] private float transitionLayerDepth = 192f;
         [SerializeField] private bool declareOnlySurfaceChunks = true;
-        [SerializeField, Min(0f)] private float chunkDeclarationPadding = 0f;
         [Header("Water")]
         [SerializeField] private bool generateWater = true;
         [SerializeField] private Material waterMaterial;
-        [SerializeField, Range(1, 64)] private int waterSegmentCount = 64;
-        [SerializeField, Min(4)] private int waterLatitudeSegments = 32;
-        [SerializeField, Min(4)] private int waterLongitudeSegments = 64;
-        [SerializeField, Min(0f)] private float waterRadiusPadding = 0.25f;
 
         private readonly HashSet<int3> declaredChunks = new HashSet<int3>();
         private readonly HashSet<int3> nextDeclaredChunks = new HashSet<int3>();
@@ -41,22 +31,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private bool hasLastWaterHemisphereDirection;
 
         public float Radius => radius;
-        public Vector3 Center => centerOverride != null ? centerOverride.position : center;
         public Material TerrainMaterial => terrainMaterial;
         public float SeaSurfaceRadius => Mathf.Max(0.01f, radius + GetSeaSurfaceOffset());
         public float MaximumTerrainRadius => GetMaximumTerrainRadius();
-
-        public float GetActionRadius(VoxelEngineConfig config)
-        {
-            float lodPadding = config != null ? config.CoarsestLodStartDistance : 0f;
-            return GetMaximumTerrainRadius() + lodPadding;
-        }
-
-        public bool ContainsActionPoint(Vector3 point, VoxelEngineConfig config)
-        {
-            float actionRadius = GetActionRadius(config);
-            return (point - Center).sqrMagnitude <= actionRadius * actionRadius;
-        }
 
         private void Reset()
         {
@@ -70,14 +47,14 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         public ScalarFieldSettings BuildScalarFieldSettings()
         {
-            Vector3 resolvedCenter = Center;
+            Vector3 resolvedCenter = transform.position;
             return new ScalarFieldSettings
             {
                 debugSphereCenter = new float3(resolvedCenter.x, resolvedCenter.y, resolvedCenter.z),
                 debugSphereRadius = radius,
-                isoLevel = isoLevel,
-                surfaceLayerDepth = surfaceLayerDepth,
-                transitionLayerDepth = Mathf.Max(surfaceLayerDepth, transitionLayerDepth),
+                isoLevel = ScalarFieldSettings.DefaultIsoLevel,
+                surfaceLayerDepth = ScalarFieldSettings.DefaultSurfaceLayerDepth,
+                transitionLayerDepth = ScalarFieldSettings.DefaultTransitionLayerDepth,
                 planetNoise = planetNoiseProfile != null
                     ? planetNoiseProfile.BuildRuntimeSettings(seed)
                     : PlanetNoiseSettings.Default
@@ -91,7 +68,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 return;
             }
 
-            Vector3 resolvedCenter = Center;
+            Vector3 resolvedCenter = transform.position;
             float maxRadius = GetMaximumTerrainRadius();
             float3 min = new float3(
                 resolvedCenter.x - maxRadius,
@@ -170,13 +147,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private void OnValidate()
         {
             radius = Mathf.Max(0.01f, radius);
-            surfaceLayerDepth = Mathf.Max(0f, surfaceLayerDepth);
-            transitionLayerDepth = Mathf.Max(surfaceLayerDepth, transitionLayerDepth);
-            chunkDeclarationPadding = Mathf.Max(0f, chunkDeclarationPadding);
-            waterLatitudeSegments = Mathf.Max(4, waterLatitudeSegments);
-            waterLongitudeSegments = Mathf.Max(4, waterLongitudeSegments);
-            waterSegmentCount = Mathf.Clamp(waterSegmentCount, 1, 64);
-            waterRadiusPadding = Mathf.Max(0f, waterRadiusPadding);
             waterMeshDirty = true;
         }
 
@@ -187,8 +157,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             Vector3 max = min + new Vector3(chunkSize.x, chunkSize.y, chunkSize.z);
             float minDistanceSquared = GetSquaredDistanceToAabb(sphereCenter, min, max);
             float maxDistanceSquared = GetMaxSquaredDistanceToAabb(sphereCenter, min, max);
-            float minRadius = Mathf.Max(0f, GetMinimumTerrainRadius() - chunkDeclarationPadding);
-            float maxRadius = GetMaximumTerrainRadius() + chunkDeclarationPadding;
+            float minRadius = GetMinimumTerrainRadius();
+            float maxRadius = GetMaximumTerrainRadius();
             return minDistanceSquared <= maxRadius * maxRadius
                 && maxDistanceSquared >= minRadius * minRadius;
         }
@@ -238,8 +208,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             EnsureWaterObjects();
-            float waterRadius = SeaSurfaceRadius + waterRadiusPadding;
-            Vector3 waterCenter = Center;
+            float waterRadius = SeaSurfaceRadius;
+            Vector3 waterCenter = transform.position;
             Vector3 waterHemisphereDirection = GetWaterHemisphereDirection(waterCenter);
             bool useNearWater = chunkManager != null && chunkManager.IsNearCombinedRenderingActive;
             bool shapeChanged = forceRebuild
@@ -352,8 +322,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             bool rebuildNearWater)
         {
             int targetWaterSegmentCount = GetWaterSegmentCount();
-            int normalizedLongitudeSegments = Mathf.Max(targetWaterSegmentCount, waterLongitudeSegments);
-            int longitudeSegmentsPerWaterSegment = Mathf.Max(1, Mathf.CeilToInt(normalizedLongitudeSegments / (float)targetWaterSegmentCount));
+            int waterResolution = Mathf.Max(4, targetWaterSegmentCount);
+            int longitudeSegmentsPerWaterSegment = Mathf.Max(1, Mathf.CeilToInt(waterResolution / (float)targetWaterSegmentCount));
             int totalLongitudeSegments = longitudeSegmentsPerWaterSegment * targetWaterSegmentCount;
 
             if (rebuildFarWater)
@@ -368,7 +338,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                         waterRadius,
                         0,
                         1,
-                        waterLatitudeSegments,
+                        waterResolution,
                         totalLongitudeSegments,
                         hemisphereDirection,
                         true,
@@ -389,7 +359,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                         waterRadius,
                         i,
                         targetWaterSegmentCount,
-                        waterLatitudeSegments,
+                        waterResolution,
                         totalLongitudeSegments,
                         hemisphereDirection,
                         false,
@@ -496,7 +466,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             return chunkManager != null
                 ? Mathf.Clamp(chunkManager.NearSegmentCount, 1, 64)
-                : Mathf.Clamp(waterSegmentCount, 1, 64);
+                : 1;
         }
 
         private void AddWaterTriangleIfVisible(
@@ -635,7 +605,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private void OnDrawGizmosSelected()
         {
             Gizmos.color = new Color(0.2f, 0.7f, 1f, 0.35f);
-            Gizmos.DrawWireSphere(Center, radius);
+            Gizmos.DrawWireSphere(transform.position, radius);
         }
     }
 }

@@ -145,7 +145,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 return false;
             }
 
-            Vector3 fromCenter = transform.position - planet.Center;
+            Vector3 fromCenter = transform.position - planet.transform.position;
             float maxDistance = planet.MaximumTerrainRadius + planetReferencePadding;
             if (fromCenter.sqrMagnitude > maxDistance * maxDistance)
             {

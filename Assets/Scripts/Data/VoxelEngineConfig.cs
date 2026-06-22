@@ -35,9 +35,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
 
         public int3 ChunkSize => new int3(chunkSize.x, chunkSize.y, chunkSize.z);
         public int DefaultCellSize => NormalizeCellSize(defaultCellSize);
-        public int FinestCellSize => GetFinestCellSize();
-        public int CoarsestCellSize => GetCoarsestCellSize();
-        public float CoarsestLodStartDistance => GetLodStartDistanceForCellSize(CoarsestCellSize);
         public int LodCount => GetLodCount();
         public bool UseChunkCullingForRendering => useChunkCullingForRendering;
         public bool UsePlanetActionRadius => usePlanetActionRadius;
@@ -52,14 +49,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
         {
             debugSphereCenter = new float3(chunkSize.x, chunkSize.y, chunkSize.z) * 0.5f,
             debugSphereRadius = math.min(chunkSize.x, math.min(chunkSize.y, chunkSize.z)) * 0.45f,
-            isoLevel = 0f
+            isoLevel = ScalarFieldSettings.DefaultIsoLevel,
+            surfaceLayerDepth = ScalarFieldSettings.DefaultSurfaceLayerDepth,
+            transitionLayerDepth = ScalarFieldSettings.DefaultTransitionLayerDepth
         };
-
-        public int GetCellSizeForWorldDistance(float worldDistance)
-        {
-            int lodIndex = GetLodIndexForWorldDistance(worldDistance);
-            return NormalizeCellSize(GetCellSizeAtLod(lodIndex));
-        }
 
         private void OnValidate()
         {
@@ -100,21 +93,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
             }
         }
 
-        private int GetLodIndexForWorldDistance(float worldDistance)
-        {
-            float normalizedDistance = Mathf.Max(0f, worldDistance);
-            int cellSizeCount = GetLodCount();
-            for (int i = 0; i < cellSizeCount; i++)
-            {
-                if (normalizedDistance <= GetMaxWorldDistanceForLod(i))
-                {
-                    return i;
-                }
-            }
-
-            return cellSizeCount - 1;
-        }
-
         public float GetMaxWorldDistanceForLod(int lodIndex)
         {
             if (lodDistances != null && lodIndex < lodDistances.Length)
@@ -140,53 +118,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
             int cellSizeCount = cellSizes != null ? cellSizes.Length : 0;
             int distanceCount = lodDistances != null ? lodDistances.Length : 0;
             return math.max(1, math.min(cellSizeCount, distanceCount));
-        }
-
-        private float GetLodStartDistanceForCellSize(int targetCellSize)
-        {
-            int cellSizeCount = GetLodCount();
-            int normalizedTarget = NormalizeCellSize(targetCellSize);
-            for (int i = 0; i < cellSizeCount; i++)
-            {
-                if (NormalizeCellSize(GetCellSizeAtLod(i)) == normalizedTarget)
-                {
-                    return i == 0 ? 0f : GetMaxWorldDistanceForLod(i - 1);
-                }
-            }
-
-            return 0f;
-        }
-
-        private int GetFinestCellSize()
-        {
-            if (cellSizes == null || cellSizes.Length == 0)
-            {
-                return DefaultCellSize;
-            }
-
-            int finest = int.MaxValue;
-            for (int i = 0; i < cellSizes.Length; i++)
-            {
-                finest = math.min(finest, NormalizeCellSize(cellSizes[i]));
-            }
-
-            return finest == int.MaxValue ? DefaultCellSize : finest;
-        }
-
-        private int GetCoarsestCellSize()
-        {
-            if (cellSizes == null || cellSizes.Length == 0)
-            {
-                return DefaultCellSize;
-            }
-
-            int coarsest = 1;
-            for (int i = 0; i < cellSizes.Length; i++)
-            {
-                coarsest = math.max(coarsest, NormalizeCellSize(cellSizes[i]));
-            }
-
-            return coarsest;
         }
 
         private int NormalizeCellSize(int requestedSize)

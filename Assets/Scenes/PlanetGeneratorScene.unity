@@ -152,23 +152,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.VoxelEngine.Runtime.VoxelSphereGenerator
   chunkManager: {fileID: 181062081}
-  centerOverride: {fileID: 181062082}
-  center: {x: 18, y: 18, z: 18}
   radius: 300
   seed: 14970
   terrainMaterial: {fileID: 2100000, guid: b8e3496436244a8a9ecb657377f06a41, type: 2}
   planetNoiseProfile: {fileID: 11400000, guid: ea78e06363cbedd43bcaeabdad86fd61, type: 2}
-  isoLevel: 0
-  surfaceLayerDepth: 64
-  transitionLayerDepth: 192
   declareOnlySurfaceChunks: 1
-  chunkDeclarationPadding: 0
   generateWater: 0
   waterMaterial: {fileID: 2100000, guid: db4838b550f348d593fc4a0abb2167dc, type: 2}
-  waterSegmentCount: 64
-  waterLatitudeSegments: 32
-  waterLongitudeSegments: 64
-  waterRadiusPadding: 0.25
 --- !u!114 &181062081
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -911,23 +901,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.VoxelEngine.Runtime.VoxelSphereGenerator
   chunkManager: {fileID: 1723249797}
-  centerOverride: {fileID: 0}
-  center: {x: 18, y: 18, z: 18}
   radius: 750
   seed: 12527
   terrainMaterial: {fileID: 2100000, guid: b8e3496436244a8a9ecb657377f06a41, type: 2}
   planetNoiseProfile: {fileID: 11400000, guid: 83f75cc858032894b9d90fa4efad76a9, type: 2}
-  isoLevel: 0
-  surfaceLayerDepth: 64
-  transitionLayerDepth: 192
   declareOnlySurfaceChunks: 1
-  chunkDeclarationPadding: 0
   generateWater: 1
   waterMaterial: {fileID: 2100000, guid: db4838b550f348d593fc4a0abb2167dc, type: 2}
-  waterSegmentCount: 64
-  waterLatitudeSegments: 32
-  waterLongitudeSegments: 64
-  waterRadiusPadding: 0.25
 --- !u!114 &1723249797
 MonoBehaviour:
   m_ObjectHideFlags: 0

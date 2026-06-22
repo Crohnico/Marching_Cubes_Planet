@@ -4,6 +4,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
 {
     public struct ScalarFieldSettings
     {
+        public const float DefaultIsoLevel = 0f;
+        public const float DefaultSurfaceLayerDepth = 64f;
+        public const float DefaultTransitionLayerDepth = 192f;
+
         public float3 debugSphereCenter;
         public float debugSphereRadius;
         public float isoLevel;
