@@ -11,6 +11,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         [SerializeField] private Transform player;
         [SerializeField, Min(1)] private int startupFarChunkBuildsPerFrame = 8;
+        [SerializeField, Min(1)] private int segmentLodChunksBuiltPerFrame = 16;
         [SerializeField] private List<PlanetManager> planets = new List<PlanetManager>();
 
         public string SystemDataUrl => FileManager.CombineUrl("StellarSystems", ResolveSystemId());
@@ -28,7 +29,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     continue;
                 }
 
-                yield return planet.Initialize(ID, startupFarChunkBuildsPerFrame);
+                yield return planet.Initialize(ID, startupFarChunkBuildsPerFrame, segmentLodChunksBuiltPerFrame);
             }
         }
 

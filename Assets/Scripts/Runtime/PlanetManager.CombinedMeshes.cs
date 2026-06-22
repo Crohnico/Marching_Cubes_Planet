@@ -361,7 +361,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             combinedRendererVisibilityDirty = false;
-            bool showNearMeshes = useNearCombinedMeshes && nearCombinedMeshesBuiltOnce;
+            bool showNearMeshes = useNearCombinedMeshes
+                && nearCombinedMeshesBuiltOnce
+                && AreActiveSegmentLodsReady();
             bool hasVisibleSegment = false;
             bool hasReadyVisibleSegment = false;
             bool shouldCullRenderFrustum = ShouldCullRenderedChunks()
@@ -542,7 +544,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             EnsureSegmentLodCacheIfNeeded(bucket);
             int activeLod = segmentActive ? ResolveLodIndexForSegment(bucketIndex) : -1;
-            ApplySegmentLodMesh(bucket, activeLod, segmentActive);
+            ApplySegmentLodMesh(bucket, bucketIndex, activeLod, segmentActive);
         }
 
 

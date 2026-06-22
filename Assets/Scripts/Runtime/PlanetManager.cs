@@ -25,6 +25,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private const int SegmentLodCount = 3;
         private const int ActiveSegmentLodIndex = 2;
         private const int DefaultStartupFarChunkBuildsPerFrame = 8;
+        private const int DefaultSegmentLodChunksBuiltPerFrame = 16;
         private static readonly ProfilerMarker RebuildDesiredMarker = new ProfilerMarker("VoxelEngine.RebuildDesiredChunks");
         private static readonly ProfilerMarker BuildRequestsMarker = new ProfilerMarker("VoxelEngine.BuildCellRequests");
         private static readonly ProfilerMarker StartChunkBuildMarker = new ProfilerMarker("VoxelEngine.StartChunkBuild");
@@ -89,6 +90,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private Coroutine startupCoroutine;
         private bool startupInProgress;
         private bool startupDone;
+        private int segmentLodChunksBuiltPerFrame = DefaultSegmentLodChunksBuiltPerFrame;
         private string activeSystemId;
         private PlanetData planetData = new PlanetData();
         private MarchingCubesCaseTable caseTable;
@@ -114,7 +116,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private int NearCombinedMeshBucketCount => config != null ? config.NearCombinedMeshBucketCount : MaxCombinedMeshBucketCount;
         private bool UseRadialLayerCulling => config == null || config.UseRadialLayerCulling;
         private int NeverLayerCullChunkDistance => config != null ? config.NeverLayerCullChunkDistance : 3;
-        private int MaxDeferredSegmentLodChunksBuiltPerFrame => config != null
+        private int MaxDeferredSegmentLodChunksBuiltPerFrame => segmentLodChunksBuiltPerFrame > 0
+            ? segmentLodChunksBuiltPerFrame
+            : config != null
             ? config.MaxDeferredSegmentLodChunksBuiltPerFrame
             : VoxelEngineConfig.MinDeferredSegmentLodChunksBuiltPerFrame;
 
@@ -262,13 +266,19 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         public IEnumerator Initialize()
         {
-            yield return Initialize(string.Empty, DefaultStartupFarChunkBuildsPerFrame);
+            yield return Initialize(string.Empty, DefaultStartupFarChunkBuildsPerFrame, DefaultSegmentLodChunksBuiltPerFrame);
         }
 
         public IEnumerator Initialize(string systemId, int startupFarChunkBuildsPerFrame)
         {
+            yield return Initialize(systemId, startupFarChunkBuildsPerFrame, DefaultSegmentLodChunksBuiltPerFrame);
+        }
+
+        public IEnumerator Initialize(string systemId, int startupFarChunkBuildsPerFrame, int segmentLodChunksBuiltPerFrame)
+        {
             Stopwatch stopwatch = Stopwatch.StartNew();
             activeSystemId = systemId;
+            this.segmentLodChunksBuiltPerFrame = Mathf.Max(1, segmentLodChunksBuiltPerFrame);
             if (startupDone)
             {
                 yield break;
@@ -284,7 +294,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 yield break;
             }
 
-            LogStartup($"Initialize begin. system={ResolveSystemId(systemId)}, planet={ResolvePlanetId()}, budget={startupFarChunkBuildsPerFrame}.");
+            LogStartup($"Initialize begin. system={ResolveSystemId(systemId)}, planet={ResolvePlanetId()}, farBudget={startupFarChunkBuildsPerFrame}, lodBudget={this.segmentLodChunksBuiltPerFrame}.");
             bool loadedPlanetData = TryLoadExistingPlanetDataOrThrow(systemId);
             LogStartup($"PlanetData {(loadedPlanetData ? "loaded" : "missing; will generate")} at {stopwatch.ElapsedMilliseconds}ms.");
             if (loadedPlanetData)
@@ -313,6 +323,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 StopCoroutine(startupCoroutine);
             }
 
+            segmentLodChunksBuiltPerFrame = DefaultSegmentLodChunksBuiltPerFrame;
             startupCoroutine = StartCoroutine(RunStagedStartup(clearExisting, startupFarChunkBuildsPerFrame, true));
         }
 
@@ -408,6 +419,18 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 ResolvePlanetId(),
                 "Far",
                 "far.meshbin");
+        }
+
+        private string GetSegmentLodMeshUrl(int segmentId, int lodIndex)
+        {
+            return FileManager.CombineUrl(
+                "StellarSystems",
+                ResolveSystemId(activeSystemId),
+                "Planets",
+                ResolvePlanetId(),
+                "Segments",
+                segmentId.ToString(),
+                $"LOD_{lodIndex}.meshbin");
         }
 
         private bool TryLoadExistingPlanetDataOrThrow(string systemId)
