@@ -320,13 +320,16 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             bool showNearMeshes = useNearCombinedMeshes && nearCombinedMeshesBuiltOnce;
             bool hasVisibleSegment = false;
             bool hasReadyVisibleSegment = false;
-            bool shouldCullNearFrustum = showNearMeshes
-                && ShouldCullRenderedChunks()
+            bool shouldCullRenderFrustum = ShouldCullRenderedChunks()
                 && playerChunkTracker.ChunkCullingCamera != null;
-            if (shouldCullNearFrustum)
+            if (shouldCullRenderFrustum)
             {
                 GeometryUtility.CalculateFrustumPlanes(playerChunkTracker.ChunkCullingCamera, chunkCullingFrustumPlanes);
             }
+
+            bool planetVisibleInFrustum = !shouldCullRenderFrustum
+                || GeometryUtility.TestPlanesAABB(chunkCullingFrustumPlanes, BuildPlanetWorldBounds());
+            bool shouldCullNearFrustum = showNearMeshes && shouldCullRenderFrustum;
 
             for (int i = 0; i < nearCombinedMeshBuckets.Count; i++)
             {
@@ -371,9 +374,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 }
             }
 
-            bool showVisibleMesh = !showNearMeshes
-                || !hasVisibleSegment
-                || !hasReadyVisibleSegment;
+            bool showVisibleMesh = planetVisibleInFrustum
+                && (!showNearMeshes
+                    || !hasVisibleSegment
+                    || !hasReadyVisibleSegment);
             if (visibleCombinedMeshBucket != null)
             {
                 if (visibleCombinedMeshBucket.owner.activeSelf != showVisibleMesh)
@@ -401,6 +405,25 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             {
                 farCombinedMeshBucket.owner.SetActive(true);
             }
+        }
+
+        private Bounds BuildPlanetWorldBounds()
+        {
+            float radius = sphereGenerator != null
+                ? Mathf.Max(0.01f, sphereGenerator.MaximumTerrainRadius)
+                : Mathf.Max(config.ChunkSize.x, Mathf.Max(config.ChunkSize.y, config.ChunkSize.z));
+            return new Bounds(GetSpherePosition(), Vector3.one * radius * 2f);
+        }
+
+        private bool IsVisibleCombinedMeshRenderingActive()
+        {
+            return visibleCombinedMeshBucket != null
+                && visibleCombinedMeshBucket.owner != null
+                && visibleCombinedMeshBucket.owner.activeInHierarchy
+                && visibleCombinedMeshBucket.meshRenderer != null
+                && visibleCombinedMeshBucket.meshRenderer.enabled
+                && visibleCombinedMeshBucket.mesh != null
+                && visibleCombinedMeshBucket.mesh.vertexCount > 0;
         }
 
         private bool IsNearSegmentVisible(int segmentIndex, bool shouldCullFrustum)

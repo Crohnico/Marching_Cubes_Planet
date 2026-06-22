@@ -239,7 +239,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 waterMeshDirty = false;
             }
 
-            SetWaterActive(!useNearWater, useNearWater);
+            bool showFarWater = !useNearWater
+                && (chunkManager == null || chunkManager.IsVisibleMeshRenderingActive);
+            SetWaterActive(showFarWater, useNearWater);
         }
 
         private void EnsureWaterObjects()
@@ -300,7 +302,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             for (int i = 0; i < nearWaterSegments.Count; i++)
             {
                 Transform segmentParent = i < targetWaterSegmentCount && chunkManager != null
-                    ? chunkManager.GetNearSegmentRootTransformOrNull(i)
+                    ? chunkManager.GetNearSegmentTransformOrNull(i)
                     : null;
                 Transform desiredParent = segmentParent != null ? segmentParent : waterRoot.transform;
                 GameObject segment = nearWaterSegments[i];

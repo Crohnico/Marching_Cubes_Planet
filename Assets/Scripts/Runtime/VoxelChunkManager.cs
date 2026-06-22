@@ -90,6 +90,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         public bool IsRenderCullingActive => ShouldCullRenderedChunks();
         public bool IsFarBridgeActive => IsFarBridgeVisible();
         public bool IsNearCombinedRenderingActive => useNearCombinedMeshes && nearCombinedMeshesBuiltOnce;
+        public bool IsVisibleMeshRenderingActive => IsVisibleCombinedMeshRenderingActive();
         public int NearSegmentCount => NearCombinedMeshBucketCount;
         public Vector3 DetailFocusPosition => GetCurrentDetailFocusVector3();
         private Material TerrainMaterial => sphereGenerator != null ? sphereGenerator.TerrainMaterial : null;
@@ -312,19 +313,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             CombinedMeshBucket bucket = nearCombinedMeshBuckets[segmentIndex];
             EnsureSegmentLodCache(bucket);
             return bucket.lodCache != null ? bucket.lodCache.PivotTransform : bucket.owner.transform;
-        }
-
-        public Transform GetNearSegmentRootTransformOrNull(int segmentIndex)
-        {
-            if (segmentIndex < 0)
-            {
-                return null;
-            }
-
-            EnsureNearCombinedMeshBucketCount(NearCombinedMeshBucketCount);
-            return segmentIndex < nearCombinedMeshBuckets.Count
-                ? nearCombinedMeshBuckets[segmentIndex].owner.transform
-                : null;
         }
 
         public Transform GetVisibleMeshTransformOrNull()
