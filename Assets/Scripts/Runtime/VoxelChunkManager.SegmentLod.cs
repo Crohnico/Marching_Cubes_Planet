@@ -320,8 +320,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 bucket.lodCache = bucket.owner.AddComponent<VoxelSegmentLodMeshCache>();
             }
 
-            Transform focus = playerChunkTracker != null ? playerChunkTracker.TrackedTarget : (fallbackAnchor != null ? fallbackAnchor : transform);
-            bucket.lodCache.Configure(TerrainMaterial, focus, config);
+            bucket.lodCache.Configure(TerrainMaterial);
             bucket.lodCache.LodMeshRequested -= HandleSegmentLodMeshRequested;
             bucket.lodCache.LodMeshRequested += HandleSegmentLodMeshRequested;
 

@@ -1,5 +1,4 @@
 using System;
-using MarchingCubesPlanet.VoxelEngine.Data;
 using UnityEngine;
 
 namespace MarchingCubesPlanet.VoxelEngine.Runtime
@@ -14,40 +13,20 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [SerializeField] private GameObject lod2;
 
         private Material material;
-        private Transform detailFocus;
-        private VoxelEngineConfig config;
         private Action delayedAction;
         private int activeLodIndex = -1;
 
         public event Action<VoxelSegmentLodMeshCache, int> LodMeshRequested;
-        public event Action<VoxelSegmentLodMeshCache, int> LodMeshReceived;
         public Transform PivotTransform => EnsurePivot().transform;
 
-        public void Configure(Material sharedMaterial, Transform focus, VoxelEngineConfig voxelConfig)
+        public void Configure(Material sharedMaterial)
         {
             material = sharedMaterial;
-            detailFocus = focus;
-            config = voxelConfig;
             EnsurePivot();
             EnsureLodContainer();
             ReparentLod(lod0);
             ReparentLod(lod1);
             ReparentLod(lod2);
-        }
-
-        private void Update()
-        {
-            if (detailFocus == null || config == null)
-            {
-                return;
-            }
-
-            if (pivot != null && !pivot.activeInHierarchy)
-            {
-                return;
-            }
-
-            LoadLOD(ResolveLodIndex());
         }
 
         public void SetMesh(int lodIndex, Mesh mesh)
@@ -58,6 +37,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 if (existingLod != null)
                 {
                     existingLod.SetActive(false);
+                }
+
+                if (activeLodIndex == lodIndex)
+                {
+                    activeLodIndex = -1;
                 }
 
                 return;
@@ -82,7 +66,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             delayedAction?.Invoke();
             delayedAction = null;
-            LodMeshReceived?.Invoke(this, lodIndex);
         }
 
         public bool LoadLOD(int lodIndex)
@@ -232,22 +215,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 case 1: lod1 = lod; break;
                 case 2: lod2 = lod; break;
             }
-        }
-
-        private int ResolveLodIndex()
-        {
-            float squaredDistance = (detailFocus.position - transform.position).sqrMagnitude;
-            int lodCount = Mathf.Clamp(config.LodCount, 1, 3);
-            for (int lodIndex = 0; lodIndex < lodCount; lodIndex++)
-            {
-                float maxDistance = config.GetMaxWorldDistanceForLod(lodIndex);
-                if (squaredDistance <= maxDistance * maxDistance)
-                {
-                    return lodIndex;
-                }
-            }
-
-            return lodCount - 1;
         }
     }
 }

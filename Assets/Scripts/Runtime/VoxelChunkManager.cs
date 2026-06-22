@@ -408,27 +408,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 return;
             }
 
-            bool shouldCullFrustum = ShouldCullRenderedChunks() && playerChunkTracker.ChunkCullingCamera != null;
-            if (shouldCullFrustum)
-            {
-                GeometryUtility.CalculateFrustumPlanes(playerChunkTracker.ChunkCullingCamera, chunkCullingFrustumPlanes);
-            }
-
-            for (int i = 0; i < activeCombinedMeshBucketCount && i < nearCombinedMeshBuckets.Count; i++)
-            {
-                CombinedMeshBucket bucket = nearCombinedMeshBuckets[i];
-                if (bucket.owner != null && !bucket.owner.activeSelf)
-                {
-                    bucket.owner.SetActive(true);
-                }
-
-                if (bucket.lodCache == null)
-                {
-                    continue;
-                }
-
-                bucket.lodCache.SetPivotActive(IsNearSegmentVisible(i, shouldCullFrustum));
-            }
+            ApplyCombinedRendererVisibility();
         }
 
         private void UpdateChunkVisibility()

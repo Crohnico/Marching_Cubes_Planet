@@ -264,11 +264,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                         bucket.owner.SetActive(true);
                     }
 
-                    if (bucket.lodCache != null)
-                    {
-                        bucket.lodCache.SetPivotActive(active);
-                    }
-
                     ApplySegmentLodVisibility(bucket, i, active);
                     if (active && IsSegmentLodActive(bucket))
                     {
