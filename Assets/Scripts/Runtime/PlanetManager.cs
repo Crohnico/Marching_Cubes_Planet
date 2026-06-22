@@ -106,7 +106,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         public int CombinedTriangleCount => GetCombinedTriangleCount();
         public bool IsRenderCullingActive => ShouldCullRenderedChunks();
         public bool IsFarBridgeActive => IsFarBridgeVisible();
-        public bool IsNearCombinedRenderingActive => useNearCombinedMeshes && nearCombinedMeshesBuiltOnce;
+        public bool IsNearCombinedRenderingActive => IsNearCombinedRenderingReady();
         public bool IsVisibleMeshRenderingActive => IsVisibleCombinedMeshRenderingActive();
         public int NearSegmentCount => NearCombinedMeshBucketCount;
         public Vector3 DetailFocusPosition => GetCurrentDetailFocusVector3();
@@ -349,6 +349,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             RefreshPlanetActionRadiusState();
             int3 centerChunk = GetCurrentCenterChunk();
+            bool loadedStartupFar = false;
 
             if (refreshDeclaredChunks)
             {
@@ -360,13 +361,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             {
                 ApplyPlanetDataToDeclaredChunks();
                 LogStartup($"Declared chunks loaded from PlanetData. declared={declaredChunks.Count}, planetDataChunks={planetData.chunks.Count}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
-                if (TryLoadStartupFarMeshFromDisk())
+                loadedStartupFar = TryLoadStartupFarMeshFromDisk();
+                if (loadedStartupFar)
                 {
-                    LogStartup($"Startup Far loaded from disk; skipped desired chunk build. activeChunks={activeChunks.Count}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
-                    startupInProgress = false;
-                    startupDone = true;
-                    startupCoroutine = null;
-                    yield break;
+                    LogStartup($"Startup Far loaded from disk. Runtime chunks will be hydrated before startup completes. activeChunks={activeChunks.Count}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
                 }
             }
 
@@ -394,7 +392,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 Mathf.Max(1, startupFarChunkBuildsPerFrame));
             LogStartup($"Desired chunks built. activeBefore={chunksBeforeBuild}, activeAfter={activeChunks.Count}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
 
-            RebuildFarCombinedMesh();
+            RebuildFarCombinedMesh(refreshDeclaredChunks || !loadedStartupFar);
             LogStartup($"Far mesh ready. farVertices={GetFarCombinedMeshVertexCount()}, visibleVertices={GetVisibleCombinedMeshVertexCount()}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
             MarkCombinedRendererVisibilityDirty();
             ApplyCombinedRendererVisibility();
@@ -408,6 +406,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         public string GetPlanetDataUrl(string systemId)
         {
             return FileManager.CombineUrl("StellarSystems", ResolveSystemId(systemId), "Planets", ResolvePlanetId(), "PlanetData");
+        }
+
+        public string GetPlanetStorageUrl()
+        {
+            return FileManager.CombineUrl("StellarSystems", ResolveSystemId(activeSystemId), "Planets", ResolvePlanetId());
         }
 
         private string GetFarMeshUrl()

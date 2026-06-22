@@ -25,10 +25,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private GameObject farWaterObject;
         private Mesh farWaterMesh;
         private bool waterMeshDirty = true;
+        private bool waterMeshStorageReady;
+        private bool startupFarWaterCacheConsumed;
         private Vector3 lastWaterCenter;
         private float lastWaterRadius = -1f;
-        private Vector3 lastWaterHemisphereDirection;
-        private bool hasLastWaterHemisphereDirection;
 
         public float Radius => radius;
         public Material TerrainMaterial => terrainMaterial;
@@ -208,32 +208,31 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             EnsureWaterObjects();
+            bool storageBecameReady = CanUseWaterMeshDiskCache() && !waterMeshStorageReady;
+            if (storageBecameReady)
+            {
+                waterMeshStorageReady = true;
+                startupFarWaterCacheConsumed = false;
+            }
+
             float waterRadius = SeaSurfaceRadius;
             Vector3 waterCenter = transform.position;
-            Vector3 waterHemisphereDirection = GetWaterHemisphereDirection(waterCenter);
             bool useNearWater = chunkManager != null && chunkManager.IsNearCombinedRenderingActive;
             bool shapeChanged = forceRebuild
                 || waterMeshDirty
+                || storageBecameReady
                 || (waterCenter - lastWaterCenter).sqrMagnitude > 0.0001f
                 || Mathf.Abs(waterRadius - lastWaterRadius) > 0.0001f;
-            bool hemisphereChanged = !hasLastWaterHemisphereDirection
-                || Vector3.Dot(lastWaterHemisphereDirection, waterHemisphereDirection) < 0.998f;
-            bool rebuildFarWater = shapeChanged || (!useNearWater && hemisphereChanged);
+            bool rebuildFarWater = shapeChanged;
             bool rebuildNearWater = shapeChanged;
 
             if (rebuildFarWater || rebuildNearWater)
             {
-                RebuildWaterMeshes(waterCenter, waterRadius, waterHemisphereDirection, rebuildFarWater, rebuildNearWater);
+                RebuildWaterMeshes(waterCenter, waterRadius, rebuildFarWater, rebuildNearWater, storageBecameReady);
                 if (shapeChanged)
                 {
                     lastWaterCenter = waterCenter;
                     lastWaterRadius = waterRadius;
-                }
-
-                if (rebuildFarWater)
-                {
-                    lastWaterHemisphereDirection = waterHemisphereDirection;
-                    hasLastWaterHemisphereDirection = true;
                 }
 
                 waterMeshDirty = false;
@@ -360,9 +359,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private void RebuildWaterMeshes(
             Vector3 waterCenter,
             float waterRadius,
-            Vector3 hemisphereDirection,
             bool rebuildFarWater,
-            bool rebuildNearWater)
+            bool rebuildNearWater,
+            bool replaceExistingMeshes)
         {
             int targetWaterSegmentCount = GetWaterSegmentCount();
             int waterResolution = Mathf.Max(4, targetWaterSegmentCount);
@@ -374,18 +373,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 farWaterMesh = ReplaceWaterMesh(
                     farWaterObject,
                     farWaterMesh,
-                    BuildWaterSphereMesh(
-                        "Water_Far_Mesh",
-                        farWaterObject.transform,
+                    GetOrBuildFarWaterMesh(
                         waterCenter,
                         waterRadius,
-                        0,
-                        1,
                         waterResolution,
-                        totalLongitudeSegments,
-                        hemisphereDirection,
-                        true,
-                        false));
+                        totalLongitudeSegments));
             }
 
             if (rebuildNearWater)
@@ -395,23 +387,210 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     GameObject segment = nearWaterSegments[i];
                     MeshFilter meshFilter = segment.GetComponent<MeshFilter>();
                     Mesh previousMesh = meshFilter.sharedMesh;
-                    Mesh nextMesh = BuildWaterSphereMesh(
-                        $"Water_Near_{i:00}_Mesh",
-                        segment.transform,
+                    Mesh nextMesh = GetOrBuildNearWaterMesh(
+                        segment,
+                        i,
                         waterCenter,
                         waterRadius,
-                        i,
                         targetWaterSegmentCount,
                         waterResolution,
                         totalLongitudeSegments,
-                        hemisphereDirection,
-                        false,
-                        true);
+                        replaceExistingMeshes);
                     meshFilter.sharedMesh = nextMesh;
                     AssignWaterMaterialIfNeeded(segment.GetComponent<MeshRenderer>());
-                    DestroyMesh(previousMesh);
+                    if (previousMesh != nextMesh)
+                    {
+                        DestroyMesh(previousMesh);
+                    }
                 }
             }
+        }
+
+        private Mesh GetOrBuildNearWaterMesh(
+            GameObject segment,
+            int segmentIndex,
+            Vector3 waterCenter,
+            float waterRadius,
+            int targetWaterSegmentCount,
+            int waterResolution,
+            int totalLongitudeSegments,
+            bool replaceExistingMesh)
+        {
+            MeshFilter meshFilter = segment.GetComponent<MeshFilter>();
+            if (!replaceExistingMesh && meshFilter.sharedMesh != null)
+            {
+                return meshFilter.sharedMesh;
+            }
+
+            if (CanUseWaterMeshDiskCache() && TryLoadNearWaterMeshFromDisk(segmentIndex, out Mesh mesh))
+            {
+                return mesh;
+            }
+
+            mesh = BuildWaterSphereMesh(
+                $"Water_Near_{segmentIndex:00}_Mesh",
+                segment.transform,
+                waterCenter,
+                waterRadius,
+                segmentIndex,
+                targetWaterSegmentCount,
+                waterResolution,
+                totalLongitudeSegments,
+                Vector3.forward,
+                false,
+                true);
+            if (CanUseWaterMeshDiskCache())
+            {
+                SaveNearWaterMesh(mesh, segmentIndex);
+            }
+
+            return mesh;
+        }
+
+        private Mesh GetOrBuildFarWaterMesh(
+            Vector3 waterCenter,
+            float waterRadius,
+            int waterResolution,
+            int totalLongitudeSegments)
+        {
+            bool useStartupCache = CanUseWaterMeshDiskCache() && !startupFarWaterCacheConsumed;
+            if (useStartupCache)
+            {
+                startupFarWaterCacheConsumed = true;
+                if (TryLoadFarWaterMeshFromDisk(out Mesh cachedMesh))
+                {
+                    return cachedMesh;
+                }
+            }
+
+            Mesh mesh = BuildWaterSphereMesh(
+                "Water_Far_Mesh",
+                farWaterObject.transform,
+                waterCenter,
+                waterRadius,
+                0,
+                1,
+                waterResolution,
+                totalLongitudeSegments,
+                Vector3.forward,
+                false,
+                false);
+            if (useStartupCache)
+            {
+                SaveFarWaterMesh(mesh);
+            }
+
+            return mesh;
+        }
+
+        private bool TryLoadFarWaterMeshFromDisk(out Mesh mesh)
+        {
+            string url = GetFarWaterMeshUrl();
+            byte[] binary = FileManager.GetFile(url);
+            if (binary == null)
+            {
+                mesh = null;
+                return false;
+            }
+
+            try
+            {
+                mesh = MeshBinarySerializer.FromBinary(binary, "Water_Far_Mesh");
+                Debug.Log($"Far water mesh loaded from {url}. bytes={binary.Length}, vertices={mesh.vertexCount}.", this);
+                return true;
+            }
+            catch (System.Exception exception)
+            {
+                string message = $"Far water mesh could not be loaded at {url}. {exception.Message}";
+                Debug.LogError(message, this);
+                throw new System.InvalidOperationException(message, exception);
+            }
+        }
+
+        private void SaveFarWaterMesh(Mesh mesh)
+        {
+            if (mesh == null)
+            {
+                return;
+            }
+
+            string url = GetFarWaterMeshUrl();
+            try
+            {
+                byte[] binary = MeshBinarySerializer.ToBinary(mesh);
+                FileManager.SaveFile(url, binary);
+                Debug.Log($"Far water mesh saved to {url}. bytes={binary.Length}, vertices={mesh.vertexCount}.", this);
+            }
+            catch (System.Exception exception)
+            {
+                Debug.LogWarning($"Could not save Far water mesh at {url}. {exception.Message}", this);
+            }
+        }
+
+        private bool TryLoadNearWaterMeshFromDisk(int segmentIndex, out Mesh mesh)
+        {
+            string url = GetNearWaterMeshUrl(segmentIndex);
+            byte[] binary = FileManager.GetFile(url);
+            if (binary == null)
+            {
+                mesh = null;
+                return false;
+            }
+
+            try
+            {
+                mesh = MeshBinarySerializer.FromBinary(binary, $"Water_Near_{segmentIndex:00}_Mesh");
+                Debug.Log($"Water mesh loaded from {url}. segment={segmentIndex}, bytes={binary.Length}, vertices={mesh.vertexCount}.", this);
+                return true;
+            }
+            catch (System.Exception exception)
+            {
+                string message = $"Water mesh could not be loaded at {url}. segment={segmentIndex}. {exception.Message}";
+                Debug.LogError(message, this);
+                throw new System.InvalidOperationException(message, exception);
+            }
+        }
+
+        private void SaveNearWaterMesh(Mesh mesh, int segmentIndex)
+        {
+            if (mesh == null)
+            {
+                return;
+            }
+
+            string url = GetNearWaterMeshUrl(segmentIndex);
+            try
+            {
+                byte[] binary = MeshBinarySerializer.ToBinary(mesh);
+                FileManager.SaveFile(url, binary);
+                Debug.Log($"Water mesh saved to {url}. segment={segmentIndex}, bytes={binary.Length}, vertices={mesh.vertexCount}.", this);
+            }
+            catch (System.Exception exception)
+            {
+                Debug.LogWarning($"Could not save water mesh at {url}. segment={segmentIndex}. {exception.Message}", this);
+            }
+        }
+
+        private string GetNearWaterMeshUrl(int segmentIndex)
+        {
+            return FileManager.CombineUrl(GetPlanetStorageUrl(), "Water", "Segments", segmentIndex.ToString(), "water.meshbin");
+        }
+
+        private string GetFarWaterMeshUrl()
+        {
+            return FileManager.CombineUrl(GetPlanetStorageUrl(), "Water", "Far", "water.meshbin");
+        }
+
+        private string GetPlanetStorageUrl()
+        {
+            return chunkManager != null
+                ? chunkManager.GetPlanetStorageUrl()
+                : FileManager.CombineUrl("StellarSystems", "DefaultSystem", "Planets", gameObject.name);
+        }
+
+        private bool CanUseWaterMeshDiskCache()
+        {
+            return chunkManager != null && chunkManager.StartupDone;
         }
 
         private Mesh ReplaceWaterMesh(GameObject owner, Mesh previousMesh, Mesh nextMesh)
@@ -419,7 +598,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             MeshFilter meshFilter = owner.GetComponent<MeshFilter>();
             meshFilter.sharedMesh = nextMesh;
             AssignWaterMaterialIfNeeded(owner.GetComponent<MeshRenderer>());
-            DestroyMesh(previousMesh);
+            if (previousMesh != nextMesh)
+            {
+                DestroyMesh(previousMesh);
+            }
+
             return nextMesh;
         }
 
@@ -496,13 +679,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             mesh.SetTriangles(triangles, 0);
             mesh.RecalculateBounds();
             return mesh;
-        }
-
-        private Vector3 GetWaterHemisphereDirection(Vector3 waterCenter)
-        {
-            Vector3 focus = chunkManager != null ? chunkManager.DetailFocusPosition : transform.position;
-            Vector3 direction = focus - waterCenter;
-            return direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector3.forward;
         }
 
         private int GetWaterSegmentCount()

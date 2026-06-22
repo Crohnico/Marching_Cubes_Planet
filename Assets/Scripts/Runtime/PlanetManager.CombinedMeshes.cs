@@ -36,6 +36,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 {
                     nearCombinedMeshesBuiltOnce = false;
                     hasLastNearVisibilityFocusKey = false;
+                    // Far stays read-only; entering Near only invalidates the Visible copy/projection.
+                    farCombinedMeshDirty = true;
+                    combinedMeshesDirty = true;
                     MarkAllNearCombinedMeshesDirty();
                 }
                 else
@@ -104,6 +107,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             lastFarHemisphereDirection = direction;
             hasLastFarHemisphereDirection = true;
+            // Far is read-only by design; this marks only the Visible projection stale.
             farCombinedMeshDirty = true;
             combinedMeshesDirty = true;
         }
@@ -361,9 +365,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             combinedRendererVisibilityDirty = false;
-            bool showNearMeshes = useNearCombinedMeshes
-                && nearCombinedMeshesBuiltOnce
-                && AreActiveSegmentLodsReady();
+            bool showNearMeshes = useNearCombinedMeshes && nearCombinedMeshesBuiltOnce;
+            bool keepFarBridgeVisible = IsFarBridgeVisible();
             bool hasVisibleSegment = false;
             bool hasReadyVisibleSegment = false;
             bool shouldCullRenderFrustum = ShouldCullRenderedChunks()
@@ -422,7 +425,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             bool showVisibleMesh = planetVisibleInFrustum
-                && (!showNearMeshes
+                && (keepFarBridgeVisible
+                    || !showNearMeshes
                     || !hasVisibleSegment
                     || !hasReadyVisibleSegment);
             if (visibleCombinedMeshBucket != null)
@@ -548,13 +552,13 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         }
 
 
-        private void RebuildFarCombinedMesh()
+        private void RebuildFarCombinedMesh(bool writeStartupCache = false)
         {
             EnsureVisibleCombinedMeshBucket();
             EnsureFarCombinedMeshBucket();
-            Mesh farMesh = GetOrBuildFarCombinedMesh();
-            DeliverFarCombinedMesh(farMesh);
+            EnsureFarSourceMesh(writeStartupCache);
             RebuildVisibleFarMesh();
+
             if (TryGetCurrentFarHemisphereDirection(out Vector3 direction))
             {
                 lastFarHemisphereDirection = direction;
@@ -565,18 +569,23 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             MarkCombinedRendererVisibilityDirty();
         }
 
-        private Mesh GetOrBuildFarCombinedMesh()
+        private Mesh EnsureFarSourceMesh(bool writeStartupCache)
         {
-            if (TryLoadFarCombinedMeshFromDisk(out Mesh cachedMesh))
+            // Design rule: Far is a read-only source mesh after startup hydration.
+            // View-dependent hemisphere work is applied only to VisibleMesh.
+            if (IsFarCombinedMeshCached())
             {
-                return cachedMesh;
+                return farCombinedMeshBucket.mesh;
             }
 
-            string url = GetFarMeshUrl();
             System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
             RebuildCombinedMeshBucket(farCombinedMeshBucket, 0, false, false);
             Debug.Log($"[PlanetStartup:{ResolvePlanetId()}] Far mesh built from active chunks. activeChunks={activeChunks.Count}, vertices={farCombinedMeshBucket.mesh.vertexCount}, elapsed={stopwatch.ElapsedMilliseconds}ms.", this);
-            SaveFarCombinedMesh(farCombinedMeshBucket.mesh, url);
+            if (writeStartupCache)
+            {
+                SaveFarCombinedMesh(farCombinedMeshBucket.mesh, GetFarMeshUrl());
+            }
+
             return farCombinedMeshBucket.mesh;
         }
 
@@ -1181,7 +1190,14 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private bool IsFarBridgeVisible()
         {
-            return useNearCombinedMeshes && !nearCombinedMeshesBuiltOnce;
+            return useNearCombinedMeshes && !IsNearCombinedRenderingReady();
+        }
+
+        private bool IsNearCombinedRenderingReady()
+        {
+            return useNearCombinedMeshes
+                && nearCombinedMeshesBuiltOnce
+                && AreActiveSegmentLodsReady();
         }
 
         private static void EnsureCombineInstanceBuffer(CombinedMeshBucket bucket, int requiredLength)

@@ -502,7 +502,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             int activeLodIndex = ResolveActiveSegmentLodIndex();
             for (int i = 0; i < activeCombinedMeshBucketCount; i++)
             {
-                if (!HasRenderableSegmentLodMesh(nearCombinedMeshBuckets[i], activeLodIndex))
+                if (!HasLoadedSegmentLodMesh(nearCombinedMeshBuckets[i], activeLodIndex))
                 {
                     return false;
                 }
@@ -541,6 +541,17 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             Mesh mesh = GetSegmentLodMesh(bucket, lodIndex);
             return mesh != null && mesh.vertexCount > 0;
+        }
+
+        private bool HasLoadedSegmentLodMesh(CombinedMeshBucket bucket, int lodIndex)
+        {
+            return lodIndex >= 0
+                && bucket.lodMeshes != null
+                && lodIndex < bucket.lodMeshes.Length
+                && bucket.lodMeshes[lodIndex] != null
+                && bucket.lodCached != null
+                && lodIndex < bucket.lodCached.Length
+                && bucket.lodCached[lodIndex];
         }
 
         private static Mesh GetSegmentLodMesh(CombinedMeshBucket bucket, int lodIndex)
