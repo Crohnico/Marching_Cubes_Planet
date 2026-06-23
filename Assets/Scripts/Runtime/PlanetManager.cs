@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
@@ -17,7 +16,13 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
     [DisallowMultipleComponent]
     public sealed partial class PlanetManager : MonoBehaviour
     {
-        private const int DefaultStartupFarChunkBuildsPerFrame = 8;
+        public enum PlanetRenderState
+        {
+            None,
+            Far,
+            Near
+        }
+
         private const int DefaultSegmentLodChunksBuiltPerFrame = 16;
 
         [SerializeField] private PlayerChunkTracker playerChunkTracker;
@@ -36,6 +41,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [SerializeField, Range(0f, 90f)] private float farHemisphereRefreshAngle = 3f;
         [SerializeField, HideInInspector] private bool planetShapeInitialized;
         [SerializeField, HideInInspector] private bool atmosphereInitialized;
+        [SerializeField] private PlanetRenderState state = PlanetRenderState.None;
 
         private readonly PlanetChunkBehaviour chunkBehaviour = new PlanetChunkBehaviour();
         private readonly PlanetCombinedMeshBehaviour combinedMeshBehaviour = new PlanetCombinedMeshBehaviour();
@@ -44,7 +50,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private bool isInsidePlanetActionRadius = true;
         private bool hasAtmosphereState;
         private bool isPlayerInsideAtmosphere;
-        private Coroutine startupCoroutine;
+        private bool frustumCullingEnabled = true;
+        private bool planetRuntimeMounted;
         private bool startupInProgress;
         private bool startupDone;
         private int segmentLodChunksBuiltPerFrame = DefaultSegmentLodChunksBuiltPerFrame;
@@ -54,6 +61,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private VoxelEngineConfig config;
 
         public static event Action<PlanetManager, bool> PlayerAtmosphereStateChanged;
+        public static event Action<PlanetManager, PlanetRenderState, PlanetRenderState> RenderStateChanged;
 
         public PlanetData PlanetData => planetData;
         public string ResolvedPlanetID => ResolvePlanetId();
@@ -110,7 +118,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 return;
             }
 
-            RefreshPlanetActionRadiusState();
+            UpdateState();
             EnsureCombinedRenderer();
             TickChunkBehaviour();
             UpdateNearSegmentVisibility();
@@ -134,14 +142,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void OnDisable()
         {
-            if (startupCoroutine != null)
-            {
-                StopCoroutine(startupCoroutine);
-                startupCoroutine = null;
-            }
-
             startupInProgress = false;
             startupDone = false;
+            state = PlanetRenderState.None;
             ClearChunks();
             DestroyCombinedMesh();
             if (caseTable.IsCreated)
@@ -254,35 +257,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             Gizmos.color = previousColor;
         }
 
-        [ContextMenu("Rebuild Active Chunks")]
-        public void RebuildAroundCurrentAnchor()
-        {
-            EnsureConfig();
-            EnsureCaseTable();
-            RefreshPlanetActionRadiusState();
-            int3 centerChunk = GetCurrentCenterChunk();
-            RefreshDeclaredChunks();
-
-            RebuildDesiredChunkSet();
-            BuildDesiredChunksSynchronously(centerChunk);
-            UpdateCombinedMesh(true);
-            RefreshPlanetDataSnapshot();
-        }
-
-        [ContextMenu("Generate")]
-        public void Generate()
-        {
-            if (Application.isPlaying)
-            {
-                StartStagedStartup(true, DefaultStartupFarChunkBuildsPerFrame);
-                return;
-            }
-
-            ClearCombinedMesh();
-            MarkAllChunksDirty();
-            RebuildAroundCurrentAnchor();
-        }
-
         public async Task Initialize(string stellarID)
         {
             activeSystemId = stellarID;
@@ -307,6 +281,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 await InitializePlanetData();
                 await InitializeFarMesh();
                 await InitializePlanet();
+                UpdateState();
                 startupDone = true;
             }
             finally
@@ -363,20 +338,139 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             MarkCombinedRendererVisibilityDirty();
             ApplyCombinedRendererVisibility();
             FileManager.SaveFile(farMeshUrl, MeshBinarySerializer.ToBinary(craftedFarMesh));
+            SaveCoarsestSegmentLodMeshesFromPlanetData();
             FileManager.SaveFile(GetPlanetDataUrl(activeSystemId), planetData.ToBinary());
         }
 
         private Task InitializePlanet()
         {
-            ClearChunks();
-            chunkBehaviour.ApplyPlanetDataToDeclaredChunks(planetData);
-            chunkBehaviour.HydrateFromPlanetData(planetData, gameObject);
+            MountLoadedPlanetDataRuntime();
+            return Task.CompletedTask;
+        }
+
+        private void UpdateState()
+        {
+            RefreshPlanetActionRadiusState();
+            ChangeState(ResolvePlanetRenderState());
+        }
+
+        private PlanetRenderState ResolvePlanetRenderState()
+        {
+            return isInsidePlanetActionRadius
+                ? PlanetRenderState.Near
+                : PlanetRenderState.Far;
+        }
+
+        private void ChangeState(PlanetRenderState nextState)
+        {
+            if (state == nextState)
+            {
+                return;
+            }
+
+            PlanetRenderState previousState = state;
+            state = nextState;
+            switch (state)
+            {
+                case PlanetRenderState.Far:
+                    OnEnterFarState();
+                    break;
+                case PlanetRenderState.Near:
+                    OnEnterNearState();
+                    break;
+                default:
+                    break;
+            }
+
+            RenderStateChanged?.Invoke(this, previousState, state);
+        }
+
+        private void OnEnterFarState()
+        {
+            ReleasePlanetRuntime();
+            combinedMeshLayoutDirty = true;
+            MarkChunkVisibilityDirty();
+            combinedMeshesDirty = true;
+            farCombinedMeshDirty = true;
+            EnsureCombinedRenderer();
+            MarkCombinedRendererVisibilityDirty();
+            ApplyCombinedRendererVisibility();
+        }
+
+        private void OnEnterNearState()
+        {
+            EnsurePlanetRuntimeMounted();
+            combinedMeshLayoutDirty = true;
+            MarkCombinedRendererVisibilityDirty();
+            MarkAllNearCombinedMeshesDirty();
+            EnsureCombinedRenderer();
+            MarkCombinedRendererVisibilityDirty();
+            ApplyCombinedRendererVisibility();
+        }
+
+        private void EnsurePlanetRuntimeMounted()
+        {
+            if (planetRuntimeMounted)
+            {
+                return;
+            }
+
+            MountPlanetRuntime();
+        }
+
+        private void MountPlanetRuntime()
+        {
+            LoadPlanetDataForRuntime();
+            MountLoadedPlanetDataRuntime();
+        }
+
+        private void LoadPlanetDataForRuntime()
+        {
+            string url = GetPlanetDataUrl(activeSystemId);
+            byte[] binary = FileManager.GetFile(url);
+            if (binary == null)
+            {
+                UnityEngine.Debug.LogWarning($"PlanetData not found for runtime load: {url}", this);
+                planetData = null;
+                return;
+            }
+
+            planetData = PlanetData.FromBinary(binary);
+        }
+
+        private void MountLoadedPlanetDataRuntime()
+        {
+            ClearPlanetRuntimeLists();
+            if (planetData == null)
+            {
+                planetRuntimeMounted = false;
+                return;
+            }
+
+            planetRuntimeMounted = true;
 
             MarkChunkVisibilityDirty();
             combinedMeshesDirty = true;
             combinedMeshLayoutDirty = true;
             farCombinedMeshDirty = false;
-            return Task.CompletedTask;
+        }
+
+        private void ReleasePlanetRuntime()
+        {
+            planetData = null;
+            ClearPlanetRuntimeLists();
+            planetRuntimeMounted = false;
+        }
+
+        private void ClearPlanetRuntimeLists()
+        {
+            chunkBehaviour.ClearChunks();
+            chunkBehaviour.ClearDeclaredChunks();
+            ReleaseNearRuntimeMeshes();
+            MarkChunkVisibilityDirty();
+            combinedMeshesDirty = true;
+            combinedMeshLayoutDirty = true;
+            farCombinedMeshDirty = false;
         }
 
         private static bool HasChunkMeshData(PlanetData data)
@@ -404,8 +498,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             ApplyPlanetShapeToSphereGenerator();
 
             int lodCount = Mathf.Clamp(config != null ? config.LodCount : PlanetRenderConstants.SegmentLodCount, 1, PlanetRenderConstants.SegmentLodCount);
-            int activeLod = Mathf.Clamp(PlanetRenderConstants.ActiveSegmentLodIndex, 0, lodCount - 1);
-            int requestedCellSize = config.GetCellSizeAtLod(activeLod);
+            int coarsestLod = lodCount - 1;
+            int requestedCellSize = config.GetCellSizeAtLod(coarsestLod);
             int segmentCount = Mathf.Clamp(
                 config != null ? config.NearCombinedMeshBucketCount : PlanetRenderConstants.MaxCombinedMeshBucketCount,
                 1,
@@ -446,75 +540,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         public void ClearGeneratedChunks()
         {
             ClearChunks();
-        }
-
-        private void StartStagedStartup(bool clearExisting, int startupFarChunkBuildsPerFrame)
-        {
-            if (startupCoroutine != null)
-            {
-                StopCoroutine(startupCoroutine);
-            }
-
-            segmentLodChunksBuiltPerFrame = DefaultSegmentLodChunksBuiltPerFrame;
-            startupCoroutine = StartCoroutine(RunStagedStartup(clearExisting, startupFarChunkBuildsPerFrame, true));
-        }
-
-        private IEnumerator RunStagedStartup(
-            bool clearExisting,
-            int startupFarChunkBuildsPerFrame,
-            bool refreshDeclaredChunks)
-        {
-            startupInProgress = true;
-            startupDone = false;
-
-            EnsureConfig();
-            EnsureCaseTable();
-            EnsureCombinedRenderer();
-
-            if (clearExisting)
-            {
-                ClearCombinedMesh();
-                MarkAllChunksDirty();
-            }
-
-            RefreshPlanetActionRadiusState();
-            int3 centerChunk = GetCurrentCenterChunk();
-            bool loadedStartupFar = false;
-
-            if (refreshDeclaredChunks)
-            {
-                RefreshDeclaredChunks();
-                RefreshPlanetDataSnapshot();
-            }
-            else
-            {
-                chunkBehaviour.ApplyPlanetDataToDeclaredChunks(planetData);
-                loadedStartupFar = TryLoadStartupFarMeshFromDisk();
-            }
-
-            yield return null;
-
-            if (refreshDeclaredChunks || !TryRebuildDesiredChunkSetFromPlanetData())
-            {
-                RebuildDesiredChunkSet();
-            }
-
-            if (refreshDeclaredChunks)
-            {
-                RefreshPlanetDataBuildStateFromDesiredStates();
-            }
-
-            yield return BuildDesiredChunksBudgeted(
-                centerChunk,
-                Mathf.Max(1, startupFarChunkBuildsPerFrame));
-
-            RebuildFarCombinedMesh(refreshDeclaredChunks || !loadedStartupFar);
-            MarkCombinedRendererVisibilityDirty();
-            ApplyCombinedRendererVisibility();
-
-            startupInProgress = false;
-            startupDone = true;
-            startupCoroutine = null;
         }
 
         public string GetPlanetDataUrl(string systemId)
@@ -657,19 +682,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             return string.IsNullOrWhiteSpace(systemId) ? "DefaultSystem" : systemId.Trim();
         }
 
-        private IEnumerator BuildDesiredChunksBudgeted(int3 centerChunk, int maxChunksPerFrame)
-        {
-            return chunkBehaviour.BuildDesiredChunksBudgeted(
-                centerChunk,
-                maxChunksPerFrame,
-                config.ChunkSize,
-                GetScalarFieldSettings(),
-                caseTable,
-                gameObject,
-                MarkCombinedMeshDirty,
-                MarkChunkVisibilityDirty);
-        }
-
         public void DeclareChunk(int3 chunkCoord)
         {
             chunkBehaviour.DeclareChunk(chunkCoord);
@@ -728,6 +740,17 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 : null;
         }
 
+        public void SetFrustumCullingEnabled(bool enabled)
+        {
+            if (frustumCullingEnabled == enabled)
+            {
+                return;
+            }
+
+            frustumCullingEnabled = enabled;
+            MarkChunkVisibilityDirty();
+        }
+
         public int GetNearSegmentIndexForWorldPosition(Vector3 worldPosition)
         {
             return GetSegmentIndexForWorldPosition(
@@ -736,35 +759,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     config != null ? config.NearCombinedMeshBucketCount : PlanetRenderConstants.MaxCombinedMeshBucketCount,
                     1,
                     PlanetRenderConstants.MaxCombinedMeshBucketCount));
-        }
-
-        private void RebuildDesiredChunkSet()
-        {
-            chunkBehaviour.RebuildDesiredChunkSet(
-                GetCurrentDetailFocusKey(),
-                ResolveCellSizeForChunk,
-                MarkCombinedMeshDirty,
-                MarkChunkVisibilityDirty);
-        }
-
-        private bool TryRebuildDesiredChunkSetFromPlanetData()
-        {
-            return chunkBehaviour.TryRebuildDesiredChunkSetFromPlanetData(
-                planetData,
-                MarkCombinedMeshDirty,
-                MarkChunkVisibilityDirty);
-        }
-
-        private void BuildDesiredChunksSynchronously(int3 centerChunk)
-        {
-            chunkBehaviour.BuildDesiredChunksSynchronously(
-                centerChunk,
-                config.ChunkSize,
-                GetScalarFieldSettings(),
-                caseTable,
-                gameObject,
-                MarkCombinedMeshDirty,
-                MarkChunkVisibilityDirty);
         }
 
         private void TickChunkBehaviour()
@@ -869,19 +863,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             isInsidePlanetActionRadius = nextInside;
             hasPlanetActionRadiusState = true;
-            combinedMeshLayoutDirty = true;
-            MarkCombinedRendererVisibilityDirty();
-            if (nextInside)
-            {
-                MarkAllNearCombinedMeshesDirty();
-            }
-            else
-            {
-                MarkChunkVisibilityDirty();
-                combinedMeshesDirty = true;
-                farCombinedMeshDirty = true;
-            }
-
             return true;
         }
 
@@ -916,7 +897,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private bool ShouldCullRenderedChunks()
         {
-            return (config == null || config.UseChunkCullingForRendering) && UseChunkCulling();
+            return frustumCullingEnabled
+                && (config == null || config.UseChunkCullingForRendering)
+                && UseChunkCulling();
         }
 
         private int CountVisibleChunks()
@@ -966,40 +949,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                             PlanetRenderConstants.MaxCombinedMeshBucketCount))
                 });
             }
-        }
-
-        private void RefreshPlanetDataBuildStateFromDesiredStates()
-        {
-            int segmentCount = Mathf.Clamp(
-                config != null ? config.NearCombinedMeshBucketCount : PlanetRenderConstants.MaxCombinedMeshBucketCount,
-                1,
-                PlanetRenderConstants.MaxCombinedMeshBucketCount);
-            planetData.declaredChunks = new HashSet<int3>(declaredChunks);
-            planetData.chunks.Clear();
-            foreach (KeyValuePair<int3, DesiredChunkState> pair in desiredChunkStates)
-            {
-                planetData.chunks.Add(new PlanetChunkBuildData
-                {
-                    coord = pair.Key,
-                    segmentId = GetSegmentIndexForChunkCoord(pair.Key, segmentCount),
-                    cellSize = pair.Value.cellSize,
-                    detailFocusKey = pair.Value.detailFocusKey
-                });
-            }
-        }
-
-        private void RefreshDeclaredChunks()
-        {
-            ApplyPlanetShapeToSphereGenerator();
-            if (sphereGenerator != null)
-            {
-                sphereGenerator.DeclareOccupiedChunks(this, config.ChunkSize);
-            }
-        }
-
-        private void MarkAllChunksDirty()
-        {
-            chunkBehaviour.MarkAllChunksDirty();
         }
 
         private ScalarFieldSettings GetScalarFieldSettings()

@@ -9,6 +9,5 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         public const int SurfaceSubMesh = 2;
         public const int MaxCombinedMeshBucketCount = VoxelEngineConfig.MaxCombinedMeshBucketCount;
         public const int SegmentLodCount = 3;
-        public const int ActiveSegmentLodIndex = 2;
     }
 }

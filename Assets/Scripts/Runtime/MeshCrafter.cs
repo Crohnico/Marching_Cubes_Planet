@@ -17,9 +17,28 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         public static Task<Mesh> CraftFarMesh(PlanetData planetData)
         {
+            return Task.FromResult(CraftFarMeshNow(planetData));
+        }
+
+        public static Mesh CraftFarMeshNow(PlanetData planetData)
+        {
             PlanetMeshData farMeshData = CraftFarMeshData(planetData);
-            planetData.farMesh = farMeshData;
-            return Task.FromResult(ToUnityMesh(farMeshData, "VoxelCombinedMesh_Far"));
+            if (planetData != null)
+            {
+                planetData.farMesh = farMeshData;
+            }
+
+            return ToUnityMesh(farMeshData, "VoxelCombinedMesh_Far");
+        }
+
+        public static Mesh CraftSegmentMesh(
+            PlanetData planetData,
+            int segmentId,
+            float3 renderOrigin,
+            string meshName)
+        {
+            PlanetMeshData segmentMeshData = CraftSegmentMeshData(planetData, segmentId, renderOrigin);
+            return ToUnityMesh(segmentMeshData, meshName);
         }
 
         public static Mesh BuildChunkMesh(
@@ -134,61 +153,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             return mesh;
         }
 
-        public static Mesh ToChunkUnityMesh(PlanetMeshData meshData, string meshName)
-        {
-            Mesh mesh = new Mesh
-            {
-                name = meshName,
-                indexFormat = meshData != null && meshData.vertices.Count > 65535
-                    ? IndexFormat.UInt32
-                    : IndexFormat.UInt16
-            };
-
-            if (meshData == null || meshData.vertices.Count == 0)
-            {
-                mesh.bounds = new Bounds(Vector3.zero, Vector3.zero);
-                return mesh;
-            }
-
-            List<Vector3> vertices = new List<Vector3>(meshData.vertices.Count);
-            List<Vector3> normals = new List<Vector3>(meshData.normals.Count);
-            List<Vector2> uvs = new List<Vector2>(meshData.uvs.Count);
-
-            for (int i = 0; i < meshData.vertices.Count; i++)
-            {
-                vertices.Add(VoxelRuntimeMath.ToVector3(meshData.vertices[i]));
-            }
-
-            for (int i = 0; i < meshData.normals.Count; i++)
-            {
-                normals.Add(VoxelRuntimeMath.ToVector3(meshData.normals[i]));
-            }
-
-            for (int i = 0; i < meshData.uvs.Count; i++)
-            {
-                float2 uv = meshData.uvs[i];
-                uvs.Add(new Vector2(uv.x, uv.y));
-            }
-
-            mesh.SetVertices(vertices);
-            if (normals.Count == vertices.Count)
-            {
-                mesh.SetNormals(normals);
-            }
-
-            if (uvs.Count == vertices.Count)
-            {
-                mesh.SetUVs(0, uvs);
-            }
-
-            mesh.subMeshCount = 3;
-            mesh.SetTriangles(meshData.interiorIndices, 0, false);
-            mesh.SetTriangles(meshData.transitionIndices, 1, false);
-            mesh.SetTriangles(meshData.surfaceIndices, 2, false);
-            mesh.bounds = new Bounds(VoxelRuntimeMath.ToVector3(meshData.boundsCenter), VoxelRuntimeMath.ToVector3(meshData.boundsSize));
-            return mesh;
-        }
-
         public static PlanetMeshData ToPlanetMeshData(
             NativeList<float3> vertices,
             NativeList<float3> normals,
@@ -235,6 +199,33 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 }
 
                 AppendChunk(combined, chunk, planetData.worldPosition);
+            }
+
+            if (combined.vertices.Count > 0)
+            {
+                CalculateBounds(combined.vertices, out combined.boundsCenter, out combined.boundsSize);
+            }
+
+            return combined;
+        }
+
+        private static PlanetMeshData CraftSegmentMeshData(PlanetData planetData, int segmentId, float3 renderOrigin)
+        {
+            PlanetMeshData combined = new PlanetMeshData();
+            if (planetData == null)
+            {
+                return combined;
+            }
+
+            for (int i = 0; i < planetData.chunks.Count; i++)
+            {
+                PlanetChunkBuildData chunk = planetData.chunks[i];
+                if (chunk.segmentId != segmentId || chunk.mesh == null || chunk.mesh.vertices.Count == 0)
+                {
+                    continue;
+                }
+
+                AppendChunk(combined, chunk, renderOrigin);
             }
 
             if (combined.vertices.Count > 0)

@@ -243,6 +243,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.VoxelEngine.Runtime.StellarSystem
   ID: demo-system
+  enablePlanetFrustumCulling: 1
   player: {fileID: 2099919847}
   planets: []
 --- !u!1 &330585543

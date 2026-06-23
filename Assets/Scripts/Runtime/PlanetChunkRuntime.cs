@@ -60,51 +60,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
         }
 
-        public void HydrateFromPlanetData(
-            PlanetData planetData,
-            GameObject owner)
-        {
-            desiredChunks.Clear();
-            desiredChunkStates.Clear();
-
-            for (int i = 0; i < planetData.chunks.Count; i++)
-            {
-                PlanetChunkBuildData chunk = planetData.chunks[i];
-                desiredChunks.Add(chunk.coord);
-                desiredChunkStates[chunk.coord] = new DesiredChunkState(
-                    chunk.cellSize,
-                    chunk.detailFocusKey);
-
-                if (chunk.mesh == null || chunk.mesh.vertices.Count == 0)
-                {
-                    continue;
-                }
-
-                Mesh mesh = MeshCrafter.ToChunkUnityMesh(
-                    chunk.mesh,
-                    VoxelChunkUtility.BuildChunkName(chunk.coord, chunk.cellSize));
-                activeChunks[chunk.coord] = new VoxelChunkState
-                {
-                    chunkCoord = chunk.coord,
-                    cellSize = chunk.cellSize,
-                    detailFocusKey = chunk.detailFocusKey,
-                    owner = owner,
-                    mesh = mesh,
-                    altIndices = new VoxelChunkAltIndices(
-                        chunk.mesh.interiorIndices.Count,
-                        chunk.mesh.transitionIndices.Count,
-                        chunk.mesh.surfaceIndices.Count),
-                    chunkOrigin = chunk.origin,
-                    chunkBounds = new Bounds(VoxelRuntimeMath.ToVector3(chunk.boundsCenter), VoxelRuntimeMath.ToVector3(chunk.boundsSize)),
-                    visible = ChunkVisibility.Visible,
-                    generated = true,
-                    dirty = false
-                };
-            }
-
-            MarkVisibilityDirty();
-        }
-
         public void DeclareChunk(int3 chunkCoord)
         {
             if (declaredChunkRefCounts.TryGetValue(chunkCoord, out int refCount))

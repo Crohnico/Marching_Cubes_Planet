@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using MarchingCubesPlanet.VoxelEngine.Data;
 using MarchingCubesPlanet.VoxelEngine.Jobs;
 using Unity.Collections;
@@ -89,7 +90,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private bool ShouldUseNearCombinedMeshes()
         {
-            return !ShouldThrottlePlanetUpdatesOutsideActionRadius();
+            return state == PlanetRenderState.Near;
         }
 
         private void RefreshFarHemisphereIfNeeded()
@@ -499,6 +500,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private bool IsNearSegmentVisible(int segmentIndex, bool shouldCullFrustum)
         {
+            if (!frustumCullingEnabled)
+            {
+                return true;
+            }
+
             if (!IsNearSegmentOnPlayerHemisphere(segmentIndex))
             {
                 return false;
@@ -637,11 +643,13 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            RebuildCombinedMeshBucket(farCombinedMeshBucket, 0, false, false);
-            Debug.Log($"[PlanetStartup:{ResolvePlanetId()}] Far mesh built from active chunks. activeChunks={activeChunks.Count}, vertices={farCombinedMeshBucket.mesh.vertexCount}, elapsed={stopwatch.ElapsedMilliseconds}ms.", this);
+            Mesh farMesh = MeshCrafter.CraftFarMeshNow(planetData);
+            DeliverFarCombinedMesh(farMesh);
+            Debug.Log($"[PlanetStartup:{ResolvePlanetId()}] Far mesh built from PlanetData. chunks={(planetData != null ? planetData.chunks.Count : 0)}, vertices={farCombinedMeshBucket.mesh.vertexCount}, elapsed={stopwatch.ElapsedMilliseconds}ms.", this);
             if (writeStartupCache)
             {
                 SaveFarCombinedMesh(farCombinedMeshBucket.mesh, GetFarMeshUrl());
+                SaveCoarsestSegmentLodMeshesFromPlanetData();
             }
 
             return farCombinedMeshBucket.mesh;
@@ -722,6 +730,37 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             catch (System.Exception exception)
             {
                 Debug.LogWarning($"Could not save Far mesh for {ResolvePlanetId()} at {url}. {exception.Message}", this);
+            }
+        }
+
+        private void SaveCoarsestSegmentLodMeshesFromPlanetData()
+        {
+            if (planetData == null || planetData.chunks.Count == 0)
+            {
+                return;
+            }
+
+            int lodIndex = GetCoarsestSegmentLodIndex();
+            int segmentCount = Mathf.Clamp(
+                config != null ? config.NearCombinedMeshBucketCount : PlanetRenderConstants.MaxCombinedMeshBucketCount,
+                1,
+                PlanetRenderConstants.MaxCombinedMeshBucketCount);
+            for (int segmentId = 0; segmentId < segmentCount; segmentId++)
+            {
+                string url = GetSegmentLodMeshUrl(segmentId, lodIndex);
+                if (FileManager.GetFile(url) != null)
+                {
+                    continue;
+                }
+
+                Vector3 segmentCenter = GetSegmentCenter(segmentId, segmentCount);
+                Mesh segmentMesh = MeshCrafter.CraftSegmentMesh(
+                    planetData,
+                    segmentId,
+                    VoxelRuntimeMath.ToFloat3(segmentCenter),
+                    $"VoxelCombinedMesh_Near_{segmentId:00}_LOD_{lodIndex}");
+                SaveSegmentLodMesh(segmentMesh, segmentId, lodIndex);
+                DestroyUnityObject(segmentMesh);
             }
         }
 
@@ -857,13 +896,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             return GetSegmentIndexForChunkCoord(chunkCoord, activeCombinedMeshBucketCount);
         }
-
-        private int ResolveCellSizeForChunk(int3 chunkCoord)
-        {
-            int requestedCellSize = GetCellSizeForLodIndex(ResolveActiveSegmentLodIndex());
-            return ChunkBuilder.NormalizeCellSizeForChunk(requestedCellSize, config.ChunkSize);
-        }
-
 
         private int GetSegmentIndexForChunkCoord(int3 chunkCoord, int bucketCount)
         {
@@ -1195,7 +1227,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             return useNearCombinedMeshes
                 && nearCombinedMeshesBuiltOnce
-                && AreActiveSegmentLodsReady();
+                && AreNearSegmentLodsReady();
         }
 
         private static void EnsureCombineInstanceBuffer(CombinedMeshBucket bucket, int requiredLength)
@@ -1257,6 +1289,58 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             hasLastNearVisibilityFocusKey = false;
             MarkCombinedRendererVisibilityDirty();
             MarkAllNearCombinedMeshesDirty();
+        }
+
+        private void ReleaseNearRuntimeMeshes()
+        {
+            CancelDeferredSegmentLodBuilds();
+            segmentSeamBehaviour.ClearRuntimeCache(DestroyUnityObject);
+            HashSet<Mesh> destroyedMeshes = new HashSet<Mesh>();
+            for (int i = 0; i < nearCombinedMeshBuckets.Count; i++)
+            {
+                CombinedMeshBucket bucket = nearCombinedMeshBuckets[i];
+                if (bucket.lodCache != null)
+                {
+                    for (int lodIndex = 0; lodIndex < PlanetRenderConstants.SegmentLodCount; lodIndex++)
+                    {
+                        bucket.lodCache.SetMesh(lodIndex, null);
+                    }
+
+                    bucket.lodCache.SetPivotActive(false);
+                    bucket.lodCache.LoadLOD(-1);
+                }
+
+                if (bucket.mesh != null)
+                {
+                    destroyedMeshes.Add(bucket.mesh);
+                    DestroyUnityObject(bucket.mesh);
+                    bucket.mesh = null;
+                }
+
+                if (bucket.lodMeshes != null)
+                {
+                    for (int lodIndex = 0; lodIndex < bucket.lodMeshes.Length; lodIndex++)
+                    {
+                        if (bucket.lodMeshes[lodIndex] != null)
+                        {
+                            if (destroyedMeshes.Add(bucket.lodMeshes[lodIndex]))
+                            {
+                                DestroyUnityObject(bucket.lodMeshes[lodIndex]);
+                            }
+                        }
+                    }
+                }
+
+                bucket.lodMeshes = null;
+                bucket.lodDirty = null;
+                bucket.lodCached = null;
+                bucket.combineInstanceBuffer = null;
+                bucket.activeLodIndex = -1;
+                bucket.dirty = true;
+            }
+
+            nearCombinedMeshesBuiltOnce = false;
+            hasLastNearVisibilityFocusKey = false;
         }
 
         private void DestroyCombinedMesh()
@@ -1329,6 +1413,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             useNearCombinedMeshes = false;
             nearCombinedMeshesBuiltOnce = false;
             combinedMeshRenderModeInitialized = false;
+            state = PlanetRenderState.None;
             hasLastNearVisibilityFocusKey = false;
             farCombinedMeshDirty = true;
             combinedMeshLayoutDirty = true;

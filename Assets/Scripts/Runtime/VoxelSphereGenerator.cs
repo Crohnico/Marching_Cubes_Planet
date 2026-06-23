@@ -158,13 +158,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [ContextMenu("Generate")]
         public void Generate()
         {
-            if (chunkManager == null)
-            {
-                Debug.LogWarning("VoxelSphereGenerator necesita un PlanetManager asignado.", this);
-                return;
-            }
-
-            chunkManager.Generate();
             UpdateWaterMeshes(true);
         }
 

@@ -33,6 +33,7 @@ Este documento responde a preguntas como:
 - Una lista privada de los planetas del sistema estelar.
 - La lista de planetas esta oculta en el inspector.
 - Un `string ID` con el nombre propio del sistema estelar.
+- Un bool para activar o desactivar el frustum culling de los planetas del sistema.
 - Un boton en el inspector para borrar la carpeta de archivos usada por funcionalidades de debug.
 
 La carpeta debug del sistema se resuelve como:
@@ -83,6 +84,16 @@ await planet.Initialize(stellarID);
 
 No llama al flujo antiguo basado en coroutine ni a presupuestos por frame de arranque.
 
+#### Frustum culling de planetas
+
+`StellarSystem` decide si sus planetas usan frustum culling runtime.
+
+Cuando el bool de frustum culling esta desactivado, `StellarSystem` lo aplica a todos sus `PlanetManager`.
+
+Con el frustum culling desactivado, los planetas no deben ejecutar los calculos de culling por frustum ni las pruebas AABB asociadas a ese culling.
+
+Tambien se evita el culling de visibilidad de segmentos cercanos basado en bounds cuando esta palanca esta desactivada, para no pagar calculos AABB por segmento.
+
 ### PlanetManager
 
 `PlanetManager` es el script de consulta de estados y necesidades del planeta.
@@ -97,6 +108,7 @@ No debe concentrar responsabilidades que pertenezcan a otros sistemas. Las respo
 - Un valor `Seed`.
 - Un valor `ActionAreaRadiusPadding`.
 - Un valor `AtmosphereRadius`.
+- Un enum serializado `state` para observar si el planeta esta en modo `None`, `Far` o `Near`.
 
 `Radius` define el radio base del planeta.
 
@@ -109,6 +121,14 @@ El radio de accion se usa para decidir si el planeta debe mantenerse activo para
 La atmosfera no decide carga de chunks ni LOD. Solo representa la zona en la que el jugador se considera dentro de la gravedad/atmosfera del planeta.
 
 `AtmosphereRadius` se inicializa como `Radius * 2`.
+
+`state` se inicializa en `None`.
+
+Cuando el runtime de render del planeta decide usar near meshes, `state` pasa a `Near`.
+
+Cuando el runtime de render del planeta decide no usar near meshes y trabaja en modo far, `state` pasa a `Far`.
+
+Cuando se destruye o deshabilita el runtime de render del planeta, `state` vuelve a `None`.
 
 #### Funciones debug
 
@@ -143,6 +163,7 @@ Task Initialize(string stellarID)
     InitializePlanetData();
     InitializeFarMesh();
     InitializePlanet();
+    UpdateState();
 }
 ```
 
@@ -151,6 +172,7 @@ La inicializacion se divide en tres pasos:
 - `InitializePlanetData()`
 - `InitializeFarMesh()`
 - `InitializePlanet()`
+- `UpdateState()`
 
 `InitializePlanetData()` obtiene el `PlanetData` del planeta.
 
@@ -168,13 +190,35 @@ Si no existe, `MeshCrafter` crea la far mesh usando `PlanetData`, se guarda la f
 
 `PlanetManager` no debe ser quien construye directamente `PlanetData` ni far mesh. Solo coordina y conserva estado.
 
-`InitializePlanet()` hidrata el estado runtime del planeta desde `PlanetData`.
+`InitializePlanet()` deja montado el runtime minimo del planeta usando el `PlanetData` que ya esta en memoria.
 
-Los chunks runtime se reconstruyen desde `PlanetData.chunks`, no desde una generacion implicita dentro de `PlanetManager`.
+El montaje runtime normal no reconstruye meshes runtime por chunk desde `PlanetData.chunks`.
+
+`UpdateState()` mira la distancia del player al planeta y cambia el estado de render a `Near` o `Far`.
+
+El cambio de estado lanza la logica de entrada/salida asociada al estado.
+
+Al entrar en `Far`, la primera operacion es bajar/liberar el runtime del planeta.
+
+Al entrar en `Near`, la primera operacion es asegurar que el runtime minimo del planeta esta subido/montado.
+
+Si el runtime ya esta montado porque el planeta acaba de inicializarse y el estado pasa de `None` a `Near`, no se vuelve a cargar `PlanetData`.
+
+Si el runtime no esta montado, entrar en `Near` monta el runtime del planeta.
+
+Subir el runtime del planeta significa cargar `PlanetData` desde disco con `FileManager.GetFile(...)`, salvo en el arranque inicial cuando `InitializePlanet()` ya ha dejado ese dato montado.
+
+Subir el runtime del planeta no significa crear una `UnityEngine.Mesh` por chunk ni llenar `activeChunks` desde `PlanetData`.
+
+Bajar el runtime del planeta significa liberar la memoria del runtime del planeta: `PlanetData` pasa a `null` y las caches runtime cercanas se limpian.
+
+La logica anterior de entrada/salida del radio de activacion del planeta pertenece al cambio de `state`, no a la consulta del radio de accion.
 
 Este flujo nuevo es el flujo normal de arranque del planeta.
 
-El flujo antiguo de arranque por coroutine no forma parte de la inicializacion normal usada por `StellarSystem`.
+El flujo antiguo de arranque por coroutine no forma parte de la inicializacion normal usada por `StellarSystem` y no debe usarse como ruta de generacion del planeta.
+
+Los botones/debug antiguos que reconstruian chunks activos desde `PlanetManager` no forman parte del flujo runtime actual.
 
 #### Separacion de responsabilidades
 
@@ -185,7 +229,7 @@ El flujo antiguo de arranque por coroutine no forma parte de la inicializacion n
 - Consultar estado del planeta.
 - Decidir que chunks necesita el planeta.
 - Coordinar la inicializacion.
-- Hidratar estado runtime desde `PlanetData`.
+- Cargar `PlanetData` como dato runtime minimo.
 - Mantener referencias runtime necesarias para render, culling y visibilidad.
 
 `PlanetManager` no debe contener:
@@ -233,7 +277,7 @@ chunkBehaviour.Tick(...);
 `PlanetChunkBehaviour` se divide por responsabilidades:
 
 - `PlanetChunkBehaviour.Tick`: update/tick de la funcionalidad de chunks.
-- `PlanetChunkBehaviour.Declarations`: declaracion, liberacion e hidratacion de chunks.
+- `PlanetChunkBehaviour.Declarations`: declaracion y liberacion de chunks.
 - `PlanetChunkBehaviour.Build`: desired chunks y builds sincronas/budgeted.
 - `PlanetChunkBehaviour.Lifecycle`: limpieza, dirty flags y conteos.
 
@@ -461,5 +505,45 @@ Decision confirmada:
 - `PlanetData` es la fuente de verdad persistente del planeta.
 - `PlanetInitializer` crea `PlanetData` cuando no existe en disco.
 - `MeshCrafter` crea far mesh usando `PlanetData`.
-- `PlanetManager` hidrata su estado runtime desde `PlanetData`.
+- `PlanetManager` carga `PlanetData` como dato runtime minimo.
 - `StellarSystem` solo orquesta la inicializacion secuencial.
+
+#### Runtime del planeta
+
+El runtime del planeta es la informacion viva que se monta a partir de `PlanetData` para que el planeta pueda funcionar en escena.
+
+El runtime del planeta incluye:
+
+- La informacion persistente cargada o creada en `PlanetData`.
+- Las listas, diccionarios, caches y estados montados en memoria desde `PlanetData`.
+- Los buckets de render, far mesh, near meshes, LODs de segmento, costuras y caches runtime necesarias para renderizar, craftear y mantener operativo el planeta.
+
+El runtime normal no incluye meshes activas por chunk reconstruidas desde `PlanetData`.
+
+La infraestructura antigua de chunks activos (`activeChunks`, dirty flags, culling de chunks y desired chunks) queda pendiente de revision separada.
+
+`PlanetData` es la fuente serializable.
+
+El runtime del planeta es `PlanetData` mas el estado derivado montado en memoria para que el planeta viva.
+
+#### LOD de segmentos
+
+El LOD pertenece al segmento, no al chunk.
+
+No existe un LOD activo global del planeta.
+
+Los chunks no guardan ni deciden el LOD usado para render.
+
+Cada segmento resuelve su LOD por distancia y solicita su propia mesh:
+
+- `LOD_2`: disco o recalculo desde scalar field.
+- `LOD_1`: disco o recalculo desde scalar field.
+- `LOD_0`: disco o recalculo desde scalar field.
+
+Todos los LOD de segmento siguen la misma regla base: primero se intenta cargar la mesh cacheada de disco; si no existe, se construye para ese `lodIndex` y se guarda.
+
+`Far` usa la representacion gruesa equivalente al LOD mas alto configurado.
+
+Cuando `Far` se construye desde `PlanetData`, se puede aprovechar esa informacion para guardar en disco las meshes de segmento del LOD mas alto configurado, sin montar meshes runtime por chunk.
+
+Entrar en `Near` no debe materializar todas las meshes de chunk para crear un LOD de segmento.

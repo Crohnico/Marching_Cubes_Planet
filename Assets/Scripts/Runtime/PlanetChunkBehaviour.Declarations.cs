@@ -11,11 +11,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             runtime.ApplyPlanetDataToDeclaredChunks(planetData);
         }
 
-        public void HydrateFromPlanetData(PlanetData planetData, GameObject owner)
-        {
-            runtime.HydrateFromPlanetData(planetData, owner);
-        }
-
         public void DeclareChunk(int3 chunkCoord)
         {
             runtime.DeclareChunk(chunkCoord);

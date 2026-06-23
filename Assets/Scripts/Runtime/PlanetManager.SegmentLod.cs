@@ -46,9 +46,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                         continue;
                     }
 
-                    int activeLodIndex = ResolveActiveSegmentLodIndex();
-                    GetOrBuildSegmentLodMesh(bucket, i, activeLodIndex);
-                    QueueDeferredSegmentLodsForBucket(i, activeLodIndex);
+                    int targetLodIndex = ResolveLodIndexForSegment(i);
+                    GetOrBuildSegmentLodMesh(bucket, i, targetLodIndex);
                     bucket.dirty = false;
                     builtBuckets++;
                 }
@@ -64,15 +63,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             ApplyCombinedRendererVisibility();
         }
 
-        private void QueueDeferredSegmentLodsForBucket(int bucketIndex, int activeLodIndex)
-        {
-            int lodCount = GetSegmentLodCount();
-            for (int lodIndex = math.min(activeLodIndex - 1, lodCount - 1); lodIndex >= 0; lodIndex--)
-            {
-                QueueSegmentLodBuild(bucketIndex, lodIndex);
-            }
-        }
-
         private void QueueSegmentLodBuild(int bucketIndex, int lodIndex)
         {
             QueueSegmentLodBuild(bucketIndex, lodIndex, false);
@@ -86,13 +76,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 || lodIndex < 0
                 || lodIndex >= GetSegmentLodCount())
             {
-                return;
-            }
-
-            if (lodIndex == ResolveActiveSegmentLodIndex())
-            {
-                nearCombinedMeshBuckets[bucketIndex].dirty = true;
-                combinedMeshesDirty = true;
                 return;
             }
 
@@ -177,13 +160,12 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 deferredSegmentLodChunkCoords.Clear();
                 deferredSegmentLodBuiltChunkCoords.Clear();
                 deferredSegmentLodChunkMeshes.Clear();
-                foreach (int3 chunkCoord in declaredChunks)
+                for (int i = 0; planetData != null && i < planetData.chunks.Count; i++)
                 {
-                    if (GetSegmentIndexForChunkCoord(
-                        chunkCoord,
-                        config != null ? config.NearCombinedMeshBucketCount : PlanetRenderConstants.MaxCombinedMeshBucketCount) == key.bucketIndex)
+                    PlanetChunkBuildData chunk = planetData.chunks[i];
+                    if (chunk.segmentId == key.bucketIndex)
                     {
-                        deferredSegmentLodChunkCoords.Add(chunkCoord);
+                        deferredSegmentLodChunkCoords.Add(chunk.coord);
                     }
                 }
 
@@ -466,7 +448,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             if (segmentActive && targetLodIndex >= 0)
             {
                 Mesh mesh = GetOrLoadSegmentLodMesh(bucket, bucketIndex, targetLodIndex);
-                if (mesh != null && mesh.vertexCount > 0)
+                if (HasLoadedSegmentLodMesh(bucket, targetLodIndex))
                 {
                     renderLodIndex = targetLodIndex;
                 }
@@ -492,17 +474,16 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             return bucket.activeLodIndex >= 0 && HasRenderableSegmentLodMesh(bucket, bucket.activeLodIndex);
         }
 
-        private bool AreActiveSegmentLodsReady()
+        private bool AreNearSegmentLodsReady()
         {
             if (activeCombinedMeshBucketCount <= 0 || activeCombinedMeshBucketCount > nearCombinedMeshBuckets.Count)
             {
                 return false;
             }
 
-            int activeLodIndex = ResolveActiveSegmentLodIndex();
             for (int i = 0; i < activeCombinedMeshBucketCount; i++)
             {
-                if (!HasLoadedSegmentLodMesh(nearCombinedMeshBuckets[i], activeLodIndex))
+                if (!HasAnyLoadedSegmentLodMesh(nearCombinedMeshBuckets[i]))
                 {
                     return false;
                 }
@@ -511,16 +492,18 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             return true;
         }
 
-        private int ResolveRenderableLodIndex(CombinedMeshBucket bucket, int targetLodIndex)
+        private bool HasAnyLoadedSegmentLodMesh(CombinedMeshBucket bucket)
         {
-            if (targetLodIndex < 0)
+            int lodCount = GetSegmentLodCount();
+            for (int lodIndex = 0; lodIndex < lodCount; lodIndex++)
             {
-                return -1;
+                if (HasLoadedSegmentLodMesh(bucket, lodIndex))
+                {
+                    return true;
+                }
             }
 
-            return HasRenderableSegmentLodMesh(bucket, targetLodIndex)
-                ? targetLodIndex
-                : -1;
+            return false;
         }
 
         private int ResolveHighestLoadedSegmentLodIndex(CombinedMeshBucket bucket)
@@ -614,9 +597,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             EnsureSegmentLodCache(bucket);
             lodIndex = Mathf.Clamp(lodIndex, 0, GetSegmentLodCount() - 1);
             System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            Mesh targetMesh = lodIndex == ResolveActiveSegmentLodIndex()
-                ? RebuildActiveSegmentLodMeshFromActiveChunks(bucket, bucketIndex, lodIndex)
-                : RebuildSegmentLodMeshFromScalarField(bucket, bucketIndex, lodIndex);
+            Mesh targetMesh = RebuildSegmentLodMeshFromScalarField(bucket, bucketIndex, lodIndex);
             Debug.Log($"[PlanetStartup:{ResolvePlanetId()}] Segment LOD built. segment={bucketIndex}, lod={lodIndex}, vertices={(targetMesh != null ? targetMesh.vertexCount : 0)}, elapsed={stopwatch.ElapsedMilliseconds}ms.", this);
             SaveSegmentLodMesh(targetMesh, bucketIndex, lodIndex);
             InstallSegmentLodMesh(bucket, bucketIndex, lodIndex, targetMesh);
@@ -668,39 +649,12 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
         }
 
-        private Mesh RebuildActiveSegmentLodMeshFromActiveChunks(CombinedMeshBucket bucket, int bucketIndex, int lodIndex)
-        {
-            Mesh targetMesh = GetSegmentLodMesh(bucket, lodIndex);
-            if (targetMesh == null)
-            {
-                targetMesh = bucket.mesh;
-            }
-
-            if (targetMesh == null)
-            {
-                targetMesh = new Mesh
-                {
-                    name = $"VoxelCombinedMesh_Near_{bucketIndex:00}_LOD_{lodIndex}",
-                    indexFormat = IndexFormat.UInt32
-                };
-                targetMesh.MarkDynamic();
-            }
-
-            RebuildCombinedMeshBucket(bucket, bucketIndex, true, targetMesh, false);
-            return targetMesh;
-        }
-
         private void InstallSegmentLodMesh(CombinedMeshBucket bucket, int bucketIndex, int lodIndex, Mesh targetMesh)
         {
             EnsureSegmentLodCache(bucket);
             lodIndex = Mathf.Clamp(lodIndex, 0, GetSegmentLodCount() - 1);
             Mesh previousLodMesh = GetSegmentLodMesh(bucket, lodIndex);
             Mesh meshBeingReplaced = previousLodMesh;
-            bool activeLod = lodIndex == ResolveActiveSegmentLodIndex();
-            if (activeLod && meshBeingReplaced == null)
-            {
-                meshBeingReplaced = bucket.mesh;
-            }
 
             if (targetMesh == null)
             {
@@ -720,11 +674,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             bucket.lodMeshes[lodIndex] = targetMesh;
             bucket.lodDirty[lodIndex] = false;
             bucket.lodCached[lodIndex] = true;
-            if (activeLod)
-            {
-                bucket.mesh = targetMesh;
-                bucket.activeLodIndex = lodIndex;
-            }
 
             if (bucket.lodCache != null)
             {
@@ -743,15 +692,15 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             scratchSegmentLodChunkMeshes.Clear();
             Matrix4x4 planetLocalToBucketLocal = GetPlanetLocalToBucketLocalMatrix(bucket);
 
-            foreach (int3 chunkCoord in declaredChunks)
+            for (int i = 0; planetData != null && i < planetData.chunks.Count; i++)
             {
-                if (GetSegmentIndexForChunkCoord(
-                    chunkCoord,
-                    config != null ? config.NearCombinedMeshBucketCount : PlanetRenderConstants.MaxCombinedMeshBucketCount) != bucketIndex)
+                PlanetChunkBuildData chunk = planetData.chunks[i];
+                if (chunk.segmentId != bucketIndex)
                 {
                     continue;
                 }
 
+                int3 chunkCoord = chunk.coord;
                 int3 chunkOrigin = VoxelChunkUtility.GetChunkOrigin(chunkCoord, chunkSize);
                 Mesh chunkMesh = BuildSegmentLodChunkMesh(chunkCoord, chunkOrigin, chunkSize, cellSize, out VoxelChunkAltIndices altIndices);
                 if (chunkMesh == null || chunkMesh.vertexCount == 0)
@@ -839,10 +788,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private int ResolveLodIndexForSegment(int segmentIndex, Vector3 playerPosition)
         {
-            int fallbackLod = ResolveActiveSegmentLodIndex();
             if (segmentIndex < 0 || segmentIndex >= nearCombinedMeshBuckets.Count)
             {
-                return fallbackLod;
+                return GetCoarsestSegmentLodIndex();
             }
 
             Vector3 segmentPosition = nearCombinedMeshBuckets[segmentIndex].owner.transform.position;
@@ -860,9 +808,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             return lodCount - 1;
         }
 
-        private int ResolveActiveSegmentLodIndex()
+        private int GetCoarsestSegmentLodIndex()
         {
-            return Mathf.Clamp(PlanetRenderConstants.ActiveSegmentLodIndex, 0, GetSegmentLodCount() - 1);
+            return GetSegmentLodCount() - 1;
         }
 
         private int GetSegmentLodBucketBuildsPerFrame()

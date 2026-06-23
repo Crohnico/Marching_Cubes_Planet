@@ -11,6 +11,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
     {
         public string ID;
 
+        [SerializeField] private bool enablePlanetFrustumCulling = true;
         [SerializeField] private Transform player;
         [SerializeField, HideInInspector] private List<PlanetManager> planets = new List<PlanetManager>();
 
@@ -45,6 +46,24 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             planets.Clear();
             planets.AddRange(FindObjectsByType<PlanetManager>(FindObjectsSortMode.None));
+            ApplyPlanetFrustumCullingSetting();
+        }
+
+        private void OnValidate()
+        {
+            ApplyPlanetFrustumCullingSetting();
+        }
+
+        private void ApplyPlanetFrustumCullingSetting()
+        {
+            for (int i = 0; i < planets.Count; i++)
+            {
+                PlanetManager planet = planets[i];
+                if (planet != null)
+                {
+                    planet.SetFrustumCullingEnabled(enablePlanetFrustumCulling);
+                }
+            }
         }
 
         private void SortPlanetsByPlayerDistance()

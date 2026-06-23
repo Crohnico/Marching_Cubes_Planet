@@ -45,12 +45,16 @@ namespace MarchingCubesPlanet.VoxelEngine.Editor
 
             long memoryBefore = System.GC.GetTotalMemory(true);
             Stopwatch stopwatch = Stopwatch.StartNew();
-            manager.Generate();
+            manager.Initialize("Benchmark").GetAwaiter().GetResult();
             stopwatch.Stop();
             long memoryAfter = System.GC.GetTotalMemory(false);
 
-            Mesh combinedMesh = manager.GetComponent<MeshFilter>() != null
-                ? manager.GetComponent<MeshFilter>().sharedMesh
+            Transform visibleMeshTransform = manager.GetVisibleMeshTransformOrNull();
+            MeshFilter visibleMeshFilter = visibleMeshTransform != null
+                ? visibleMeshTransform.GetComponent<MeshFilter>()
+                : null;
+            Mesh combinedMesh = visibleMeshFilter != null
+                ? visibleMeshFilter.sharedMesh
                 : null;
             int vertices = combinedMesh != null ? combinedMesh.vertexCount : 0;
             int indices = combinedMesh != null ? (int)combinedMesh.GetIndexCount(0) : 0;
