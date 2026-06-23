@@ -72,6 +72,14 @@ El flujo es:
 
 No se inicializan varios planetas en paralelo dentro de este flujo.
 
+`StellarSystem` llama al flujo nuevo:
+
+```csharp
+await planet.Initialize(stellarID);
+```
+
+No llama al flujo antiguo basado en coroutine ni a presupuestos por frame de arranque.
+
 ### PlanetManager
 
 `PlanetManager` es el script de consulta de estados y necesidades del planeta.
@@ -160,6 +168,43 @@ Si no existe, `MeshCrafter` crea la far mesh usando `PlanetData`, se guarda la f
 `InitializePlanet()` hidrata el estado runtime del planeta desde `PlanetData`.
 
 Los chunks runtime se reconstruyen desde `PlanetData.chunks`, no desde una generacion implicita dentro de `PlanetManager`.
+
+Este flujo nuevo es el flujo normal de arranque del planeta.
+
+El flujo antiguo de arranque por coroutine no forma parte de la inicializacion normal usada por `StellarSystem`.
+
+#### Separacion de responsabilidades
+
+`PlanetManager` no debe funcionar como libreria de utilidades ni como fabrica directa de meshes/chunks.
+
+`PlanetManager` puede:
+
+- Consultar estado del planeta.
+- Decidir que chunks necesita el planeta.
+- Coordinar la inicializacion.
+- Hidratar estado runtime desde `PlanetData`.
+- Mantener referencias runtime necesarias para render, culling y visibilidad.
+
+`PlanetManager` no debe contener:
+
+- Metodos genericos de conversion entre `int3`, `float3` y `Vector3`.
+- Metodos genericos para copiar `NativeList` a listas manejadas.
+- Comparadores genericos de coordenadas.
+- Logica interna de construccion de celdas de chunk.
+- Logica interna de scheduling de jobs de generacion de chunk.
+- Logica interna de subida de buffers nativos a `Mesh`.
+
+Las responsabilidades quedan separadas asi:
+
+- `VoxelRuntimeMath`: utilidades matematicas/conversiones de tipos runtime.
+- `NativeListCopyUtility`: copias entre contenedores nativos y listas manejadas.
+- `ChunkBuilder`: construye requests de celdas, normaliza cell size de chunk, lanza jobs de evaluacion/generacion y devuelve builds o datos de mesh.
+- `MeshCrafter`: convierte datos de mesh en `Mesh` de Unity y construye far mesh/mesh data desde `PlanetData`.
+- `PlanetInitializer`: crea `PlanetData` cuando no existe en disco, delegando la generacion tecnica de chunks en `ChunkBuilder`.
+
+Regla importante:
+
+Si aparece una utilidad generica o una fabrica de mesh/chunk dentro de `PlanetManager`, debe moverse a una clase dedicada salvo que el contrato defina explicitamente lo contrario.
 
 #### PlanetData
 
@@ -270,3 +315,11 @@ Regla importante:
 Si `PlanetMeshCache` no existe o esta obsoleto, `MeshCrafter` debe poder reconstruir far mesh y near mesh usando solo `PlanetData.chunks`.
 
 Por tanto, `PlanetData.chunks` es obligatorio. `PlanetMeshCache` es acelerador, no fuente unica.
+
+Decision confirmada:
+
+- `PlanetData` es la fuente de verdad persistente del planeta.
+- `PlanetInitializer` crea `PlanetData` cuando no existe en disco.
+- `MeshCrafter` crea far mesh usando `PlanetData`.
+- `PlanetManager` hidrata su estado runtime desde `PlanetData`.
+- `StellarSystem` solo orquesta la inicializacion secuencial.

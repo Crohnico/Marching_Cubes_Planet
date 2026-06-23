@@ -4,10 +4,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using MarchingCubesPlanet.VoxelEngine.Data;
-using MarchingCubesPlanet.VoxelEngine.Jobs;
 using MarchingCubesPlanet.VoxelEngine.MarchingCubes;
 using Unity.Collections;
-using Unity.Jobs;
 using Unity.Mathematics;
 using Unity.Profiling;
 using UnityEngine;
@@ -19,21 +17,16 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
     [DisallowMultipleComponent]
     public sealed partial class PlanetManager : MonoBehaviour
     {
-        private const int MaxVerticesPerCell = 36;
         private const int InteriorSubMesh = 0;
         private const int TransitionSubMesh = 1;
         private const int SurfaceSubMesh = 2;
-        private const int LayerSubMeshCount = 3;
         private const int MaxCombinedMeshBucketCount = VoxelEngineConfig.MaxCombinedMeshBucketCount;
         private const int SegmentLodCount = 3;
         private const int ActiveSegmentLodIndex = 2;
         private const int DefaultStartupFarChunkBuildsPerFrame = 8;
         private const int DefaultSegmentLodChunksBuiltPerFrame = 16;
         private static readonly ProfilerMarker RebuildDesiredMarker = new ProfilerMarker("VoxelEngine.RebuildDesiredChunks");
-        private static readonly ProfilerMarker BuildRequestsMarker = new ProfilerMarker("VoxelEngine.BuildCellRequests");
-        private static readonly ProfilerMarker StartChunkBuildMarker = new ProfilerMarker("VoxelEngine.StartChunkBuild");
         private static readonly ProfilerMarker CompleteChunkBuildMarker = new ProfilerMarker("VoxelEngine.CompleteChunkBuild");
-        private static readonly ProfilerMarker UploadMeshMarker = new ProfilerMarker("VoxelEngine.UploadMesh");
         private static readonly ProfilerMarker CombineMeshMarker = new ProfilerMarker("VoxelEngine.CombineMesh");
         private static readonly ProfilerMarker UpdateVisibilityMarker = new ProfilerMarker("VoxelEngine.UpdateChunkVisibility");
         private static readonly ProfilerMarker BuildCombineInstancesMarker = new ProfilerMarker("VoxelEngine.BuildCombineInstances");
@@ -63,12 +56,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private readonly HashSet<int3> desiredChunks = new HashSet<int3>();
         private readonly List<int3> scratchChunkCoords = new List<int3>();
         private readonly List<CombineInstance> combineInstances = new List<CombineInstance>();
-        private readonly List<Vector3> meshUploadVertices = new List<Vector3>(65536);
-        private readonly List<Vector3> meshUploadNormals = new List<Vector3>(65536);
-        private readonly List<Vector2> meshUploadUvs = new List<Vector2>(65536);
-        private readonly List<int> meshUploadInteriorIndices = new List<int>(65536);
-        private readonly List<int> meshUploadTransitionIndices = new List<int>(65536);
-        private readonly List<int> meshUploadSurfaceIndices = new List<int>(65536);
         private readonly List<VoxelCellBuildRequest> cellRequestBuffer = new List<VoxelCellBuildRequest>(32768);
         private readonly List<Mesh> scratchSegmentLodChunkMeshes = new List<Mesh>();
         private readonly List<int3> deferredSegmentLodChunkCoords = new List<int3>();
@@ -470,7 +457,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                         chunk.mesh.transitionIndices.Count,
                         chunk.mesh.surfaceIndices.Count),
                     chunkOrigin = chunk.origin,
-                    chunkBounds = new Bounds(ToVector3(chunk.boundsCenter), ToVector3(chunk.boundsSize)),
+                    chunkBounds = new Bounds(VoxelRuntimeMath.ToVector3(chunk.boundsCenter), VoxelRuntimeMath.ToVector3(chunk.boundsSize)),
                     visible = ChunkVisibility.Visible,
                     generated = true,
                     dirty = false
@@ -519,16 +506,16 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             {
                 stellarID = ResolveSystemId(activeSystemId),
                 planetID = ResolvePlanetId(),
-                worldPosition = ToFloat3(GetSpherePosition()),
+                worldPosition = VoxelRuntimeMath.ToFloat3(GetSpherePosition()),
                 radius = Radius,
                 seed = Seed,
                 chunkSize = config.ChunkSize,
-                cellSize = NormalizeCellSizeForChunk(requestedCellSize, config.ChunkSize),
+                cellSize = ChunkBuilder.NormalizeCellSizeForChunk(requestedCellSize, config.ChunkSize),
                 detailFocusKey = GetCurrentDetailFocusKey(),
                 segmentCount = segmentCount,
                 segmentGrid = segmentGrid,
                 worldToPlanetLocal = transform.worldToLocalMatrix,
-                sphereLocalPosition = ToFloat3(GetSpherePositionInManagerLocal()),
+                sphereLocalPosition = VoxelRuntimeMath.ToFloat3(GetSpherePositionInManagerLocal()),
                 maximumTerrainRadius = sphereGenerator != null ? Mathf.Max(0.01f, sphereGenerator.MaximumTerrainRadius) : Radius,
                 scalarField = GetScalarFieldSettings()
             };
@@ -793,7 +780,13 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     continue;
                 }
 
-                CompleteChunkBuild(StartChunkBuild(chunkCoord, desiredState));
+                CompleteChunkBuild(ChunkBuilder.StartChunkBuild(
+                    chunkCoord,
+                    desiredState,
+                    config.ChunkSize,
+                    GetScalarFieldSettings(),
+                    caseTable,
+                    cellRequestBuffer));
                 chunksBuiltThisFrame++;
                 if (chunksBuiltThisFrame >= maxChunksPerFrame)
                 {
@@ -968,7 +961,13 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     continue;
                 }
 
-                CompleteChunkBuild(StartChunkBuild(chunkCoord, desiredState));
+                CompleteChunkBuild(ChunkBuilder.StartChunkBuild(
+                    chunkCoord,
+                    desiredState,
+                    config.ChunkSize,
+                    GetScalarFieldSettings(),
+                    caseTable,
+                    cellRequestBuffer));
             }
         }
 
@@ -1267,102 +1266,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 return distanceComparison;
             }
 
-            return CompareInt3(a, b);
-        }
-
-        private static int CompareInt3(int3 a, int3 b)
-        {
-            int xComparison = a.x.CompareTo(b.x);
-            if (xComparison != 0)
-            {
-                return xComparison;
-            }
-
-            int yComparison = a.y.CompareTo(b.y);
-            if (yComparison != 0)
-            {
-                return yComparison;
-            }
-
-            return a.z.CompareTo(b.z);
-        }
-
-        private ChunkBuild StartChunkBuild(int3 chunkCoord, DesiredChunkState desiredState)
-        {
-            using (StartChunkBuildMarker.Auto())
-            {
-                int3 chunkSize = config.ChunkSize;
-                int3 chunkOrigin = VoxelChunkUtility.GetChunkOrigin(chunkCoord, chunkSize);
-                using (BuildRequestsMarker.Auto())
-                {
-                    BuildCellRequests(
-                        cellRequestBuffer,
-                        chunkOrigin,
-                        chunkSize,
-                        desiredState.cellSize);
-                }
-
-                int cellCount = cellRequestBuffer.Count;
-
-                NativeArray<VoxelCellBuildRequest> requests = new NativeArray<VoxelCellBuildRequest>(cellCount, Allocator.Persistent);
-                NativeArray<VoxelCell> cells = new NativeArray<VoxelCell>(cellCount, Allocator.Persistent);
-                NativeList<float3> vertices = new NativeList<float3>(cellCount * MaxVerticesPerCell, Allocator.Persistent);
-                NativeList<float3> normals = new NativeList<float3>(cellCount * MaxVerticesPerCell, Allocator.Persistent);
-                NativeList<float2> uvs = new NativeList<float2>(cellCount * MaxVerticesPerCell, Allocator.Persistent);
-                NativeList<int> interiorIndices = new NativeList<int>(cellCount * MaxVerticesPerCell, Allocator.Persistent);
-                NativeList<int> transitionIndices = new NativeList<int>(cellCount * MaxVerticesPerCell, Allocator.Persistent);
-                NativeList<int> surfaceIndices = new NativeList<int>(cellCount * MaxVerticesPerCell, Allocator.Persistent);
-                ScalarFieldSettings scalarField = GetScalarFieldSettings();
-
-                for (int i = 0; i < cellRequestBuffer.Count; i++)
-                {
-                    requests[i] = cellRequestBuffer[i];
-                }
-
-                EvaluateVoxelCellsJob evaluateJob = new EvaluateVoxelCellsJob
-                {
-                    scalarField = scalarField,
-                    requests = requests,
-                    cells = cells
-                };
-
-                JobHandle evaluateHandle = evaluateJob.Schedule(cellCount, 64);
-
-                GenerateChunkMeshJob meshJob = new GenerateChunkMeshJob
-                {
-                    cells = cells,
-                    cornerIndexAFromEdge = caseTable.cornerIndexAFromEdge,
-                    cornerIndexBFromEdge = caseTable.cornerIndexBFromEdge,
-                    triangulation = caseTable.triangulation,
-                    chunkOrigin = chunkOrigin,
-                    chunkSize = chunkSize,
-                    scalarField = scalarField,
-                    vertices = vertices,
-                    normals = normals,
-                    uvs = uvs,
-                    interiorIndices = interiorIndices,
-                    transitionIndices = transitionIndices,
-                    surfaceIndices = surfaceIndices
-                };
-
-                return new ChunkBuild
-                {
-                    chunkCoord = chunkCoord,
-                    cellSize = desiredState.cellSize,
-                    detailFocusKey = desiredState.detailFocusKey,
-                    chunkOrigin = chunkOrigin,
-                    chunkSize = chunkSize,
-                    requests = requests,
-                    cells = cells,
-                    vertices = vertices,
-                    normals = normals,
-                    uvs = uvs,
-                    interiorIndices = interiorIndices,
-                    transitionIndices = transitionIndices,
-                    surfaceIndices = surfaceIndices,
-                    jobHandle = meshJob.Schedule(evaluateHandle)
-                };
-            }
+            return VoxelRuntimeMath.CompareInt3(a, b);
         }
 
         private void CompleteChunkBuild(ChunkBuild chunkBuild)
@@ -1384,7 +1288,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     }
 
                     VoxelChunkAltIndices altIndices;
-                    Mesh mesh = BuildMesh(
+                    Mesh mesh = MeshCrafter.BuildChunkMesh(
                         BuildChunkName(chunkBuild.chunkCoord, chunkBuild.cellSize),
                         chunkBuild.vertices,
                         chunkBuild.normals,
@@ -1434,169 +1338,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             return math.max(math.abs(chunkOffset.x), math.max(math.abs(chunkOffset.y), math.abs(chunkOffset.z)));
         }
 
-        private static void BuildCellRequests(
-            List<VoxelCellBuildRequest> requests,
-            int3 chunkOrigin,
-            int3 chunkSize,
-            int maximumCellSize,
-            bool clearRequests = true)
-        {
-            int normalizedMaximumCellSize = math.max(1, maximumCellSize);
-            normalizedMaximumCellSize = NormalizeCellSizeForChunk(normalizedMaximumCellSize, chunkSize);
-            if (clearRequests)
-            {
-                requests.Clear();
-            }
-
-            AddCells(
-                requests,
-                chunkOrigin,
-                chunkSize,
-                normalizedMaximumCellSize);
-        }
-
-        private static int NormalizeCellSizeForChunk(int requestedSize, int3 chunkSize)
-        {
-            int requested = math.max(1, math.min(requestedSize, math.min(chunkSize.x, math.min(chunkSize.y, chunkSize.z))));
-            for (int size = requested; size >= 1; size--)
-            {
-                if (chunkSize.x % size == 0
-                    && chunkSize.y % size == 0
-                    && chunkSize.z % size == 0)
-                {
-                    return size;
-                }
-            }
-
-            return 1;
-        }
-
-        private static void AddCells(
-            List<VoxelCellBuildRequest> requests,
-            int3 origin,
-            int3 size,
-            int cellSize)
-        {
-            for (int x = 0; x < size.x; x += cellSize)
-            {
-                for (int y = 0; y < size.y; y += cellSize)
-                {
-                    for (int z = 0; z < size.z; z += cellSize)
-                    {
-                        int3 refinedOrigin = origin + new int3(x, y, z);
-                        requests.Add(new VoxelCellBuildRequest
-                        {
-                            origin = refinedOrigin,
-                            size = cellSize
-                        });
-                    }
-                }
-            }
-        }
-
-        private Mesh BuildMesh(
-            string meshName,
-            NativeList<float3> vertices,
-            NativeList<float3> normals,
-            NativeList<float2> uvs,
-            NativeList<int> interiorIndices,
-            NativeList<int> transitionIndices,
-            NativeList<int> surfaceIndices,
-            out VoxelChunkAltIndices altIndices)
-        {
-            using (UploadMeshMarker.Auto())
-            {
-                altIndices = new VoxelChunkAltIndices(
-                    interiorIndices.Length,
-                    transitionIndices.Length,
-                    surfaceIndices.Length);
-                Mesh mesh = new Mesh
-                {
-                    name = meshName,
-                    indexFormat = vertices.Length > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16
-                };
-
-                if (vertices.Length == 0 || altIndices.TotalIndexCount == 0)
-                {
-                    mesh.bounds = new Bounds(Vector3.zero, Vector3.zero);
-                    return mesh;
-                }
-
-                CopyToVector3List(vertices, meshUploadVertices);
-                CopyToVector3List(normals, meshUploadNormals);
-
-                Bounds bounds = CalculateBounds(meshUploadVertices);
-                CopyToVector2List(uvs, meshUploadUvs);
-                CopyToIntList(interiorIndices, meshUploadInteriorIndices);
-                CopyToIntList(transitionIndices, meshUploadTransitionIndices);
-                CopyToIntList(surfaceIndices, meshUploadSurfaceIndices);
-
-                mesh.SetVertices(meshUploadVertices);
-                mesh.SetNormals(meshUploadNormals);
-                mesh.SetUVs(0, meshUploadUvs);
-                mesh.subMeshCount = LayerSubMeshCount;
-                mesh.SetTriangles(meshUploadInteriorIndices, InteriorSubMesh, false);
-                mesh.SetTriangles(meshUploadTransitionIndices, TransitionSubMesh, false);
-                mesh.SetTriangles(meshUploadSurfaceIndices, SurfaceSubMesh, false);
-                mesh.bounds = bounds;
-                return mesh;
-            }
-        }
-
-        private static Bounds CalculateBounds(List<Vector3> vertices)
-        {
-            Vector3 min = vertices[0];
-            Vector3 max = vertices[0];
-            for (int i = 1; i < vertices.Count; i++)
-            {
-                Vector3 vertex = vertices[i];
-                min = Vector3.Min(min, vertex);
-                max = Vector3.Max(max, vertex);
-            }
-
-            return new Bounds((min + max) * 0.5f, max - min);
-        }
-
-        private static void CopyToVector3List(NativeList<float3> source, List<Vector3> destination)
-        {
-            EnsureListCapacity(destination, source.Length);
-            destination.Clear();
-            for (int i = 0; i < source.Length; i++)
-            {
-                float3 value = source[i];
-                destination.Add(new Vector3(value.x, value.y, value.z));
-            }
-        }
-
-        private static void CopyToVector2List(NativeList<float2> source, List<Vector2> destination)
-        {
-            EnsureListCapacity(destination, source.Length);
-            destination.Clear();
-            for (int i = 0; i < source.Length; i++)
-            {
-                float2 value = source[i];
-                destination.Add(new Vector2(value.x, value.y));
-            }
-        }
-
-        private static void CopyToIntList(NativeList<int> source, List<int> destination)
-        {
-            EnsureListCapacity(destination, source.Length);
-            destination.Clear();
-            for (int i = 0; i < source.Length; i++)
-            {
-                destination.Add(source[i]);
-            }
-        }
-
-        private static void EnsureListCapacity<T>(List<T> list, int requiredCapacity)
-        {
-            if (list.Capacity < requiredCapacity)
-            {
-                list.Capacity = requiredCapacity;
-            }
-        }
-
         private void MarkChunkVisibilityDirty()
         {
             chunkVisibilityDirty = true;
@@ -1605,23 +1346,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private static Bounds BuildChunkBounds(int3 chunkOrigin, int3 chunkSize)
         {
-            Vector3 size = ToVector3(chunkSize);
-            return new Bounds(ToVector3(chunkOrigin) + size * 0.5f, size);
-        }
-
-        private static Vector3 ToVector3(int3 value)
-        {
-            return new Vector3(value.x, value.y, value.z);
-        }
-
-        private static Vector3 ToVector3(float3 value)
-        {
-            return new Vector3(value.x, value.y, value.z);
-        }
-
-        private static float3 ToFloat3(Vector3 value)
-        {
-            return new float3(value.x, value.y, value.z);
+            Vector3 size = VoxelRuntimeMath.ToVector3(chunkSize);
+            return new Bounds(VoxelRuntimeMath.ToVector3(chunkOrigin) + size * 0.5f, size);
         }
 
         private Vector3 GetCurrentDetailFocusVector3()
@@ -1738,24 +1464,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             if (chunkBuild.surfaceIndices.IsCreated)
             {
                 chunkBuild.surfaceIndices.Dispose();
-            }
-        }
-
-        private static void DisposeIfCreated<T>(NativeArray<T> array)
-            where T : struct
-        {
-            if (array.IsCreated)
-            {
-                array.Dispose();
-            }
-        }
-
-        private static void DisposeIfCreated<T>(NativeList<T> list)
-            where T : unmanaged
-        {
-            if (list.IsCreated)
-            {
-                list.Dispose();
             }
         }
 
@@ -1913,165 +1621,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private static string BuildChunkName(int3 chunkCoord, int cellSize)
         {
             return $"VoxelChunk_{chunkCoord.x}_{chunkCoord.y}_{chunkCoord.z}_S{cellSize}";
-        }
-
-        private sealed class VoxelChunkState
-        {
-            public int3 chunkCoord;
-            public int cellSize;
-            public int3 detailFocusKey;
-            public GameObject owner;
-            public Mesh mesh;
-            public VoxelChunkAltIndices altIndices;
-            public int3 chunkOrigin;
-            public Bounds chunkBounds;
-            public ChunkVisibility visible;
-            public int frustumLastPlaneIndex;
-            public bool generated;
-            public bool dirty;
-        }
-
-        private sealed class CombinedMeshBucket
-        {
-            public GameObject owner;
-            public MeshFilter meshFilter;
-            public MeshRenderer meshRenderer;
-            public Mesh mesh;
-            public VoxelSegmentLodMeshCache lodCache;
-            public Mesh[] lodMeshes;
-            public bool[] lodDirty;
-            public bool[] lodCached;
-            public int activeLodIndex;
-            public CombineInstance[] combineInstanceBuffer;
-            public bool dirty;
-        }
-
-        private struct DeferredSegmentLodBuild
-        {
-            public bool active;
-            public DeferredSegmentLodKey key;
-            public int nextChunkIndex;
-            public int cellSize;
-        }
-
-        private readonly struct DeferredSegmentLodKey : System.IEquatable<DeferredSegmentLodKey>
-        {
-            public readonly int bucketIndex;
-            public readonly int lodIndex;
-
-            public DeferredSegmentLodKey(int bucketIndex, int lodIndex)
-            {
-                this.bucketIndex = bucketIndex;
-                this.lodIndex = lodIndex;
-            }
-
-            public bool Equals(DeferredSegmentLodKey other)
-            {
-                return bucketIndex == other.bucketIndex && lodIndex == other.lodIndex;
-            }
-
-            public override bool Equals(object obj)
-            {
-                return obj is DeferredSegmentLodKey other && Equals(other);
-            }
-
-            public override int GetHashCode()
-            {
-                unchecked
-                {
-                    return (bucketIndex * 397) ^ lodIndex;
-                }
-            }
-        }
-
-        private struct DesiredChunkState
-        {
-            public int cellSize;
-            public int3 detailFocusKey;
-
-            public DesiredChunkState(int cellSize, int3 detailFocusKey)
-            {
-                this.cellSize = cellSize;
-                this.detailFocusKey = detailFocusKey;
-            }
-
-            public bool Equals(DesiredChunkState other)
-            {
-                return cellSize == other.cellSize
-                    && detailFocusKey.Equals(other.detailFocusKey);
-            }
-        }
-
-        private sealed class ChunkBuild
-        {
-            public int3 chunkCoord;
-            public int cellSize;
-            public int3 detailFocusKey;
-            public int3 chunkOrigin;
-            public int3 chunkSize;
-            public NativeArray<VoxelCellBuildRequest> requests;
-            public NativeArray<VoxelCell> cells;
-            public NativeList<float3> vertices;
-            public NativeList<float3> normals;
-            public NativeList<float2> uvs;
-            public NativeList<int> interiorIndices;
-            public NativeList<int> transitionIndices;
-            public NativeList<int> surfaceIndices;
-            public JobHandle jobHandle;
-        }
-
-        private struct ChunkVisibility
-        {
-            public bool inRange;
-            public bool inFrustum;
-
-            public static ChunkVisibility Visible => new ChunkVisibility
-            {
-                inRange = true,
-                inFrustum = true
-            };
-
-            public bool IsVisible => inRange && inFrustum;
-        }
-
-        private struct VoxelChunkAltIndices
-        {
-            public int interiorIndexCount;
-            public int transitionIndexCount;
-            public int surfaceIndexCount;
-
-            public VoxelChunkAltIndices(int interiorIndexCount, int transitionIndexCount, int surfaceIndexCount)
-            {
-                this.interiorIndexCount = interiorIndexCount;
-                this.transitionIndexCount = transitionIndexCount;
-                this.surfaceIndexCount = surfaceIndexCount;
-            }
-
-            public int TotalIndexCount => interiorIndexCount + transitionIndexCount + surfaceIndexCount;
-
-            public bool HasSubMesh(int subMeshIndex)
-            {
-                switch (subMeshIndex)
-                {
-                    case InteriorSubMesh:
-                        return interiorIndexCount > 0;
-                    case TransitionSubMesh:
-                        return transitionIndexCount > 0;
-                    case SurfaceSubMesh:
-                        return surfaceIndexCount > 0;
-                    default:
-                        return false;
-                }
-            }
-        }
-
-        private static class VoxelChunkLayerMask
-        {
-            public const int None = 0;
-            public const int Interior = 1 << 0;
-            public const int Transition = 1 << 1;
-            public const int Surface = 1 << 2;
-            public const int All = Interior | Transition | Surface;
         }
 
     }

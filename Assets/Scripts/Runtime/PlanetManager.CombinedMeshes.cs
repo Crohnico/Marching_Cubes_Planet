@@ -803,7 +803,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private int ResolveCellSizeForChunk(int3 chunkCoord)
         {
             int requestedCellSize = GetCellSizeForLodIndex(ResolveActiveSegmentLodIndex());
-            return NormalizeCellSizeForChunk(requestedCellSize, config.ChunkSize);
+            return ChunkBuilder.NormalizeCellSizeForChunk(requestedCellSize, config.ChunkSize);
         }
 
 
@@ -823,7 +823,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             int3 chunkSize = config.ChunkSize;
             int3 chunkOrigin = VoxelChunkUtility.GetChunkOrigin(chunkCoord, chunkSize);
-            Vector3 chunkCenter = ToVector3(chunkOrigin) + ToVector3(chunkSize) * 0.5f;
+            Vector3 chunkCenter = VoxelRuntimeMath.ToVector3(chunkOrigin) + VoxelRuntimeMath.ToVector3(chunkSize) * 0.5f;
             return GetSegmentIndexForWorldPosition(chunkCenter, safeBucketCount);
         }
 
@@ -1016,7 +1016,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             bool applyFarCuts)
         {
             int layerMask = nearBucket || !applyFarCuts ? VoxelChunkLayerMask.All : GetChunkLayerMask(state);
-            Matrix4x4 chunkTransform = planetLocalToBucketLocal * Matrix4x4.Translate(ToVector3(state.chunkOrigin));
+            Matrix4x4 chunkTransform = planetLocalToBucketLocal * Matrix4x4.Translate(VoxelRuntimeMath.ToVector3(state.chunkOrigin));
             AddChunkCombineInstance(state, InteriorSubMesh, VoxelChunkLayerMask.Interior, layerMask, chunkTransform);
             AddChunkCombineInstance(state, TransitionSubMesh, VoxelChunkLayerMask.Transition, layerMask, chunkTransform);
             AddChunkCombineInstance(state, SurfaceSubMesh, VoxelChunkLayerMask.Surface, layerMask, chunkTransform);

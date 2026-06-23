@@ -1,19 +1,76 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using MarchingCubesPlanet.VoxelEngine.Data;
+using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Rendering;
 
 namespace MarchingCubesPlanet.VoxelEngine.Runtime
 {
-    public static class MeshCrafter
+    internal static class MeshCrafter
     {
+        private const int InteriorSubMesh = 0;
+        private const int TransitionSubMesh = 1;
+        private const int SurfaceSubMesh = 2;
+        private const int LayerSubMeshCount = 3;
+
         public static Task<Mesh> CraftFarMesh(PlanetData planetData)
         {
             PlanetMeshData farMeshData = CraftFarMeshData(planetData);
             planetData.farMesh = farMeshData;
             return Task.FromResult(ToUnityMesh(farMeshData, "VoxelCombinedMesh_Far"));
+        }
+
+        public static Mesh BuildChunkMesh(
+            string meshName,
+            NativeList<float3> vertices,
+            NativeList<float3> normals,
+            NativeList<float2> uvs,
+            NativeList<int> interiorIndices,
+            NativeList<int> transitionIndices,
+            NativeList<int> surfaceIndices,
+            out VoxelChunkAltIndices altIndices)
+        {
+            altIndices = new VoxelChunkAltIndices(
+                interiorIndices.Length,
+                transitionIndices.Length,
+                surfaceIndices.Length);
+            Mesh mesh = new Mesh
+            {
+                name = meshName,
+                indexFormat = vertices.Length > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16
+            };
+
+            if (vertices.Length == 0 || altIndices.TotalIndexCount == 0)
+            {
+                mesh.bounds = new Bounds(Vector3.zero, Vector3.zero);
+                return mesh;
+            }
+
+            List<Vector3> meshVertices = new List<Vector3>(vertices.Length);
+            List<Vector3> meshNormals = new List<Vector3>(normals.Length);
+            List<Vector2> meshUvs = new List<Vector2>(uvs.Length);
+            List<int> interior = new List<int>(interiorIndices.Length);
+            List<int> transition = new List<int>(transitionIndices.Length);
+            List<int> surface = new List<int>(surfaceIndices.Length);
+
+            NativeListCopyUtility.CopyToVector3List(vertices, meshVertices);
+            NativeListCopyUtility.CopyToVector3List(normals, meshNormals);
+            NativeListCopyUtility.CopyToVector2List(uvs, meshUvs);
+            NativeListCopyUtility.CopyToIntList(interiorIndices, interior);
+            NativeListCopyUtility.CopyToIntList(transitionIndices, transition);
+            NativeListCopyUtility.CopyToIntList(surfaceIndices, surface);
+
+            mesh.SetVertices(meshVertices);
+            mesh.SetNormals(meshNormals);
+            mesh.SetUVs(0, meshUvs);
+            mesh.subMeshCount = LayerSubMeshCount;
+            mesh.SetTriangles(interior, InteriorSubMesh, false);
+            mesh.SetTriangles(transition, TransitionSubMesh, false);
+            mesh.SetTriangles(surface, SurfaceSubMesh, false);
+            mesh.bounds = CalculateBounds(meshVertices);
+            return mesh;
         }
 
         public static Mesh ToUnityMesh(PlanetMeshData meshData, string meshName)
@@ -38,12 +95,12 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             for (int i = 0; i < meshData.vertices.Count; i++)
             {
-                vertices.Add(ToVector3(meshData.vertices[i]));
+                vertices.Add(VoxelRuntimeMath.ToVector3(meshData.vertices[i]));
             }
 
             for (int i = 0; i < meshData.normals.Count; i++)
             {
-                normals.Add(ToVector3(meshData.normals[i]));
+                normals.Add(VoxelRuntimeMath.ToVector3(meshData.normals[i]));
             }
 
             for (int i = 0; i < meshData.uvs.Count; i++)
@@ -73,7 +130,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             mesh.subMeshCount = 1;
             mesh.SetTriangles(indices, 0, false);
-            mesh.bounds = new Bounds(ToVector3(meshData.boundsCenter), ToVector3(meshData.boundsSize));
+            mesh.bounds = new Bounds(VoxelRuntimeMath.ToVector3(meshData.boundsCenter), VoxelRuntimeMath.ToVector3(meshData.boundsSize));
             return mesh;
         }
 
@@ -99,12 +156,12 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             for (int i = 0; i < meshData.vertices.Count; i++)
             {
-                vertices.Add(ToVector3(meshData.vertices[i]));
+                vertices.Add(VoxelRuntimeMath.ToVector3(meshData.vertices[i]));
             }
 
             for (int i = 0; i < meshData.normals.Count; i++)
             {
-                normals.Add(ToVector3(meshData.normals[i]));
+                normals.Add(VoxelRuntimeMath.ToVector3(meshData.normals[i]));
             }
 
             for (int i = 0; i < meshData.uvs.Count; i++)
@@ -128,8 +185,37 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             mesh.SetTriangles(meshData.interiorIndices, 0, false);
             mesh.SetTriangles(meshData.transitionIndices, 1, false);
             mesh.SetTriangles(meshData.surfaceIndices, 2, false);
-            mesh.bounds = new Bounds(ToVector3(meshData.boundsCenter), ToVector3(meshData.boundsSize));
+            mesh.bounds = new Bounds(VoxelRuntimeMath.ToVector3(meshData.boundsCenter), VoxelRuntimeMath.ToVector3(meshData.boundsSize));
             return mesh;
+        }
+
+        public static PlanetMeshData ToPlanetMeshData(
+            NativeList<float3> vertices,
+            NativeList<float3> normals,
+            NativeList<float2> uvs,
+            NativeList<int> interiorIndices,
+            NativeList<int> transitionIndices,
+            NativeList<int> surfaceIndices)
+        {
+            PlanetMeshData meshData = new PlanetMeshData
+            {
+                boundsCenter = float3.zero,
+                boundsSize = float3.zero
+            };
+
+            Copy(vertices, meshData.vertices);
+            Copy(normals, meshData.normals);
+            Copy(uvs, meshData.uvs);
+            Copy(interiorIndices, meshData.interiorIndices);
+            Copy(transitionIndices, meshData.transitionIndices);
+            Copy(surfaceIndices, meshData.surfaceIndices);
+
+            if (meshData.vertices.Count > 0)
+            {
+                CalculateBounds(meshData.vertices, out meshData.boundsCenter, out meshData.boundsSize);
+            }
+
+            return meshData;
         }
 
         private static PlanetMeshData CraftFarMeshData(PlanetData planetData)
@@ -199,9 +285,44 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             size = max - min;
         }
 
-        private static Vector3 ToVector3(float3 value)
+        private static Bounds CalculateBounds(List<Vector3> vertices)
         {
-            return new Vector3(value.x, value.y, value.z);
+            Vector3 min = vertices[0];
+            Vector3 max = vertices[0];
+            for (int i = 1; i < vertices.Count; i++)
+            {
+                min = Vector3.Min(min, vertices[i]);
+                max = Vector3.Max(max, vertices[i]);
+            }
+
+            return new Bounds((min + max) * 0.5f, max - min);
+        }
+
+        private static void Copy(NativeList<float3> source, List<float3> destination)
+        {
+            NativeListCopyUtility.EnsureListCapacity(destination, source.Length);
+            for (int i = 0; i < source.Length; i++)
+            {
+                destination.Add(source[i]);
+            }
+        }
+
+        private static void Copy(NativeList<float2> source, List<float2> destination)
+        {
+            NativeListCopyUtility.EnsureListCapacity(destination, source.Length);
+            for (int i = 0; i < source.Length; i++)
+            {
+                destination.Add(source[i]);
+            }
+        }
+
+        private static void Copy(NativeList<int> source, List<int> destination)
+        {
+            NativeListCopyUtility.EnsureListCapacity(destination, source.Length);
+            for (int i = 0; i < source.Length; i++)
+            {
+                destination.Add(source[i]);
+            }
         }
     }
 }

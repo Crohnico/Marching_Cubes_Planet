@@ -1,7 +1,4 @@
 using MarchingCubesPlanet.VoxelEngine.Data;
-using MarchingCubesPlanet.VoxelEngine.Jobs;
-using Unity.Collections;
-using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -813,97 +810,21 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             int cellSize,
             out VoxelChunkAltIndices altIndices)
         {
-            cellRequestBuffer.Clear();
-            BuildCellRequests(
-                cellRequestBuffer,
+            Mesh mesh = ChunkBuilder.BuildChunkMeshNow(
+                BuildChunkName(chunkCoord, cellSize),
                 chunkOrigin,
                 chunkSize,
-                cellSize);
-
-            if (cellRequestBuffer.Count == 0)
+                cellSize,
+                GetScalarFieldSettings(),
+                caseTable,
+                cellRequestBuffer,
+                out altIndices);
+            if (mesh != null)
             {
-                altIndices = default;
-                return null;
-            }
-
-            NativeArray<VoxelCellBuildRequest> requests = default;
-            NativeArray<VoxelCell> cells = default;
-            NativeList<float3> vertices = default;
-            NativeList<float3> normals = default;
-            NativeList<float2> uvs = default;
-            NativeList<int> interiorIndices = default;
-            NativeList<int> transitionIndices = default;
-            NativeList<int> surfaceIndices = default;
-
-            try
-            {
-                int cellCount = cellRequestBuffer.Count;
-                requests = new NativeArray<VoxelCellBuildRequest>(cellCount, Allocator.TempJob);
-                cells = new NativeArray<VoxelCell>(cellCount, Allocator.TempJob);
-                vertices = new NativeList<float3>(math.max(1, cellCount * MaxVerticesPerCell), Allocator.TempJob);
-                normals = new NativeList<float3>(math.max(1, cellCount * MaxVerticesPerCell), Allocator.TempJob);
-                uvs = new NativeList<float2>(math.max(1, cellCount * MaxVerticesPerCell), Allocator.TempJob);
-                interiorIndices = new NativeList<int>(math.max(1, cellCount * MaxVerticesPerCell), Allocator.TempJob);
-                transitionIndices = new NativeList<int>(math.max(1, cellCount * MaxVerticesPerCell), Allocator.TempJob);
-                surfaceIndices = new NativeList<int>(math.max(1, cellCount * MaxVerticesPerCell), Allocator.TempJob);
-
-                for (int i = 0; i < cellCount; i++)
-                {
-                    requests[i] = cellRequestBuffer[i];
-                }
-
-                ScalarFieldSettings scalarField = GetScalarFieldSettings();
-                EvaluateVoxelCellsJob evaluateJob = new EvaluateVoxelCellsJob
-                {
-                    scalarField = scalarField,
-                    requests = requests,
-                    cells = cells
-                };
-
-                GenerateChunkMeshJob meshJob = new GenerateChunkMeshJob
-                {
-                    cells = cells,
-                    cornerIndexAFromEdge = caseTable.cornerIndexAFromEdge,
-                    cornerIndexBFromEdge = caseTable.cornerIndexBFromEdge,
-                    triangulation = caseTable.triangulation,
-                    chunkOrigin = chunkOrigin,
-                    chunkSize = chunkSize,
-                    scalarField = scalarField,
-                    vertices = vertices,
-                    normals = normals,
-                    uvs = uvs,
-                    interiorIndices = interiorIndices,
-                    transitionIndices = transitionIndices,
-                    surfaceIndices = surfaceIndices
-                };
-
-                JobHandle evaluateHandle = evaluateJob.Schedule(cellCount, 64);
-                JobHandle meshHandle = meshJob.Schedule(evaluateHandle);
-                meshHandle.Complete();
-
-                Mesh mesh = BuildMesh(
-                    BuildChunkName(chunkCoord, cellSize),
-                    vertices,
-                    normals,
-                    uvs,
-                    interiorIndices,
-                    transitionIndices,
-                    surfaceIndices,
-                    out altIndices);
                 mesh.MarkDynamic();
-                return mesh;
             }
-            finally
-            {
-                DisposeIfCreated(requests);
-                DisposeIfCreated(cells);
-                DisposeIfCreated(vertices);
-                DisposeIfCreated(normals);
-                DisposeIfCreated(uvs);
-                DisposeIfCreated(interiorIndices);
-                DisposeIfCreated(transitionIndices);
-                DisposeIfCreated(surfaceIndices);
-            }
+
+            return mesh;
         }
 
         private int ResolveLodIndexForSegment(int segmentIndex)
@@ -946,7 +867,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private int GetCellSizeForLodIndex(int lodIndex)
         {
-            return NormalizeCellSizeForChunk(
+            return ChunkBuilder.NormalizeCellSizeForChunk(
                 config.GetCellSizeAtLod(Mathf.Clamp(lodIndex, 0, GetSegmentLodCount() - 1)),
                 config.ChunkSize);
         }
