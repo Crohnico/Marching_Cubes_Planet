@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Unity.Mathematics;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace MarchingCubesPlanet.VoxelEngine.Runtime
 {
@@ -9,8 +10,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
     {
         private readonly Dictionary<SegmentSeamKey, SeamRuntime> seams = new Dictionary<SegmentSeamKey, SeamRuntime>();
         private readonly HashSet<SegmentSeamKey> visibleThisUpdate = new HashSet<SegmentSeamKey>();
+        private readonly List<CombineInstance> combineInstances = new List<CombineInstance>();
 
         private GameObject root;
+        private SeamRenderBucket lod01Bucket;
+        private SeamRenderBucket lod12Bucket;
 
         public void UpdateSeams(
             bool showNearMeshes,
@@ -31,11 +35,12 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 || activeBucketCount <= 1
                 || !IsValidGrid(segmentGrid))
             {
-                HideAll();
+                HideBuckets();
                 return;
             }
 
-            EnsureRoot(nearMeshesRoot.transform);
+            EnsureRoot(nearMeshesRoot.transform, destroyObject);
+            EnsureRenderBuckets(material);
             for (int segmentIndex = 0; segmentIndex < activeBucketCount; segmentIndex++)
             {
                 int3 coord = ToGridCoord(segmentIndex, segmentGrid);
@@ -44,14 +49,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 TryUpdateSeam(segmentIndex, coord + new int3(0, 0, 1), 2);
             }
 
-            foreach (KeyValuePair<SegmentSeamKey, SeamRuntime> pair in seams)
-            {
-                bool active = visibleThisUpdate.Contains(pair.Key);
-                if (pair.Value.owner != null && pair.Value.owner.activeSelf != active)
-                {
-                    pair.Value.owner.SetActive(active);
-                }
-            }
+            RebuildRenderBucket(lod01Bucket, material, 0, 1);
+            RebuildRenderBucket(lod12Bucket, material, 1, 2);
 
             void TryUpdateSeam(int segmentA, int3 coordB, int axis)
             {
@@ -90,23 +89,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 }
 
                 SegmentSeamKey key = new SegmentSeamKey(segmentA, segmentB, axis, lodA, lodB);
-                SeamRuntime seam = GetOrCreateSeam(key, material, destroyObject);
-                if (!EnsureSeamMesh(seam, key, bucketA, bucketB, meshA, meshB, getCacheUrl, destroyObject, getCellSizeForLod))
+                SeamRuntime seam = GetOrCreateSeam(key, destroyObject);
+                if (EnsureSeamMesh(seam, key, bucketA, bucketB, meshA, meshB, getCacheUrl, destroyObject, getCellSizeForLod))
                 {
-                    return;
+                    visibleThisUpdate.Add(key);
                 }
-
-                if (seam.meshFilter.sharedMesh != seam.mesh)
-                {
-                    seam.meshFilter.sharedMesh = seam.mesh;
-                }
-
-                if (seam.meshRenderer.sharedMaterial != material)
-                {
-                    seam.meshRenderer.sharedMaterial = material;
-                }
-
-                visibleThisUpdate.Add(key);
             }
         }
 
@@ -114,19 +101,17 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             foreach (KeyValuePair<SegmentSeamKey, SeamRuntime> pair in seams)
             {
-                SeamRuntime seam = pair.Value;
-                if (seam.meshFilter != null)
+                if (pair.Value.mesh != null)
                 {
-                    seam.meshFilter.sharedMesh = null;
-                }
-
-                if (seam.mesh != null)
-                {
-                    destroyObject(seam.mesh);
+                    destroyObject(pair.Value.mesh);
                 }
             }
 
             seams.Clear();
+            DestroyRenderBucket(lod01Bucket, destroyObject);
+            DestroyRenderBucket(lod12Bucket, destroyObject);
+            lod01Bucket = null;
+            lod12Bucket = null;
             if (root != null)
             {
                 destroyObject(root);
@@ -134,35 +119,14 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
         }
 
-        private SeamRuntime GetOrCreateSeam(
-            SegmentSeamKey key,
-            Material material,
-            Action<UnityEngine.Object> destroyObject)
+        private SeamRuntime GetOrCreateSeam(SegmentSeamKey key, Action<UnityEngine.Object> destroyObject)
         {
-            if (seams.TryGetValue(key, out SeamRuntime seam) && seam.owner != null)
+            if (seams.TryGetValue(key, out SeamRuntime seam))
             {
                 return seam;
             }
 
-            GameObject owner = GetOrCreateChild(root.transform, $"Seam_{key}");
-            if (!owner.TryGetComponent(out MeshFilter meshFilter))
-            {
-                meshFilter = owner.AddComponent<MeshFilter>();
-            }
-
-            if (!owner.TryGetComponent(out MeshRenderer meshRenderer))
-            {
-                meshRenderer = owner.AddComponent<MeshRenderer>();
-            }
-
-            meshRenderer.sharedMaterial = material;
-            seam = new SeamRuntime
-            {
-                owner = owner,
-                meshFilter = meshFilter,
-                meshRenderer = meshRenderer
-            };
-
+            seam = new SeamRuntime();
             if (seams.TryGetValue(key, out SeamRuntime previous) && previous.mesh != null)
             {
                 destroyObject(previous.mesh);
@@ -244,7 +208,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             return false;
         }
 
-        private void EnsureRoot(Transform parent)
+        private void EnsureRoot(Transform parent, Action<UnityEngine.Object> destroyObject)
         {
             if (root != null)
             {
@@ -260,15 +224,158 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             root.transform.localPosition = Vector3.zero;
             root.transform.localRotation = Quaternion.identity;
             root.transform.localScale = Vector3.one;
+            RemoveLegacyIndividualSeamObjects(destroyObject);
         }
 
-        private void HideAll()
+        private void EnsureRenderBuckets(Material material)
         {
-            foreach (KeyValuePair<SegmentSeamKey, SeamRuntime> pair in seams)
+            lod01Bucket = EnsureRenderBucket(lod01Bucket, "LOD_0_1", material);
+            lod12Bucket = EnsureRenderBucket(lod12Bucket, "LOD_1_2", material);
+        }
+
+        private SeamRenderBucket EnsureRenderBucket(SeamRenderBucket bucket, string name, Material material)
+        {
+            if (bucket == null || bucket.owner == null)
             {
-                if (pair.Value.owner != null && pair.Value.owner.activeSelf)
+                GameObject owner = GetOrCreateChild(root.transform, name);
+                if (!owner.TryGetComponent(out MeshFilter meshFilter))
                 {
-                    pair.Value.owner.SetActive(false);
+                    meshFilter = owner.AddComponent<MeshFilter>();
+                }
+
+                if (!owner.TryGetComponent(out MeshRenderer meshRenderer))
+                {
+                    meshRenderer = owner.AddComponent<MeshRenderer>();
+                }
+
+                Mesh mesh = meshFilter.sharedMesh;
+                if (mesh == null)
+                {
+                    mesh = new Mesh
+                    {
+                        name = $"SegmentSeams_{name}",
+                        indexFormat = IndexFormat.UInt32
+                    };
+                    mesh.MarkDynamic();
+                    meshFilter.sharedMesh = mesh;
+                }
+
+                bucket = new SeamRenderBucket
+                {
+                    owner = owner,
+                    meshFilter = meshFilter,
+                    meshRenderer = meshRenderer,
+                    mesh = mesh
+                };
+            }
+
+            if (bucket.meshRenderer.sharedMaterial != material)
+            {
+                bucket.meshRenderer.sharedMaterial = material;
+            }
+
+            return bucket;
+        }
+
+        private void RebuildRenderBucket(SeamRenderBucket bucket, Material material, int lodMin, int lodMax)
+        {
+            if (bucket == null || bucket.mesh == null)
+            {
+                return;
+            }
+
+            combineInstances.Clear();
+            foreach (SegmentSeamKey key in visibleThisUpdate)
+            {
+                int min = Mathf.Min(key.lodA, key.lodB);
+                int max = Mathf.Max(key.lodA, key.lodB);
+                if (min != lodMin || max != lodMax)
+                {
+                    continue;
+                }
+
+                if (!seams.TryGetValue(key, out SeamRuntime seam)
+                    || seam.mesh == null
+                    || seam.mesh.vertexCount == 0)
+                {
+                    continue;
+                }
+
+                combineInstances.Add(new CombineInstance
+                {
+                    mesh = seam.mesh,
+                    subMeshIndex = 0,
+                    transform = Matrix4x4.identity
+                });
+            }
+
+            bool active = combineInstances.Count > 0;
+            if (bucket.owner.activeSelf != active)
+            {
+                bucket.owner.SetActive(active);
+            }
+
+            bucket.mesh.Clear();
+            bucket.mesh.indexFormat = IndexFormat.UInt32;
+            if (!active)
+            {
+                return;
+            }
+
+            bucket.meshRenderer.sharedMaterial = material;
+            bucket.mesh.CombineMeshes(combineInstances.ToArray(), true, true, false);
+            bucket.mesh.RecalculateBounds();
+            if (bucket.meshFilter.sharedMesh != bucket.mesh)
+            {
+                bucket.meshFilter.sharedMesh = bucket.mesh;
+            }
+        }
+
+        private void HideBuckets()
+        {
+            SetBucketActive(lod01Bucket, false);
+            SetBucketActive(lod12Bucket, false);
+        }
+
+        private static void SetBucketActive(SeamRenderBucket bucket, bool active)
+        {
+            if (bucket != null && bucket.owner != null && bucket.owner.activeSelf != active)
+            {
+                bucket.owner.SetActive(active);
+            }
+        }
+
+        private static void DestroyRenderBucket(SeamRenderBucket bucket, Action<UnityEngine.Object> destroyObject)
+        {
+            if (bucket == null)
+            {
+                return;
+            }
+
+            if (bucket.meshFilter != null)
+            {
+                bucket.meshFilter.sharedMesh = null;
+            }
+
+            if (bucket.mesh != null)
+            {
+                destroyObject(bucket.mesh);
+            }
+        }
+
+        private void RemoveLegacyIndividualSeamObjects(Action<UnityEngine.Object> destroyObject)
+        {
+            if (root == null)
+            {
+                return;
+            }
+
+            for (int i = root.transform.childCount - 1; i >= 0; i--)
+            {
+                Transform child = root.transform.GetChild(i);
+                if (child != null && child.name.StartsWith("Seam_", StringComparison.Ordinal))
+                {
+                    destroyObject(child.gameObject);
                 }
             }
         }
@@ -318,6 +425,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         }
 
         private sealed class SeamRuntime
+        {
+            public Mesh mesh;
+        }
+
+        private sealed class SeamRenderBucket
         {
             public GameObject owner;
             public MeshFilter meshFilter;

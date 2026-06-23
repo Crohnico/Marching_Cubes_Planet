@@ -329,6 +329,17 @@ No se crea costura cuando los dos segmentos usan el mismo LOD.
 
 Las costuras se cachean en disco por pareja de segmentos, eje compartido y combinacion de LOD.
 
+En runtime, las costuras visibles no se renderizan como un objeto por costura.
+
+Las costuras visibles se agrupan en dos meshes combinadas:
+
+- Una mesh para las transiciones entre `LOD_0` y `LOD_1`.
+- Una mesh para las transiciones entre `LOD_1` y `LOD_2`.
+
+Si un grupo no tiene costuras visibles, su objeto de render se apaga.
+
+Las meshes individuales de costura se mantienen solo como datos cacheados para poder sumar y restar piezas al grupo combinado que corresponda.
+
 La cache runtime de costuras se libera cuando el planeta deja de usar near meshes o cuando se destruyen/limpian las combined meshes del planeta.
 
 `PlanetSegmentSeamBehaviour` es responsable del estado runtime de las costuras.
