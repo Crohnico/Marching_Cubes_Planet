@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -10,6 +11,7 @@ using Unity.Mathematics;
 using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Serialization;
 
 namespace MarchingCubesPlanet.VoxelEngine.Runtime
 {
@@ -40,9 +42,18 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [SerializeField] private VoxelSphereGenerator sphereGenerator;
         [SerializeField] private Transform fallbackAnchor;
         public string PlanetID;
+        [Header("Planet")]
+        [Min(0.01f)] public float Radius = 14f;
+        public int Seed = 12345;
+        [Min(0f)] public float ActionAreaRadiusPadding = 56f;
+        [FormerlySerializedAs("AtmosphereRadiusPadding"), Min(0f)] public float AtmosphereRadius = 7f;
         [Header("Debug")]
-        [SerializeField] private bool drawSegmentGizmos = true;
+        [FormerlySerializedAs("drawSegmentGizmos")] public bool DrawGizmosSegments = true;
+        public bool DrawActionAreaGizmo = true;
+        public bool DrawAtmosphereGizmo = true;
         [SerializeField, Range(0f, 90f)] private float farHemisphereRefreshAngle = 3f;
+        [SerializeField, HideInInspector] private bool planetShapeInitialized;
+        [SerializeField, HideInInspector] private bool atmosphereInitialized;
 
         private readonly Dictionary<int3, VoxelChunkState> activeChunks = new Dictionary<int3, VoxelChunkState>();
         private readonly Dictionary<int3, int> declaredChunkRefCounts = new Dictionary<int3, int>();
@@ -86,6 +97,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private bool lastShouldCullRenderedChunks;
         private bool hasPlanetActionRadiusState;
         private bool isInsidePlanetActionRadius = true;
+        private bool hasAtmosphereState;
+        private bool isPlayerInsideAtmosphere;
         private DeferredSegmentLodBuild activeDeferredSegmentLodBuild;
         private Coroutine startupCoroutine;
         private bool startupInProgress;
@@ -96,7 +109,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private MarchingCubesCaseTable caseTable;
         private VoxelEngineConfig config;
 
+        public static event Action<PlanetManager, bool> PlayerAtmosphereStateChanged;
+
         public PlanetData PlanetData => planetData;
+        public string ResolvedPlanetID => ResolvePlanetId();
         public bool StartupDone => startupDone;
         public int DeclaredChunkCount => declaredChunks.Count;
         public int DesiredChunkCount => desiredChunkStates.Count;
@@ -124,9 +140,13 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void OnEnable()
         {
+            InitializePlanetShapeFromSphereGeneratorIfNeeded();
+            InitializeAtmosphereFromRadiusIfNeeded();
+            ApplyPlanetShapeToSphereGenerator();
             EnsureConfig();
             EnsureCaseTable();
             hasPlanetActionRadiusState = false;
+            hasAtmosphereState = false;
             EnsureCombinedRenderer();
         }
 
@@ -134,15 +154,26 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             TryGetComponent(out sphereGenerator);
             fallbackAnchor = transform;
+            InitializePlanetShapeFromSphereGeneratorIfNeeded();
+            InitializeAtmosphereFromRadiusIfNeeded();
+            ApplyPlanetShapeToSphereGenerator();
         }
 
         private void OnValidate()
         {
+            InitializePlanetShapeFromSphereGeneratorIfNeeded();
+            InitializeAtmosphereFromRadiusIfNeeded();
+            Radius = Mathf.Max(0.01f, Radius);
+            ActionAreaRadiusPadding = Mathf.Max(0f, ActionAreaRadiusPadding);
+            AtmosphereRadius = Mathf.Max(0f, AtmosphereRadius);
             farHemisphereRefreshAngle = Mathf.Clamp(farHemisphereRefreshAngle, 0f, 90f);
+            ApplyPlanetShapeToSphereGenerator();
         }
 
         private void Update()
         {
+            RefreshAtmosphereState();
+
             if (startupInProgress)
             {
                 return;
@@ -167,6 +198,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             playerChunkTracker = nextPlayerChunkTracker;
             sphereGenerator = nextSphereGenerator;
             fallbackAnchor = nextFallbackAnchor;
+            InitializePlanetShapeFromSphereGeneratorIfNeeded();
+            InitializeAtmosphereFromRadiusIfNeeded();
+            ApplyPlanetShapeToSphereGenerator();
         }
 
         private void OnDisable()
@@ -189,10 +223,25 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void OnDrawGizmosSelected()
         {
-            if (!drawSegmentGizmos)
+            if (DrawGizmosSegments)
             {
-                return;
+                DrawSegmentGizmos();
             }
+
+            if (DrawActionAreaGizmo)
+            {
+                DrawActionAreaGizmos();
+            }
+
+            if (DrawAtmosphereGizmo)
+            {
+                DrawAtmosphereGizmos();
+            }
+        }
+
+        private void DrawSegmentGizmos()
+        {
+            EnsureConfig();
 
             int segmentCount = Mathf.Clamp(NearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount);
             if (!TryGetCombinedMeshBucketGrid(segmentCount, out int3 grid))
@@ -232,6 +281,44 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             Gizmos.matrix = previousMatrix;
+            Gizmos.color = previousColor;
+        }
+
+        private void DrawActionAreaGizmos()
+        {
+            EnsureConfig();
+            if (!ShouldUsePlanetActionRadius())
+            {
+                return;
+            }
+
+            float actionRadius = Radius + ActionAreaRadiusPadding;
+            if (float.IsNaN(actionRadius) || float.IsInfinity(actionRadius) || actionRadius <= 0f)
+            {
+                return;
+            }
+
+            Color previousColor = Gizmos.color;
+            Gizmos.color = isInsidePlanetActionRadius
+                ? new Color(0.25f, 1f, 0.25f, 0.45f)
+                : new Color(1f, 0.35f, 0.15f, 0.45f);
+            Gizmos.DrawWireSphere(GetSpherePosition(), actionRadius);
+            Gizmos.color = previousColor;
+        }
+
+        private void DrawAtmosphereGizmos()
+        {
+            float atmosphereRadius = AtmosphereRadius;
+            if (float.IsNaN(atmosphereRadius) || float.IsInfinity(atmosphereRadius) || atmosphereRadius <= 0f)
+            {
+                return;
+            }
+
+            Color previousColor = Gizmos.color;
+            Gizmos.color = isPlayerInsideAtmosphere
+                ? new Color(0.45f, 0.8f, 1f, 0.55f)
+                : new Color(0.45f, 0.8f, 1f, 0.25f);
+            Gizmos.DrawWireSphere(GetSpherePosition(), atmosphereRadius);
             Gizmos.color = previousColor;
         }
 
@@ -332,14 +419,12 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             int startupFarChunkBuildsPerFrame,
             bool refreshDeclaredChunks)
         {
-            Stopwatch stopwatch = Stopwatch.StartNew();
             startupInProgress = true;
             startupDone = false;
-            LogStartup($"Staged startup begin. refreshDeclaredChunks={refreshDeclaredChunks}.");
+
             EnsureConfig();
             EnsureCaseTable();
             EnsureCombinedRenderer();
-            LogStartup($"Core runtime ensured at {stopwatch.ElapsedMilliseconds}ms.");
 
             if (clearExisting)
             {
@@ -355,17 +440,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             {
                 RefreshDeclaredChunks();
                 RefreshPlanetDataSnapshot();
-                LogStartup($"Declared chunks refreshed. declared={declaredChunks.Count}, planetDataChunks={planetData.chunks.Count}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
             }
             else
             {
                 ApplyPlanetDataToDeclaredChunks();
-                LogStartup($"Declared chunks loaded from PlanetData. declared={declaredChunks.Count}, planetDataChunks={planetData.chunks.Count}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
                 loadedStartupFar = TryLoadStartupFarMeshFromDisk();
-                if (loadedStartupFar)
-                {
-                    LogStartup($"Startup Far loaded from disk. Runtime chunks will be hydrated before startup completes. activeChunks={activeChunks.Count}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
-                }
             }
 
             yield return null;
@@ -373,30 +452,20 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             if (refreshDeclaredChunks || !TryRebuildDesiredChunkSetFromPlanetData())
             {
                 RebuildDesiredChunkSet();
-                LogStartup($"Desired chunk set rebuilt from runtime. desired={desiredChunkStates.Count}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
-            }
-            else
-            {
-                LogStartup($"Desired chunk set rebuilt from PlanetData. desired={desiredChunkStates.Count}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
             }
 
             if (refreshDeclaredChunks)
             {
                 RefreshPlanetDataBuildStateFromDesiredStates();
-                LogStartup($"PlanetData build state populated from Far desired state. chunks={planetData.chunks.Count}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
             }
 
-            int chunksBeforeBuild = activeChunks.Count;
             yield return BuildDesiredChunksBudgeted(
                 centerChunk,
                 Mathf.Max(1, startupFarChunkBuildsPerFrame));
-            LogStartup($"Desired chunks built. activeBefore={chunksBeforeBuild}, activeAfter={activeChunks.Count}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
 
             RebuildFarCombinedMesh(refreshDeclaredChunks || !loadedStartupFar);
-            LogStartup($"Far mesh ready. farVertices={GetFarCombinedMeshVertexCount()}, visibleVertices={GetVisibleCombinedMeshVertexCount()}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
             MarkCombinedRendererVisibilityDirty();
             ApplyCombinedRendererVisibility();
-            LogStartup($"Renderer visibility applied. visibleRendering={IsVisibleCombinedMeshRenderingActive()}, elapsed={stopwatch.ElapsedMilliseconds}ms.");
 
             startupInProgress = false;
             startupDone = true;
@@ -869,6 +938,45 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             return UsePlanetActionRadius && sphereGenerator != null && config != null;
         }
 
+        private bool RefreshAtmosphereState()
+        {
+            bool nextInside = IsCurrentFocusInsideAtmosphere();
+            if (!hasAtmosphereState)
+            {
+                isPlayerInsideAtmosphere = nextInside;
+                hasAtmosphereState = true;
+                if (nextInside)
+                {
+                    PlayerAtmosphereStateChanged?.Invoke(this, true);
+                    return true;
+                }
+
+                return false;
+            }
+
+            if (hasAtmosphereState && nextInside == isPlayerInsideAtmosphere)
+            {
+                return false;
+            }
+
+            isPlayerInsideAtmosphere = nextInside;
+            hasAtmosphereState = true;
+            PlayerAtmosphereStateChanged?.Invoke(this, nextInside);
+            return true;
+        }
+
+        private bool IsCurrentFocusInsideAtmosphere()
+        {
+            float atmosphereRadius = Mathf.Max(0f, AtmosphereRadius);
+            if (atmosphereRadius <= 0f)
+            {
+                return false;
+            }
+
+            Vector3 focus = GetCurrentDetailFocusVector3();
+            return (focus - GetSpherePosition()).sqrMagnitude <= atmosphereRadius * atmosphereRadius;
+        }
+
         private bool RefreshPlanetActionRadiusState()
         {
             bool nextInside = IsCurrentFocusInsidePlanetActionRadius();
@@ -913,13 +1021,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             Vector3 focus = GetCurrentDetailFocusVector3();
-            float effectiveRadius = Mathf.Max(0f, sphereGenerator.Radius + GetMaximumConfiguredLodDistance());
+            float effectiveRadius = Mathf.Max(0f, Radius + ActionAreaRadiusPadding);
             return (focus - GetSpherePosition()).sqrMagnitude <= effectiveRadius * effectiveRadius;
-        }
-
-        private float GetMaximumConfiguredLodDistance()
-        {
-            return config.GetMaxWorldDistanceForLod(GetSegmentLodCount() - 1);
         }
 
         private bool ShouldThrottlePlanetUpdatesOutsideActionRadius()
@@ -1490,6 +1593,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void RefreshDeclaredChunks()
         {
+            ApplyPlanetShapeToSphereGenerator();
             if (sphereGenerator != null)
             {
                 sphereGenerator.DeclareOccupiedChunks(this, config.ChunkSize);
@@ -1506,9 +1610,53 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private ScalarFieldSettings GetScalarFieldSettings()
         {
+            ApplyPlanetShapeToSphereGenerator();
             return sphereGenerator != null
                 ? sphereGenerator.BuildScalarFieldSettings()
                 : config.ScalarFieldSettings;
+        }
+
+        private void InitializePlanetShapeFromSphereGeneratorIfNeeded()
+        {
+            if (planetShapeInitialized)
+            {
+                return;
+            }
+
+            if (sphereGenerator == null)
+            {
+                TryGetComponent(out sphereGenerator);
+            }
+
+            if (sphereGenerator != null)
+            {
+                Radius = Mathf.Max(0.01f, sphereGenerator.Radius);
+                Seed = sphereGenerator.Seed;
+            }
+
+            ActionAreaRadiusPadding = Mathf.Max(0f, Radius * 4f);
+            planetShapeInitialized = true;
+        }
+
+        private void InitializeAtmosphereFromRadiusIfNeeded()
+        {
+            if (atmosphereInitialized)
+            {
+                return;
+            }
+
+            AtmosphereRadius = Mathf.Max(0f, Radius * 0.5f);
+            atmosphereInitialized = true;
+        }
+
+        private void ApplyPlanetShapeToSphereGenerator()
+        {
+            if (sphereGenerator == null)
+            {
+                return;
+            }
+
+            sphereGenerator.ConfigurePlanetShape(Radius, Seed);
         }
 
         private Vector3 GetSpherePosition()
@@ -1529,7 +1677,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
         }
 
-        private static void DestroyUnityObject(Object target)
+        private static void DestroyUnityObject(UnityEngine.Object target)
         {
             if (target == null)
             {

@@ -34,6 +34,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void OnEnable()
         {
+            PlanetManager.PlayerAtmosphereStateChanged += OnPlayerAtmosphereStateChanged;
+
             currentReferenceUp = transform.up.sqrMagnitude > 0.0001f
                 ? transform.up.normalized
                 : Vector3.up;
@@ -47,11 +49,29 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void OnDisable()
         {
+            PlanetManager.PlayerAtmosphereStateChanged -= OnPlayerAtmosphereStateChanged;
+
             if (lockCursorOnEnable && Cursor.lockState == CursorLockMode.Locked)
             {
                 Cursor.lockState = CursorLockMode.None;
                 Cursor.visible = true;
             }
+        }
+
+        private void OnPlayerAtmosphereStateChanged(PlanetManager planet, bool isInsideAtmosphere)
+        {
+            if (planet == null)
+            {
+                return;
+            }
+
+            if (isInsideAtmosphere)
+            {
+                Debug.Log($"Estoy dentro de la atmosfera del planeta: {planet.ResolvedPlanetID}", this);
+                return;
+            }
+
+            Debug.Log($"He salido de la atmosfera del planeta: {planet.ResolvedPlanetID}", this);
         }
 
         private void Update()

@@ -9,8 +9,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
     public sealed class VoxelSphereGenerator : MonoBehaviour
     {
         [SerializeField] private PlanetManager chunkManager;
-        [SerializeField, Min(0.01f)] private float radius = 14f;
-        [SerializeField] private int seed = 12345;
+        [SerializeField, HideInInspector, Min(0.01f)] private float radius = 14f;
+        [SerializeField, HideInInspector] private int seed = 12345;
         [SerializeField] private Material terrainMaterial;
         [SerializeField] private PlanetNoiseProfile planetNoiseProfile;
         [SerializeField] private bool declareOnlySurfaceChunks = true;
@@ -31,6 +31,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private float lastWaterRadius = -1f;
 
         public float Radius => radius;
+        public int Seed => seed;
         public Material TerrainMaterial => terrainMaterial;
         public float SeaSurfaceRadius => Mathf.Max(0.01f, radius + GetSeaSurfaceOffset());
         public float MaximumTerrainRadius => GetMaximumTerrainRadius();
@@ -43,6 +44,19 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         public void Configure(PlanetManager nextChunkManager)
         {
             chunkManager = nextChunkManager;
+        }
+
+        public void ConfigurePlanetShape(float nextRadius, int nextSeed)
+        {
+            float resolvedRadius = Mathf.Max(0.01f, nextRadius);
+            if (Mathf.Abs(radius - resolvedRadius) <= 0.0001f && seed == nextSeed)
+            {
+                return;
+            }
+
+            radius = resolvedRadius;
+            seed = nextSeed;
+            waterMeshDirty = true;
         }
 
         public ScalarFieldSettings BuildScalarFieldSettings()

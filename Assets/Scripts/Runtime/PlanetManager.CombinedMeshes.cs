@@ -503,7 +503,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             Vector3 playerPosition = GetCurrentDetailFocusVector3();
             Vector3 sphereCenter = GetSpherePosition();
-            float sphereRadius = sphereGenerator.Radius;
+            float sphereRadius = Radius;
             if ((playerPosition - sphereCenter).sqrMagnitude < sphereRadius * sphereRadius)
             {
                 return true;
@@ -1056,7 +1056,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             Vector3 playerPosition = GetCurrentDetailFocusVector3();
             Vector3 sphereCenter = GetSpherePosition();
-            float sphereRadius = sphereGenerator.Radius;
+            float sphereRadius = Radius;
             bool playerInside = (playerPosition - sphereCenter).sqrMagnitude < sphereRadius * sphereRadius;
             if (playerInside)
             {

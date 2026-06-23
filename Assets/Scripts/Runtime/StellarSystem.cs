@@ -1,5 +1,8 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace MarchingCubesPlanet.VoxelEngine.Runtime
@@ -12,24 +15,23 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [SerializeField] private Transform player;
         [SerializeField, Min(1)] private int startupFarChunkBuildsPerFrame = 8;
         [SerializeField, Min(1)] private int segmentLodChunksBuiltPerFrame = 16;
-        [SerializeField] private List<PlanetManager> planets = new List<PlanetManager>();
+        [SerializeField, HideInInspector] private List<PlanetManager> planets = new List<PlanetManager>();
 
         public string SystemDataUrl => FileManager.CombineUrl("StellarSystems", ResolveSystemId());
 
-        private IEnumerator Start()
+        private async void Start()
         {
             RefreshPlanets();
             SortPlanetsByPlayerDistance();
+            AssignPlanetIdsFromWorldPositions();
 
-            for (int i = 0; i < planets.Count; i++)
+            try
             {
-                PlanetManager planet = planets[i];
-                if (planet == null)
-                {
-                    continue;
-                }
-
-                yield return planet.Initialize(ID, startupFarChunkBuildsPerFrame, segmentLodChunksBuiltPerFrame);
+                await InitializePlanetsSequentiallyAsync();
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError($"StellarSystem initialization failed for {ResolveSystemId()}. {exception}", this);
             }
         }
 
@@ -65,6 +67,78 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             });
         }
 
+        private void AssignPlanetIdsFromWorldPositions()
+        {
+            for (int i = 0; i < planets.Count; i++)
+            {
+                PlanetManager planet = planets[i];
+                if (planet == null)
+                {
+                    continue;
+                }
+
+                planet.PlanetID = BuildPlanetIdFromWorldPosition(planet.transform.position);
+            }
+        }
+
+        private async Task InitializePlanetsSequentiallyAsync()
+        {
+            string resolvedSystemId = ResolveSystemId();
+            for (int i = 0; i < planets.Count; i++)
+            {
+                PlanetManager planet = planets[i];
+                if (planet == null)
+                {
+                    continue;
+                }
+
+                await InitializePlanetAsync(planet, resolvedSystemId);
+            }
+        }
+
+        private Task InitializePlanetAsync(PlanetManager planet, string resolvedSystemId)
+        {
+            TaskCompletionSource<bool> completion = new TaskCompletionSource<bool>();
+            StartCoroutine(InitializePlanetRoutine(planet, resolvedSystemId, completion));
+            return completion.Task;
+        }
+
+        private IEnumerator InitializePlanetRoutine(
+            PlanetManager planet,
+            string resolvedSystemId,
+            TaskCompletionSource<bool> completion)
+        {
+            IEnumerator initialization = planet.Initialize(
+                resolvedSystemId,
+                startupFarChunkBuildsPerFrame,
+                segmentLodChunksBuiltPerFrame);
+
+            while (true)
+            {
+                bool movedNext;
+                object current;
+                try
+                {
+                    movedNext = initialization.MoveNext();
+                    current = movedNext ? initialization.Current : null;
+                }
+                catch (Exception exception)
+                {
+                    completion.TrySetException(exception);
+                    yield break;
+                }
+
+                if (!movedNext)
+                {
+                    break;
+                }
+
+                yield return current;
+            }
+
+            completion.TrySetResult(true);
+        }
+
         private Transform ResolvePlayer()
         {
             if (player != null)
@@ -92,6 +166,21 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private string ResolveSystemId()
         {
             return string.IsNullOrWhiteSpace(ID) ? gameObject.name : ID.Trim();
+        }
+
+        private static string BuildPlanetIdFromWorldPosition(Vector3 position)
+        {
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "Planet_X{0}_Y{1}_Z{2}",
+                FormatCoordinate(position.x),
+                FormatCoordinate(position.y),
+                FormatCoordinate(position.z));
+        }
+
+        private static string FormatCoordinate(float value)
+        {
+            return value.ToString("0.###", CultureInfo.InvariantCulture);
         }
     }
 }
