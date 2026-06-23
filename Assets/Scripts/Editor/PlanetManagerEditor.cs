@@ -14,29 +14,17 @@ namespace MarchingCubesPlanet.VoxelEngine.Editor
             PlanetManager manager = (PlanetManager)target;
 
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Runtime State", EditorStyles.boldLabel);
-            using (new EditorGUI.DisabledScope(true))
+            if (GUILayout.Button("Clear Planet Data"))
             {
-                EditorGUILayout.IntField("Declared Chunks", manager.DeclaredChunkCount);
-                EditorGUILayout.IntField("Desired Chunks", manager.DesiredChunkCount);
-                EditorGUILayout.IntField("Active Chunks", manager.ActiveChunkCount);
-                EditorGUILayout.IntField("Visible Chunks", manager.VisibleChunkCount);
-                EditorGUILayout.IntField("Combined Vertices", manager.CombinedVertexCount);
-                EditorGUILayout.IntField("Combined Triangles", manager.CombinedTriangleCount);
-                EditorGUILayout.Toggle("Render Culling Active", manager.IsRenderCullingActive);
-                EditorGUILayout.Toggle("Far Bridge Active", manager.IsFarBridgeActive);
-                EditorGUILayout.Toggle("Near Rendering Active", manager.IsNearCombinedRenderingActive);
-            }
-
-            EditorGUILayout.Space();
-            if (GUILayout.Button("Generate"))
-            {
-                manager.Generate();
-            }
-
-            if (GUILayout.Button("Clear Generated Chunks"))
-            {
-                manager.ClearGeneratedChunks();
+                bool confirmed = EditorUtility.DisplayDialog(
+                    "Clear Planet Data",
+                    $"Delete persistent data at {manager.GetPlanetStorageUrl()}?",
+                    "Clear",
+                    "Cancel");
+                if (confirmed)
+                {
+                    manager.ClearPlanetData();
+                }
             }
         }
     }

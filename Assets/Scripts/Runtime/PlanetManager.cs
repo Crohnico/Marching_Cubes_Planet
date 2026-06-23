@@ -46,7 +46,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [Min(0.01f)] public float Radius = 14f;
         public int Seed = 12345;
         [Min(0f)] public float ActionAreaRadiusPadding = 56f;
-        [FormerlySerializedAs("AtmosphereRadiusPadding"), Min(0f)] public float AtmosphereRadius = 7f;
+        [FormerlySerializedAs("AtmosphereRadiusPadding"), Min(0f)] public float AtmosphereRadius = 28f;
         [Header("Debug")]
         [FormerlySerializedAs("drawSegmentGizmos")] public bool DrawGizmosSegments = true;
         public bool DrawActionAreaGizmo = true;
@@ -480,6 +480,16 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         public string GetPlanetStorageUrl()
         {
             return FileManager.CombineUrl("StellarSystems", ResolveSystemId(activeSystemId), "Planets", ResolvePlanetId());
+        }
+
+        [ContextMenu("Clear Planet Data")]
+        public void ClearPlanetData()
+        {
+            string planetStorageUrl = GetPlanetStorageUrl();
+            bool deleted = FileManager.DeleteDirectory(planetStorageUrl);
+            UnityEngine.Debug.Log(deleted
+                ? $"Cleared planet data: {planetStorageUrl}"
+                : $"No planet data found: {planetStorageUrl}", this);
         }
 
         private string GetFarMeshUrl()
@@ -1645,7 +1655,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 return;
             }
 
-            AtmosphereRadius = Mathf.Max(0f, Radius * 0.5f);
+            AtmosphereRadius = Mathf.Max(0f, Radius * 2f);
             atmosphereInitialized = true;
         }
 

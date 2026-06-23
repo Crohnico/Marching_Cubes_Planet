@@ -176,7 +176,7 @@ MonoBehaviour:
   Radius: 300
   Seed: 14970
   ActionAreaRadiusPadding: 1500
-  AtmosphereRadiusPadding: 900
+  AtmosphereRadius: 600
   DrawGizmosSegments: 1
   DrawActionAreaGizmo: 1
   DrawAtmosphereGizmo: 1
@@ -745,7 +745,7 @@ MonoBehaviour:
   Radius: 750
   Seed: 12527
   ActionAreaRadiusPadding: 3750
-  AtmosphereRadiusPadding: 2250
+  AtmosphereRadius: 1500
   DrawGizmosSegments: 1
   DrawActionAreaGizmo: 1
   DrawAtmosphereGizmo: 1

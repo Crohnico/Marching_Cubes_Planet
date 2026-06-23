@@ -103,39 +103,11 @@ No debe concentrar responsabilidades que pertenezcan a otros sistemas. Las respo
 
 `ActionAreaRadiusPadding` define cuanto se suma al `Radius` para calcular la esfera de radio de accion del planeta.
 
-Cuando `ActionAreaRadiusPadding` se inicializa por primera vez, su valor inicial es:
-
-```text
-Radius * 4
-```
-
-El radio de accion del planeta se calcula asi:
-
-```text
-Radius + ActionAreaRadiusPadding
-```
-
-Por defecto, el radio de accion total equivale a:
-
-```text
-Radius * 5
-```
-
 El radio de accion se usa para decidir si el planeta debe mantenerse activo para actualizaciones y carga cercana.
 
-Cuando `AtmosphereRadius` se inicializa por primera vez, su valor inicial es:
-
-```text
-Radius / 2
-```
-
-Por defecto, el radio de atmosfera equivale a:
-
-```text
-Radius / 2
-```
-
 La atmosfera no decide carga de chunks ni LOD. Solo representa la zona en la que el jugador se considera dentro de la gravedad/atmosfera del planeta.
+
+`AtmosphereRadius` se inicializa como `Radius * 2`.
 
 #### Funciones debug
 
@@ -146,6 +118,7 @@ Tiene:
 - Un bool `DrawGizmosSegments`.
 - Un bool `DrawActionAreaGizmo`.
 - Un bool `DrawAtmosphereGizmo`.
+- Un boton `Clear Planet Data`.
 
 `DrawGizmosSegments` activa o desactiva los gizmos de los segmentos del planeta.
 
@@ -153,6 +126,8 @@ Tiene:
 
 `DrawAtmosphereGizmo` activa o desactiva el gizmo de la atmosfera del planeta.
 
+`Clear Planet Data` borra de disco la carpeta persistente del planeta.
+
 #### Atmosfera
 
-La atmosfera lanza una señal cuando el jugador entra o sale de la atmosfera del planeta.
+La atmosfera lanza una señal cuando el jugador entra o sale de la atmosfera del planeta. SignalBus.
