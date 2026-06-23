@@ -26,9 +26,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private const int DefaultStartupFarChunkBuildsPerFrame = 8;
         private const int DefaultSegmentLodChunksBuiltPerFrame = 16;
         private static readonly ProfilerMarker RebuildDesiredMarker = new ProfilerMarker("VoxelEngine.RebuildDesiredChunks");
-        private static readonly ProfilerMarker CompleteChunkBuildMarker = new ProfilerMarker("VoxelEngine.CompleteChunkBuild");
         private static readonly ProfilerMarker CombineMeshMarker = new ProfilerMarker("VoxelEngine.CombineMesh");
-        private static readonly ProfilerMarker UpdateVisibilityMarker = new ProfilerMarker("VoxelEngine.UpdateChunkVisibility");
         private static readonly ProfilerMarker BuildCombineInstancesMarker = new ProfilerMarker("VoxelEngine.BuildCombineInstances");
         private static readonly ProfilerMarker CombineBucketMeshMarker = new ProfilerMarker("VoxelEngine.CombineBucketMesh");
 
@@ -49,14 +47,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [SerializeField, HideInInspector] private bool planetShapeInitialized;
         [SerializeField, HideInInspector] private bool atmosphereInitialized;
 
-        private readonly Dictionary<int3, VoxelChunkState> activeChunks = new Dictionary<int3, VoxelChunkState>();
-        private readonly Dictionary<int3, int> declaredChunkRefCounts = new Dictionary<int3, int>();
-        private readonly Dictionary<int3, DesiredChunkState> desiredChunkStates = new Dictionary<int3, DesiredChunkState>();
-        private readonly HashSet<int3> declaredChunks = new HashSet<int3>();
-        private readonly HashSet<int3> desiredChunks = new HashSet<int3>();
-        private readonly List<int3> scratchChunkCoords = new List<int3>();
+        private readonly PlanetChunkRuntime chunkRuntime = new PlanetChunkRuntime();
         private readonly List<CombineInstance> combineInstances = new List<CombineInstance>();
-        private readonly List<VoxelCellBuildRequest> cellRequestBuffer = new List<VoxelCellBuildRequest>(32768);
         private readonly List<Mesh> scratchSegmentLodChunkMeshes = new List<Mesh>();
         private readonly List<int3> deferredSegmentLodChunkCoords = new List<int3>();
         private readonly List<int3> deferredSegmentLodBuiltChunkCoords = new List<int3>();
@@ -80,8 +72,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private GameObject nearMeshesRoot;
         private Vector3 lastFarHemisphereDirection;
         private bool hasLastFarHemisphereDirection;
-        private readonly Plane[] chunkCullingFrustumPlanes = new Plane[6];
-        private bool chunkVisibilityDirty = true;
         private bool lastShouldCullRenderedChunks;
         private bool hasPlanetActionRadiusState;
         private bool isInsidePlanetActionRadius = true;
@@ -97,14 +87,27 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private MarchingCubesCaseTable caseTable;
         private VoxelEngineConfig config;
 
+        private Dictionary<int3, VoxelChunkState> activeChunks => chunkRuntime.ActiveChunks;
+        private Dictionary<int3, DesiredChunkState> desiredChunkStates => chunkRuntime.DesiredChunkStates;
+        private HashSet<int3> declaredChunks => chunkRuntime.DeclaredChunks;
+        private HashSet<int3> desiredChunks => chunkRuntime.DesiredChunks;
+        private List<int3> scratchChunkCoords => chunkRuntime.ScratchChunkCoords;
+        private List<VoxelCellBuildRequest> cellRequestBuffer => chunkRuntime.CellRequestBuffer;
+        private Plane[] chunkCullingFrustumPlanes => chunkRuntime.CullingFrustumPlanes;
+        private bool chunkVisibilityDirty
+        {
+            get => chunkRuntime.VisibilityDirty;
+            set => chunkRuntime.VisibilityDirty = value;
+        }
+
         public static event Action<PlanetManager, bool> PlayerAtmosphereStateChanged;
 
         public PlanetData PlanetData => planetData;
         public string ResolvedPlanetID => ResolvePlanetId();
         public bool StartupDone => startupDone;
-        public int DeclaredChunkCount => declaredChunks.Count;
-        public int DesiredChunkCount => desiredChunkStates.Count;
-        public int ActiveChunkCount => activeChunks.Count;
+        public int DeclaredChunkCount => chunkRuntime.DeclaredChunkCount;
+        public int DesiredChunkCount => chunkRuntime.DesiredChunkCount;
+        public int ActiveChunkCount => chunkRuntime.ActiveChunkCount;
         public int VisibleChunkCount => CountVisibleChunks();
         public int CombinedVertexCount => GetCombinedVertexCount();
         public int CombinedTriangleCount => GetCombinedTriangleCount();
@@ -425,45 +428,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private Task InitializePlanet()
         {
             ClearChunks();
-            ApplyPlanetDataToDeclaredChunks();
-            desiredChunks.Clear();
-            desiredChunkStates.Clear();
-
-            for (int i = 0; i < planetData.chunks.Count; i++)
-            {
-                PlanetChunkBuildData chunk = planetData.chunks[i];
-                desiredChunks.Add(chunk.coord);
-                desiredChunkStates[chunk.coord] = new DesiredChunkState(
-                    chunk.cellSize,
-                    chunk.detailFocusKey);
-
-                if (chunk.mesh == null || chunk.mesh.vertices.Count == 0)
-                {
-                    continue;
-                }
-
-                Mesh mesh = MeshCrafter.ToChunkUnityMesh(
-                    chunk.mesh,
-                    BuildChunkName(chunk.coord, chunk.cellSize));
-                VoxelChunkState state = new VoxelChunkState
-                {
-                    chunkCoord = chunk.coord,
-                    cellSize = chunk.cellSize,
-                    detailFocusKey = chunk.detailFocusKey,
-                    owner = gameObject,
-                    mesh = mesh,
-                    altIndices = new VoxelChunkAltIndices(
-                        chunk.mesh.interiorIndices.Count,
-                        chunk.mesh.transitionIndices.Count,
-                        chunk.mesh.surfaceIndices.Count),
-                    chunkOrigin = chunk.origin,
-                    chunkBounds = new Bounds(VoxelRuntimeMath.ToVector3(chunk.boundsCenter), VoxelRuntimeMath.ToVector3(chunk.boundsSize)),
-                    visible = ChunkVisibility.Visible,
-                    generated = true,
-                    dirty = false
-                };
-                activeChunks[chunk.coord] = state;
-            }
+            chunkRuntime.ApplyPlanetDataToDeclaredChunks(planetData);
+            chunkRuntime.HydrateFromPlanetData(planetData, gameObject, BuildChunkName);
 
             MarkChunkVisibilityDirty();
             combinedMeshesDirty = true;
@@ -578,7 +544,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
             else
             {
-                ApplyPlanetDataToDeclaredChunks();
+                chunkRuntime.ApplyPlanetDataToDeclaredChunks(planetData);
                 loadedStartupFar = TryLoadStartupFarMeshFromDisk();
             }
 
@@ -723,30 +689,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             UnityEngine.Debug.Log($"[PlanetStartup:{ResolvePlanetId()}] {message}", this);
         }
 
-        private void ApplyPlanetDataToDeclaredChunks()
-        {
-            declaredChunkRefCounts.Clear();
-            declaredChunks.Clear();
-
-            foreach (int3 chunkCoord in planetData.declaredChunks)
-            {
-                declaredChunks.Add(chunkCoord);
-                declaredChunkRefCounts[chunkCoord] = 1;
-            }
-
-            if (declaredChunks.Count != 0)
-            {
-                return;
-            }
-
-            for (int i = 0; i < planetData.chunks.Count; i++)
-            {
-                int3 chunkCoord = planetData.chunks[i].coord;
-                declaredChunks.Add(chunkCoord);
-                declaredChunkRefCounts[chunkCoord] = 1;
-            }
-        }
-
         private string ResolvePlanetId()
         {
             return string.IsNullOrWhiteSpace(PlanetID) ? gameObject.name : PlanetID.Trim();
@@ -798,37 +740,17 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         public void DeclareChunk(int3 chunkCoord)
         {
-            if (declaredChunkRefCounts.TryGetValue(chunkCoord, out int refCount))
-            {
-                declaredChunkRefCounts[chunkCoord] = refCount + 1;
-                return;
-            }
-
-            declaredChunkRefCounts.Add(chunkCoord, 1);
-            declaredChunks.Add(chunkCoord);
+            chunkRuntime.DeclareChunk(chunkCoord);
         }
 
         public void ReleaseChunk(int3 chunkCoord)
         {
-            if (!declaredChunkRefCounts.TryGetValue(chunkCoord, out int refCount))
-            {
-                return;
-            }
-
-            if (refCount > 1)
-            {
-                declaredChunkRefCounts[chunkCoord] = refCount - 1;
-                return;
-            }
-
-            declaredChunkRefCounts.Remove(chunkCoord);
-            declaredChunks.Remove(chunkCoord);
+            chunkRuntime.ReleaseChunk(chunkCoord);
         }
 
         public void ClearDeclaredChunks()
         {
-            declaredChunkRefCounts.Clear();
-            declaredChunks.Clear();
+            chunkRuntime.ClearDeclaredChunks();
             RefreshPlanetDataSnapshot();
         }
 
@@ -1037,50 +959,15 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void UpdateChunkVisibility()
         {
-            using (UpdateVisibilityMarker.Auto())
+            bool visibilityChanged = chunkRuntime.UpdateVisibility(
+                ShouldCullRenderedChunks(),
+                playerChunkTracker.ChunkCullingCamera,
+                MarkCombinedMeshDirty);
+
+            if (visibilityChanged)
             {
-                bool visibilityChanged = false;
-                bool shouldCull = ShouldCullRenderedChunks();
-                if (shouldCull)
-                {
-                    GeometryUtility.CalculateFrustumPlanes(playerChunkTracker.ChunkCullingCamera, chunkCullingFrustumPlanes);
-                }
-
-                foreach (VoxelChunkState state in activeChunks.Values)
-                {
-                    bool inRange = true;
-                    bool inFrustum = true;
-                    int lastPlaneIndex = state.frustumLastPlaneIndex;
-                    if (shouldCull)
-                    {
-                        inRange = IsChunkInCameraRange(state.chunkBounds, playerChunkTracker.ChunkCullingCamera);
-                        inFrustum = TestAabbAgainstFrustumCoherent(
-                            state.chunkBounds,
-                            chunkCullingFrustumPlanes,
-                            state.frustumLastPlaneIndex,
-                            out lastPlaneIndex);
-                    }
-
-                    if (state.visible.inRange != inRange
-                        || state.visible.inFrustum != inFrustum
-                        || state.frustumLastPlaneIndex != lastPlaneIndex)
-                    {
-                        state.visible = new ChunkVisibility
-                        {
-                            inRange = inRange,
-                            inFrustum = inFrustum
-                        };
-                        state.frustumLastPlaneIndex = lastPlaneIndex;
-                        visibilityChanged = true;
-                        MarkCombinedMeshDirty(state.chunkCoord);
-                    }
-                }
-
-                if (visibilityChanged)
-                {
-                    combinedMeshesDirty = true;
-                    MarkCombinedRendererVisibilityDirty();
-                }
+                combinedMeshesDirty = true;
+                MarkCombinedRendererVisibilityDirty();
             }
         }
 
@@ -1194,68 +1081,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             return UseChunkCullingForRendering && UseChunkCulling();
         }
 
-        private static bool IsChunkInCameraRange(Bounds bounds, Camera camera)
-        {
-            Vector3 point = camera.transform.position;
-            Vector3 center = bounds.center;
-            Vector3 extents = bounds.extents;
-            float dx = Mathf.Max(Mathf.Abs(point.x - center.x) - extents.x, 0f);
-            float dy = Mathf.Max(Mathf.Abs(point.y - center.y) - extents.y, 0f);
-            float dz = Mathf.Max(Mathf.Abs(point.z - center.z) - extents.z, 0f);
-            float farClip = camera.farClipPlane;
-            return dx * dx + dy * dy + dz * dz <= farClip * farClip;
-        }
-
-        private static bool TestAabbAgainstFrustumCoherent(
-            Bounds bounds,
-            Plane[] frustumPlanes,
-            int startPlaneIndex,
-            out int lastPlaneIndex)
-        {
-            int planeCount = frustumPlanes.Length;
-            int safeStart = planeCount == 0 ? 0 : Mathf.Clamp(startPlaneIndex, 0, planeCount - 1);
-            for (int offset = 0; offset < planeCount; offset++)
-            {
-                int planeIndex = (safeStart + offset) % planeCount;
-                if (IsAabbOutsidePlane(bounds, frustumPlanes[planeIndex]))
-                {
-                    lastPlaneIndex = planeIndex;
-                    return false;
-                }
-            }
-
-            lastPlaneIndex = safeStart;
-            return true;
-        }
-
-        private static bool IsAabbOutsidePlane(Bounds bounds, Plane plane)
-        {
-            Vector3 positive = bounds.center;
-            Vector3 extents = bounds.extents;
-            Vector3 normal = plane.normal;
-            positive.x += normal.x >= 0f ? extents.x : -extents.x;
-            positive.y += normal.y >= 0f ? extents.y : -extents.y;
-            positive.z += normal.z >= 0f ? extents.z : -extents.z;
-            return plane.GetDistanceToPoint(positive) < 0f;
-        }
-
         private int CountVisibleChunks()
         {
-            if (!ShouldCullRenderedChunks())
-            {
-                return activeChunks.Count;
-            }
-
-            int count = 0;
-            foreach (VoxelChunkState state in activeChunks.Values)
-            {
-                if (state.visible.IsVisible)
-                {
-                    count++;
-                }
-            }
-
-            return count;
+            return chunkRuntime.CountVisibleChunks(ShouldCullRenderedChunks());
         }
 
         private static int CompareChunkCoordsByPriority(int3 a, int3 b, int3 centerChunk)
@@ -1271,65 +1099,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void CompleteChunkBuild(ChunkBuild chunkBuild)
         {
-            using (CompleteChunkBuildMarker.Auto())
+            if (chunkRuntime.CompleteChunkBuild(chunkBuild, gameObject, BuildChunkName, out int3 changedChunkCoord))
             {
-                chunkBuild.jobHandle.Complete();
-
-                try
-                {
-                    DesiredChunkState completedState = new DesiredChunkState(
-                        chunkBuild.cellSize,
-                        chunkBuild.detailFocusKey);
-                    bool isStillDesired = desiredChunkStates.TryGetValue(chunkBuild.chunkCoord, out DesiredChunkState desiredState)
-                        && desiredState.Equals(completedState);
-                    if (!isStillDesired)
-                    {
-                        return;
-                    }
-
-                    VoxelChunkAltIndices altIndices;
-                    Mesh mesh = MeshCrafter.BuildChunkMesh(
-                        BuildChunkName(chunkBuild.chunkCoord, chunkBuild.cellSize),
-                        chunkBuild.vertices,
-                        chunkBuild.normals,
-                        chunkBuild.uvs,
-                        chunkBuild.interiorIndices,
-                        chunkBuild.transitionIndices,
-                        chunkBuild.surfaceIndices,
-                        out altIndices);
-
-                    VoxelChunkState nextState = new VoxelChunkState
-                    {
-                        chunkCoord = chunkBuild.chunkCoord,
-                        cellSize = chunkBuild.cellSize,
-                        detailFocusKey = chunkBuild.detailFocusKey,
-                        owner = gameObject,
-                        mesh = mesh,
-                        altIndices = altIndices,
-                        chunkOrigin = chunkBuild.chunkOrigin,
-                        chunkBounds = BuildChunkBounds(chunkBuild.chunkOrigin, chunkBuild.chunkSize),
-                        visible = ChunkVisibility.Visible,
-                        generated = true,
-                        dirty = false
-                    };
-
-                    if (activeChunks.TryGetValue(chunkBuild.chunkCoord, out VoxelChunkState oldState))
-                    {
-                        DestroyChunk(oldState);
-                        activeChunks[chunkBuild.chunkCoord] = nextState;
-                        MarkChunkVisibilityDirty();
-                        MarkCombinedMeshDirty(chunkBuild.chunkCoord);
-                        return;
-                    }
-
-                    activeChunks.Add(chunkBuild.chunkCoord, nextState);
-                    MarkChunkVisibilityDirty();
-                    MarkCombinedMeshDirty(chunkBuild.chunkCoord);
-                }
-                finally
-                {
-                    DisposeChunkBuild(chunkBuild);
-                }
+                MarkChunkVisibilityDirty();
+                MarkCombinedMeshDirty(changedChunkCoord);
             }
         }
 
@@ -1340,14 +1113,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void MarkChunkVisibilityDirty()
         {
-            chunkVisibilityDirty = true;
+            chunkRuntime.MarkVisibilityDirty();
             MarkCombinedRendererVisibilityDirty();
-        }
-
-        private static Bounds BuildChunkBounds(int3 chunkOrigin, int3 chunkSize)
-        {
-            Vector3 size = VoxelRuntimeMath.ToVector3(chunkSize);
-            return new Bounds(VoxelRuntimeMath.ToVector3(chunkOrigin) + size * 0.5f, size);
         }
 
         private Vector3 GetCurrentDetailFocusVector3()
@@ -1358,35 +1125,13 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void RemoveUndesiredChunks()
         {
-            scratchChunkCoords.Clear();
-            foreach (KeyValuePair<int3, VoxelChunkState> pair in activeChunks)
-            {
-                if (!desiredChunks.Contains(pair.Key))
-                {
-                    scratchChunkCoords.Add(pair.Key);
-                }
-            }
-
-            for (int i = 0; i < scratchChunkCoords.Count; i++)
-            {
-                int3 chunkCoord = scratchChunkCoords[i];
-                DestroyChunk(activeChunks[chunkCoord]);
-                activeChunks.Remove(chunkCoord);
-                MarkChunkVisibilityDirty();
-                MarkCombinedMeshDirty(chunkCoord);
-            }
+            chunkRuntime.RemoveUndesiredChunks(MarkCombinedMeshDirty);
+            MarkCombinedRendererVisibilityDirty();
         }
 
         private void ClearChunks()
         {
-            foreach (VoxelChunkState state in activeChunks.Values)
-            {
-                DestroyChunk(state);
-            }
-
-            activeChunks.Clear();
-            desiredChunks.Clear();
-            desiredChunkStates.Clear();
+            chunkRuntime.ClearChunks();
             MarkChunkVisibilityDirty();
             ClearCombinedMesh();
         }
@@ -1424,49 +1169,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
         }
 
-        private static void DisposeChunkBuild(ChunkBuild chunkBuild)
-        {
-            if (chunkBuild.requests.IsCreated)
-            {
-                chunkBuild.requests.Dispose();
-            }
-
-            if (chunkBuild.cells.IsCreated)
-            {
-                chunkBuild.cells.Dispose();
-            }
-
-            if (chunkBuild.vertices.IsCreated)
-            {
-                chunkBuild.vertices.Dispose();
-            }
-
-            if (chunkBuild.normals.IsCreated)
-            {
-                chunkBuild.normals.Dispose();
-            }
-
-            if (chunkBuild.uvs.IsCreated)
-            {
-                chunkBuild.uvs.Dispose();
-            }
-
-            if (chunkBuild.interiorIndices.IsCreated)
-            {
-                chunkBuild.interiorIndices.Dispose();
-            }
-
-            if (chunkBuild.transitionIndices.IsCreated)
-            {
-                chunkBuild.transitionIndices.Dispose();
-            }
-
-            if (chunkBuild.surfaceIndices.IsCreated)
-            {
-                chunkBuild.surfaceIndices.Dispose();
-            }
-        }
-
         private void RefreshDeclaredChunks()
         {
             ApplyPlanetShapeToSphereGenerator();
@@ -1478,10 +1180,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void MarkAllChunksDirty()
         {
-            foreach (VoxelChunkState state in activeChunks.Values)
-            {
-                state.dirty = true;
-            }
+            chunkRuntime.MarkAllChunksDirty();
         }
 
         private ScalarFieldSettings GetScalarFieldSettings()
@@ -1543,14 +1242,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private Vector3 GetSpherePositionInManagerLocal()
         {
             return sphereGenerator != null ? transform.InverseTransformPoint(sphereGenerator.transform.position) : Vector3.zero;
-        }
-
-        private static void DestroyChunk(VoxelChunkState state)
-        {
-            if (state.mesh != null)
-            {
-                DestroyUnityObject(state.mesh);
-            }
         }
 
         private static void DestroyUnityObject(UnityEngine.Object target)

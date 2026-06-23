@@ -281,7 +281,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     mesh = chunkMesh,
                     altIndices = BuildAltIndicesFromMesh(chunkMesh),
                     chunkOrigin = chunkOrigin,
-                    chunkBounds = BuildChunkBounds(chunkOrigin, chunkSize),
+                    chunkBounds = PlanetChunkRuntime.BuildChunkBounds(chunkOrigin, chunkSize),
                     visible = ChunkVisibility.Visible,
                     generated = true,
                     dirty = false
@@ -764,7 +764,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     mesh = chunkMesh,
                     altIndices = altIndices,
                     chunkOrigin = chunkOrigin,
-                    chunkBounds = BuildChunkBounds(chunkOrigin, chunkSize),
+                    chunkBounds = PlanetChunkRuntime.BuildChunkBounds(chunkOrigin, chunkSize),
                     visible = ChunkVisibility.Visible,
                     generated = true,
                     dirty = false

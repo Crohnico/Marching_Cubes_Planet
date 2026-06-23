@@ -490,8 +490,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             Bounds bounds = BuildNearSegmentWorldBounds(segmentIndex);
-            return IsChunkInCameraRange(bounds, playerChunkTracker.ChunkCullingCamera)
-                && TestAabbAgainstFrustumCoherent(bounds, chunkCullingFrustumPlanes, 0, out _);
+            return PlanetChunkRuntime.IsChunkInCameraRange(bounds, playerChunkTracker.ChunkCullingCamera)
+                && PlanetChunkRuntime.TestAabbAgainstFrustumCoherent(bounds, chunkCullingFrustumPlanes, 0, out _);
         }
 
         private bool IsNearSegmentOnPlayerHemisphere(int segmentIndex)
