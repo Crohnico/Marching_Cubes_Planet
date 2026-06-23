@@ -30,8 +30,6 @@ Este documento responde a preguntas como:
 - Una lista privada de los planetas del sistema estelar.
 - La lista de planetas esta oculta en el inspector.
 - Un `string ID` con el nombre propio del sistema estelar.
-- Un valor `startupFarChunkBuildsPerFrame`.
-- Un valor `segmentLodChunksBuiltPerFrame`.
 - Un boton en el inspector para borrar la carpeta de archivos usada por funcionalidades de debug.
 
 La carpeta debug del sistema se resuelve como:
@@ -41,14 +39,6 @@ StellarSystems/{SystemId}
 ```
 
 Dentro de `Application.persistentDataPath`.
-
-#### Presupuesto de carga
-
-`startupFarChunkBuildsPerFrame` y `segmentLodChunksBuiltPerFrame` definen el estres que `StellarSystem` permite durante la carga de datos de los planetas.
-
-- `startupFarChunkBuildsPerFrame` limita cuantos chunks lejanos/base se construyen por frame en el arranque.
-- `segmentLodChunksBuiltPerFrame` limita cuantos chunks de LOD por segmentos se construyen por frame.
-
 
 #### Descubrimiento de planetas
 
@@ -131,3 +121,152 @@ Tiene:
 #### Atmosfera
 
 La atmosfera lanza una señal cuando el jugador entra o sale de la atmosfera del planeta. SignalBus.
+
+#### Inicializacion
+
+`PlanetManager` inicializa el planeta con este flujo:
+
+```csharp
+Task Initialize(string stellarID)
+{
+    InitializePlanetData();
+    InitializeFarMesh();
+    InitializePlanet();
+}
+```
+
+La inicializacion se divide en tres pasos:
+
+- `InitializePlanetData()`
+- `InitializeFarMesh()`
+- `InitializePlanet()`
+
+`InitializePlanetData()` obtiene el `PlanetData` del planeta.
+
+Si existe `PlanetData` en disco, se usa ese dato.
+
+Si no existe, `PlanetInitializer` crea el `PlanetData`, lo devuelve nutrido y se guarda en disco.
+
+`InitializeFarMesh()` obtiene la far mesh del planeta.
+
+Si existe far mesh en disco, se usa esa mesh.
+
+Si no existe, `MeshCrafter` crea la far mesh usando `PlanetData`, se guarda la far mesh en disco y se guarda tambien `PlanetData`.
+
+`InitializePlanet()` queda pendiente de definir.
+
+`PlanetManager` no debe ser quien construye directamente `PlanetData` ni far mesh. Solo coordina y conserva estado.
+
+`InitializePlanet()` hidrata el estado runtime del planeta desde `PlanetData`.
+
+Los chunks runtime se reconstruyen desde `PlanetData.chunks`, no desde una generacion implicita dentro de `PlanetManager`.
+
+#### PlanetData
+
+`PlanetData` es la fuente de verdad serializable del planeta.
+
+Debe contener todo lo necesario para que `MeshCrafter` pueda construir far mesh y near mesh sin depender de estado runtime de `PlanetManager`.
+
+`PlanetData` no guarda objetos runtime de Unity:
+
+- No guarda `GameObject`.
+- No guarda `MeshFilter`.
+- No guarda `MeshRenderer`.
+- No guarda `Material`.
+- No guarda `JobHandle`.
+- No guarda `NativeArray`.
+- No guarda flags temporales de culling/frustum.
+
+`PlanetData` si guarda datos equivalentes y serializables:
+
+- Identidad del planeta.
+- Configuracion usada para generar el planeta.
+- Layout de chunks.
+- Layout de segmentos.
+- Datos de mesh por chunk.
+- Datos de mesh agregados/cacheados para far y near, si existen.
+
+La estructura conceptual de `PlanetData` es:
+
+```csharp
+PlanetData
+{
+    PlanetIdentity identity;
+    PlanetGenerationConfig generation;
+    PlanetChunkLayout chunkLayout;
+    PlanetSegmentLayout segmentLayout;
+    List<PlanetChunkData> chunks;
+    PlanetMeshCache meshCache;
+}
+```
+
+`PlanetIdentity` contiene:
+
+- `stellarID`.
+- `planetID`.
+- posicion de mundo.
+
+`PlanetGenerationConfig` contiene:
+
+- `Radius`.
+- `Seed`.
+- `chunkSize`.
+- cell sizes usados por LOD.
+- distancias/reglas usadas para LOD.
+- datos necesarios del campo escalar.
+
+`PlanetChunkLayout` contiene:
+
+- chunks declarados.
+- chunks activos para build inicial.
+- origen de cada chunk.
+- bounds de cada chunk.
+- cell size elegido para cada chunk.
+- `detailFocusKey` usado al crear el chunk.
+
+`PlanetSegmentLayout` contiene:
+
+- cantidad de segmentos.
+- grid de segmentos.
+- bounds de cada segmento.
+- relacion entre segmento y chunks.
+- LOD disponible por segmento.
+
+`PlanetChunkData` contiene:
+
+- coordenada del chunk.
+- origen del chunk.
+- bounds del chunk.
+- cell size.
+- segmento al que pertenece.
+- datos de mesh del chunk.
+
+Los datos de mesh del chunk son obligatorios para que el planeta pueda reconstruir far mesh y near mesh desde `PlanetData`.
+
+Los datos de mesh del chunk son datos puros:
+
+```csharp
+PlanetMeshData
+{
+    vertices;
+    normals;
+    uvs;
+    interiorIndices;
+    transitionIndices;
+    surfaceIndices;
+    bounds;
+}
+```
+
+`PlanetMeshCache` contiene datos derivados que se pueden reconstruir desde los chunks, pero se guardan para acelerar arranque:
+
+- far mesh.
+- near mesh por segmento.
+- near mesh por segmento y LOD.
+- version de cache.
+
+Regla importante:
+
+Si `PlanetMeshCache` no existe o esta obsoleto, `MeshCrafter` debe poder reconstruir far mesh y near mesh usando solo `PlanetData.chunks`.
+
+Por tanto, `PlanetData.chunks` es obligatorio. `PlanetMeshCache` es acelerador, no fuente unica.

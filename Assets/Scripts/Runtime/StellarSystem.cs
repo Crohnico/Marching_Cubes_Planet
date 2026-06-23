@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Threading.Tasks;
@@ -13,8 +12,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         public string ID;
 
         [SerializeField] private Transform player;
-        [SerializeField, Min(1)] private int startupFarChunkBuildsPerFrame = 8;
-        [SerializeField, Min(1)] private int segmentLodChunksBuiltPerFrame = 16;
         [SerializeField, HideInInspector] private List<PlanetManager> planets = new List<PlanetManager>();
 
         public string SystemDataUrl => FileManager.CombineUrl("StellarSystems", ResolveSystemId());
@@ -92,51 +89,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     continue;
                 }
 
-                await InitializePlanetAsync(planet, resolvedSystemId);
+                await planet.Initialize(resolvedSystemId);
             }
-        }
-
-        private Task InitializePlanetAsync(PlanetManager planet, string resolvedSystemId)
-        {
-            TaskCompletionSource<bool> completion = new TaskCompletionSource<bool>();
-            StartCoroutine(InitializePlanetRoutine(planet, resolvedSystemId, completion));
-            return completion.Task;
-        }
-
-        private IEnumerator InitializePlanetRoutine(
-            PlanetManager planet,
-            string resolvedSystemId,
-            TaskCompletionSource<bool> completion)
-        {
-            IEnumerator initialization = planet.Initialize(
-                resolvedSystemId,
-                startupFarChunkBuildsPerFrame,
-                segmentLodChunksBuiltPerFrame);
-
-            while (true)
-            {
-                bool movedNext;
-                object current;
-                try
-                {
-                    movedNext = initialization.MoveNext();
-                    current = movedNext ? initialization.Current : null;
-                }
-                catch (Exception exception)
-                {
-                    completion.TrySetException(exception);
-                    yield break;
-                }
-
-                if (!movedNext)
-                {
-                    break;
-                }
-
-                yield return current;
-            }
-
-            completion.TrySetResult(true);
         }
 
         private Transform ResolvePlayer()

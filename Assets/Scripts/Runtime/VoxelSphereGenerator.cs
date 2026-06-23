@@ -82,35 +82,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 return;
             }
 
-            Vector3 resolvedCenter = transform.position;
-            float maxRadius = GetMaximumTerrainRadius();
-            float3 min = new float3(
-                resolvedCenter.x - maxRadius,
-                resolvedCenter.y - maxRadius,
-                resolvedCenter.z - maxRadius);
-            float3 max = new float3(
-                resolvedCenter.x + maxRadius,
-                resolvedCenter.y + maxRadius,
-                resolvedCenter.z + maxRadius);
-
-            int3 minChunk = VoxelChunkUtility.GetChunkCoords(min, chunkSize);
-            int3 maxChunk = VoxelChunkUtility.GetChunkCoords(max, chunkSize);
-
             nextDeclaredChunks.Clear();
-            for (int x = minChunk.x; x <= maxChunk.x; x++)
-            {
-                for (int y = minChunk.y; y <= maxChunk.y; y++)
-                {
-                    for (int z = minChunk.z; z <= maxChunk.z; z++)
-                    {
-                        int3 chunkCoord = new int3(x, y, z);
-                        if (!declareOnlySurfaceChunks || DoesChunkIntersectSurface(chunkCoord, chunkSize, resolvedCenter))
-                        {
-                            nextDeclaredChunks.Add(chunkCoord);
-                        }
-                    }
-                }
-            }
+            CollectOccupiedChunks(nextDeclaredChunks, chunkSize);
 
             foreach (int3 chunkCoord in declaredChunks)
             {
@@ -132,6 +105,43 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             foreach (int3 chunkCoord in nextDeclaredChunks)
             {
                 declaredChunks.Add(chunkCoord);
+            }
+        }
+
+        public void CollectOccupiedChunks(ICollection<int3> chunks, int3 chunkSize)
+        {
+            if (chunks == null)
+            {
+                return;
+            }
+
+            Vector3 resolvedCenter = transform.position;
+            float maxRadius = GetMaximumTerrainRadius();
+            float3 min = new float3(
+                resolvedCenter.x - maxRadius,
+                resolvedCenter.y - maxRadius,
+                resolvedCenter.z - maxRadius);
+            float3 max = new float3(
+                resolvedCenter.x + maxRadius,
+                resolvedCenter.y + maxRadius,
+                resolvedCenter.z + maxRadius);
+
+            int3 minChunk = VoxelChunkUtility.GetChunkCoords(min, chunkSize);
+            int3 maxChunk = VoxelChunkUtility.GetChunkCoords(max, chunkSize);
+
+            for (int x = minChunk.x; x <= maxChunk.x; x++)
+            {
+                for (int y = minChunk.y; y <= maxChunk.y; y++)
+                {
+                    for (int z = minChunk.z; z <= maxChunk.z; z++)
+                    {
+                        int3 chunkCoord = new int3(x, y, z);
+                        if (!declareOnlySurfaceChunks || DoesChunkIntersectSurface(chunkCoord, chunkSize, resolvedCenter))
+                        {
+                            chunks.Add(chunkCoord);
+                        }
+                    }
+                }
             }
         }
 
