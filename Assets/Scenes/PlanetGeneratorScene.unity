@@ -244,8 +244,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MarchingCubesPlanet.VoxelEngine.Runtime.StellarSystem
   ID: demo-system
   player: {fileID: 2099919847}
-  startupFarChunkBuildsPerFrame: 1000
-  segmentLodChunksBuiltPerFrame: 16
   planets: []
 --- !u!1 &330585543
 GameObject:
@@ -722,7 +720,7 @@ MonoBehaviour:
   radius: 750
   seed: 12527
   terrainMaterial: {fileID: 2100000, guid: b8e3496436244a8a9ecb657377f06a41, type: 2}
-  planetNoiseProfile: {fileID: 11400000, guid: 83f75cc858032894b9d90fa4efad76a9, type: 2}
+  planetNoiseProfile: {fileID: 11400000, guid: 2dd69f92af7543a0989cf853dc2f8a92, type: 2}
   declareOnlySurfaceChunks: 1
   generateWater: 1
   waterMaterial: {fileID: 2100000, guid: db4838b550f348d593fc4a0abb2167dc, type: 2}

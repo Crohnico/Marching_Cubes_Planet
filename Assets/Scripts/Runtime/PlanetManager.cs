@@ -39,6 +39,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private readonly PlanetChunkBehaviour chunkBehaviour = new PlanetChunkBehaviour();
         private readonly PlanetCombinedMeshBehaviour combinedMeshBehaviour = new PlanetCombinedMeshBehaviour();
+        private readonly PlanetSegmentSeamBehaviour segmentSeamBehaviour = new PlanetSegmentSeamBehaviour();
         private bool hasPlanetActionRadiusState;
         private bool isInsidePlanetActionRadius = true;
         private bool hasAtmosphereState;
@@ -557,6 +558,20 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 "Segments",
                 segmentId.ToString(),
                 $"LOD_{lodIndex}.meshbin");
+        }
+
+        private string GetSegmentSeamMeshUrl(SegmentSeamKey key)
+        {
+            return FileManager.CombineUrl(
+                "StellarSystems",
+                ResolveSystemId(activeSystemId),
+                "Planets",
+                ResolvePlanetId(),
+                "Segments",
+                "Seams",
+                $"v{SegmentLodSeamBuilder.CacheVersion}",
+                $"{key.segmentA}_{key.segmentB}_A{key.axis}",
+                $"LOD_{key.lodA}_{key.lodB}.meshbin");
         }
 
         private bool TryLoadExistingPlanetDataOrThrow(string systemId)

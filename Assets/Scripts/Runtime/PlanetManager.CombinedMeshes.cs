@@ -52,6 +52,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     farCombinedMeshDirty = true;
                     combinedMeshesDirty = true;
                     CancelDeferredSegmentLodBuilds();
+                    segmentSeamBehaviour.ClearRuntimeCache(DestroyUnityObject);
                 }
             }
         }
@@ -388,6 +389,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             bool planetVisibleInFrustum = !shouldCullVisibleMeshFrustum
                 || GeometryUtility.TestPlanesAABB(chunkCullingFrustumPlanes, BuildPlanetWorldBounds());
             bool shouldCullNearFrustum = showNearMeshes && shouldCullRenderFrustum;
+            bool[] activeSegments = showNearMeshes
+                ? new bool[Mathf.Min(activeCombinedMeshBucketCount, nearCombinedMeshBuckets.Count)]
+                : null;
 
             for (int i = 0; i < nearCombinedMeshBuckets.Count; i++)
             {
@@ -405,6 +409,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     }
 
                     ApplySegmentLodVisibility(bucket, i, active);
+                    if (activeSegments != null && i < activeSegments.Length)
+                    {
+                        activeSegments[i] = active && IsSegmentLodActive(bucket);
+                    }
+
                     if (active && IsSegmentLodActive(bucket))
                     {
                         hasReadyVisibleSegment = true;
@@ -431,6 +440,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     }
                 }
             }
+
+            UpdateSegmentSeamVisibility(showNearMeshes, activeSegments);
 
             bool showVisibleMesh = planetVisibleInFrustum
                 && (keepFarBridgeVisible
@@ -561,6 +572,41 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             EnsureSegmentLodCacheIfNeeded(bucket);
             int activeLod = segmentActive ? ResolveLodIndexForSegment(bucketIndex) : -1;
             ApplySegmentLodMesh(bucket, bucketIndex, activeLod, segmentActive);
+        }
+
+        private void UpdateSegmentSeamVisibility(bool showNearMeshes, bool[] activeSegments)
+        {
+            int segmentCount = Mathf.Clamp(
+                config != null ? config.NearCombinedMeshBucketCount : PlanetRenderConstants.MaxCombinedMeshBucketCount,
+                1,
+                PlanetRenderConstants.MaxCombinedMeshBucketCount);
+            if (!TryGetCombinedMeshBucketGrid(segmentCount, out int3 grid))
+            {
+                segmentSeamBehaviour.UpdateSeams(
+                    false,
+                    nearMeshesRoot,
+                    nearCombinedMeshBuckets,
+                    activeCombinedMeshBucketCount,
+                    default,
+                    activeSegments,
+                    null,
+                    GetSegmentSeamMeshUrl,
+                    DestroyUnityObject,
+                    GetCellSizeForLodIndex);
+                return;
+            }
+
+            segmentSeamBehaviour.UpdateSeams(
+                showNearMeshes,
+                nearMeshesRoot,
+                nearCombinedMeshBuckets,
+                activeCombinedMeshBucketCount,
+                grid,
+                activeSegments,
+                sphereGenerator != null ? sphereGenerator.TerrainMaterial : null,
+                GetSegmentSeamMeshUrl,
+                DestroyUnityObject,
+                GetCellSizeForLodIndex);
         }
 
 
@@ -1163,6 +1209,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private void ClearCombinedMesh()
         {
             CancelDeferredSegmentLodBuilds();
+            segmentSeamBehaviour.ClearRuntimeCache(DestroyUnityObject);
             if (farCombinedMeshBucket != null && farCombinedMeshBucket.mesh != null)
             {
                 farCombinedMeshBucket.mesh.Clear();
@@ -1215,6 +1262,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private void DestroyCombinedMesh()
         {
             CancelDeferredSegmentLodBuilds();
+            segmentSeamBehaviour.ClearRuntimeCache(DestroyUnityObject);
             if (farCombinedMeshBucket != null)
             {
                 if (farCombinedMeshBucket.meshFilter != null)

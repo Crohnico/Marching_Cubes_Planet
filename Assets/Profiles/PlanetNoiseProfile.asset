@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 75cf72b6f0ad44d491f7e89f4d57e340, type: 3}
   m_Name: PlanetNoiseProfile
   m_EditorClassIdentifier: 
-  voronoiDivision: 56
-  voronoiContinentMinRange: 43
-  voronoiContinentMaxRange: 43
+  voronoiDivision: 100
+  voronoiContinentMinRange: 79
+  voronoiContinentMaxRange: 100
   landMinElevation: 0.015
   landMaxElevation: 0.127
   landElevationCurve:
@@ -69,7 +69,7 @@ MonoBehaviour:
     m_PostInfinity: 2
     m_RotationOrder: 4
   surfaceNoiseAmplitude: 0.308
-  surfaceNoiseFrequency: 2
+  surfaceNoiseFrequency: 7
   seaLevelAtlasV: 0.337
-  cellHeightModifierRange: {x: 1, y: 1}
-  cellRoughnessModifierRange: {x: 1, y: 1}
+  cellHeightModifierRange: {x: 0.3, y: 1.5}
+  cellRoughnessModifierRange: {x: 0.6, y: 0.8}

@@ -36,6 +36,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 GameObject existingLod = GetLod(lodIndex);
                 if (existingLod != null)
                 {
+                    SyncLodCollider(lodIndex, existingLod, null);
                     existingLod.SetActive(false);
                 }
 
@@ -56,10 +57,13 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             MeshFilter meshFilter = lod.GetComponent<MeshFilter>();
             if (meshFilter.sharedMesh == mesh)
             {
+                SyncLodCollider(lodIndex, lod, mesh);
                 return;
             }
 
             meshFilter.sharedMesh = mesh;
+            SyncLodCollider(lodIndex, lod, mesh);
+
             MeshRenderer meshRenderer = lod.GetComponent<MeshRenderer>();
             if (meshRenderer.sharedMaterial != material)
             {
@@ -155,6 +159,39 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             lod.AddComponent<MeshRenderer>();
             SetLod(lodIndex, lod);
             return lod;
+        }
+
+        private static void SyncLodCollider(int lodIndex, GameObject lod, Mesh mesh)
+        {
+            if (lodIndex != 0 || lod == null)
+            {
+                return;
+            }
+
+            MeshCollider meshCollider = lod.GetComponent<MeshCollider>();
+            if (mesh == null || mesh.vertexCount == 0)
+            {
+                if (meshCollider != null)
+                {
+                    meshCollider.sharedMesh = null;
+                    meshCollider.enabled = false;
+                }
+
+                return;
+            }
+
+            if (meshCollider == null)
+            {
+                meshCollider = lod.AddComponent<MeshCollider>();
+            }
+
+            if (meshCollider.sharedMesh != mesh)
+            {
+                meshCollider.sharedMesh = null;
+                meshCollider.sharedMesh = mesh;
+            }
+
+            meshCollider.enabled = true;
         }
 
         private void ReparentLod(GameObject lod)

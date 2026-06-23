@@ -300,6 +300,41 @@ Si una funcion habla principalmente de buckets, combined meshes, far bridge, nea
 
 Las propiedades puente entre `PlanetManager` y `PlanetCombinedMeshBehaviour` son deuda temporal y deben reducirse, no crecer.
 
+#### Colision de segmentos
+
+Los segmentos cercanos usan colision por `MeshCollider` en su objeto `LOD_0`.
+
+El `MeshCollider` de `LOD_0` usa la misma `Mesh` asignada al `MeshFilter` de `LOD_0`.
+
+`VoxelSegmentLodMeshCache` es responsable de crear y sincronizar el `MeshCollider` de `LOD_0` cuando se asigna o retira la mesh del LOD.
+
+`LOD_1` y `LOD_2` no crean colliders de segmento.
+
+#### Costuras entre LOD de segmentos
+
+Cuando dos segmentos cercanos vecinos estan visibles y usan LOD distinto, la union entre ellos se resuelve con una mesh independiente de costura.
+
+La mesh de costura no pertenece a ninguno de los dos segmentos. Vive bajo el root de costuras de los near meshes.
+
+Las costuras se crean solo para vecinos directos de la grid de segmentos en los ejes `X`, `Y` y `Z`.
+
+Las combinaciones runtime esperadas son:
+
+- `LOD_0 - LOD_1`
+- `LOD_1 - LOD_0`
+- `LOD_1 - LOD_2`
+- `LOD_2 - LOD_1`
+
+No se crea costura cuando los dos segmentos usan el mismo LOD.
+
+Las costuras se cachean en disco por pareja de segmentos, eje compartido y combinacion de LOD.
+
+La cache runtime de costuras se libera cuando el planeta deja de usar near meshes o cuando se destruyen/limpian las combined meshes del planeta.
+
+`PlanetSegmentSeamBehaviour` es responsable del estado runtime de las costuras.
+
+`SegmentLodSeamBuilder` es responsable de construir la mesh de costura.
+
 #### PlanetData
 
 `PlanetData` es la fuente de verdad serializable del planeta.
