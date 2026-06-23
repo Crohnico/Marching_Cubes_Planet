@@ -201,12 +201,17 @@ Las responsabilidades quedan separadas asi:
 - `ChunkBuilder`: construye requests de celdas, normaliza cell size de chunk, lanza jobs de evaluacion/generacion y devuelve builds o datos de mesh.
 - `PlanetChunkBehaviour`: fachada funcional de chunks que recibe `Tick` desde `PlanetManager.Update()`.
 - `PlanetChunkRuntime`: posee el estado runtime de chunks declarados, deseados y activos del planeta.
+- `PlanetCombinedMeshBehaviour`: posee el estado runtime de combined meshes, far mesh visible, near meshes por segmento y builds diferidos de LOD de segmentos.
 - `MeshCrafter`: convierte datos de mesh en `Mesh` de Unity y construye far mesh/mesh data desde `PlanetData`.
 - `PlanetInitializer`: crea `PlanetData` cuando no existe en disco, delegando la generacion tecnica de chunks en `ChunkBuilder`.
 
 Regla importante:
 
 Si aparece una utilidad generica o una fabrica de mesh/chunk dentro de `PlanetManager`, debe moverse a una clase dedicada salvo que el contrato defina explicitamente lo contrario.
+
+Mover campos a propiedades proxy dentro de `PlanetManager` no cuenta como separar responsabilidades.
+
+Un puente temporal puede existir solo para mantener el codigo compilando durante una migracion, pero la direccion correcta es mover funciones completas al behaviour o servicio propietario del estado.
 
 #### Gestion runtime de chunks
 
@@ -267,6 +272,30 @@ Regla importante:
 La logica de ciclo de vida de chunks no debe volver a `PlanetManager`.
 
 Si una funcion habla principalmente de `VoxelChunkState`, `DesiredChunkState`, declarar/liberar chunks, completar builds de chunks, visibilidad de chunks o destruccion de meshes de chunks, debe estar en `PlanetChunkBehaviour`, `PlanetChunkRuntime` o en otro script dedicado de chunks.
+
+#### Gestion runtime de combined meshes y segment LOD
+
+`PlanetManager` no debe ser el propietario directo del estado runtime de combined meshes.
+
+La gestion de estado de combined meshes pertenece a `PlanetCombinedMeshBehaviour`.
+
+`PlanetCombinedMeshBehaviour` contiene:
+
+- Buffers de `CombineInstance`.
+- Buckets de combined mesh cercanos.
+- Bucket visible/far.
+- Cola de builds diferidos de segment LOD.
+- Flags dirty de combined mesh, layout y visibilidad.
+- Estado de modo de render cercano/far.
+- Estado de refresco de hemisferio far.
+
+`PlanetManager` puede coordinar llamadas mientras dure la migracion, pero no debe acumular nuevos campos de combined mesh ni segment LOD.
+
+Regla importante:
+
+Si una funcion habla principalmente de buckets, combined meshes, far bridge, near combined rendering, segment LOD o builds diferidos de LOD, debe moverse progresivamente a `PlanetCombinedMeshBehaviour` o a otro script dedicado de render/mesh.
+
+Las propiedades puente entre `PlanetManager` y `PlanetCombinedMeshBehaviour` son deuda temporal y deben reducirse, no crecer.
 
 #### PlanetData
 

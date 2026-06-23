@@ -17,17 +17,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
     [DisallowMultipleComponent]
     public sealed partial class PlanetManager : MonoBehaviour
     {
-        private const int InteriorSubMesh = 0;
-        private const int TransitionSubMesh = 1;
-        private const int SurfaceSubMesh = 2;
-        private const int MaxCombinedMeshBucketCount = VoxelEngineConfig.MaxCombinedMeshBucketCount;
-        private const int SegmentLodCount = 3;
-        private const int ActiveSegmentLodIndex = 2;
         private const int DefaultStartupFarChunkBuildsPerFrame = 8;
         private const int DefaultSegmentLodChunksBuiltPerFrame = 16;
-        private static readonly ProfilerMarker CombineMeshMarker = new ProfilerMarker("VoxelEngine.CombineMesh");
-        private static readonly ProfilerMarker BuildCombineInstancesMarker = new ProfilerMarker("VoxelEngine.BuildCombineInstances");
-        private static readonly ProfilerMarker CombineBucketMeshMarker = new ProfilerMarker("VoxelEngine.CombineBucketMesh");
 
         [SerializeField] private PlayerChunkTracker playerChunkTracker;
         [SerializeField] private VoxelSphereGenerator sphereGenerator;
@@ -47,35 +38,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [SerializeField, HideInInspector] private bool atmosphereInitialized;
 
         private readonly PlanetChunkBehaviour chunkBehaviour = new PlanetChunkBehaviour();
-        private readonly List<CombineInstance> combineInstances = new List<CombineInstance>();
-        private readonly List<Mesh> scratchSegmentLodChunkMeshes = new List<Mesh>();
-        private readonly List<int3> deferredSegmentLodChunkCoords = new List<int3>();
-        private readonly List<int3> deferredSegmentLodBuiltChunkCoords = new List<int3>();
-        private readonly List<Mesh> deferredSegmentLodChunkMeshes = new List<Mesh>();
-        private readonly List<DeferredSegmentLodKey> deferredSegmentLodBuildQueue = new List<DeferredSegmentLodKey>();
-        private readonly HashSet<DeferredSegmentLodKey> queuedDeferredSegmentLodBuilds = new HashSet<DeferredSegmentLodKey>();
-        private readonly List<CombinedMeshBucket> nearCombinedMeshBuckets = new List<CombinedMeshBucket>();
-        private bool combinedMeshesDirty = true;
-        private bool combinedMeshLayoutDirty = true;
-        private bool combinedRendererVisibilityDirty = true;
-        private bool farCombinedMeshDirty = true;
-        private bool useNearCombinedMeshes;
-        private bool nearCombinedMeshesBuiltOnce;
-        private bool combinedMeshRenderModeInitialized;
-        private int3 lastNearVisibilityFocusKey;
-        private bool hasLastNearVisibilityFocusKey;
-        private bool lastNearVisibilityCullRenderedChunks;
-        private int activeCombinedMeshBucketCount;
-        private CombinedMeshBucket visibleCombinedMeshBucket;
-        private CombinedMeshBucket farCombinedMeshBucket;
-        private GameObject nearMeshesRoot;
-        private Vector3 lastFarHemisphereDirection;
-        private bool hasLastFarHemisphereDirection;
+        private readonly PlanetCombinedMeshBehaviour combinedMeshBehaviour = new PlanetCombinedMeshBehaviour();
         private bool hasPlanetActionRadiusState;
         private bool isInsidePlanetActionRadius = true;
         private bool hasAtmosphereState;
         private bool isPlayerInsideAtmosphere;
-        private DeferredSegmentLodBuild activeDeferredSegmentLodBuild;
         private Coroutine startupCoroutine;
         private bool startupInProgress;
         private bool startupDone;
@@ -85,35 +52,16 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private MarchingCubesCaseTable caseTable;
         private VoxelEngineConfig config;
 
-        private Dictionary<int3, VoxelChunkState> activeChunks => chunkBehaviour.ActiveChunks;
-        private Dictionary<int3, DesiredChunkState> desiredChunkStates => chunkBehaviour.DesiredChunkStates;
-        private HashSet<int3> declaredChunks => chunkBehaviour.DeclaredChunks;
-        private List<VoxelCellBuildRequest> cellRequestBuffer => chunkBehaviour.CellRequestBuffer;
-        private Plane[] chunkCullingFrustumPlanes => chunkBehaviour.CullingFrustumPlanes;
-
         public static event Action<PlanetManager, bool> PlayerAtmosphereStateChanged;
 
         public PlanetData PlanetData => planetData;
         public string ResolvedPlanetID => ResolvePlanetId();
         public bool StartupDone => startupDone;
-        public int DeclaredChunkCount => chunkBehaviour.DeclaredChunkCount;
-        public int DesiredChunkCount => chunkBehaviour.DesiredChunkCount;
-        public int ActiveChunkCount => chunkBehaviour.ActiveChunkCount;
-        public int VisibleChunkCount => CountVisibleChunks();
-        public int CombinedVertexCount => GetCombinedVertexCount();
-        public int CombinedTriangleCount => GetCombinedTriangleCount();
-        public bool IsRenderCullingActive => ShouldCullRenderedChunks();
-        public bool IsFarBridgeActive => IsFarBridgeVisible();
         public bool IsNearCombinedRenderingActive => IsNearCombinedRenderingReady();
         public bool IsVisibleMeshRenderingActive => IsVisibleCombinedMeshRenderingActive();
-        public int NearSegmentCount => NearCombinedMeshBucketCount;
-        public Vector3 DetailFocusPosition => GetCurrentDetailFocusVector3();
-        private Material TerrainMaterial => sphereGenerator != null ? sphereGenerator.TerrainMaterial : null;
-        private bool UseChunkCullingForRendering => config == null || config.UseChunkCullingForRendering;
-        private bool UsePlanetActionRadius => config == null || config.UsePlanetActionRadius;
-        private int NearCombinedMeshBucketCount => config != null ? config.NearCombinedMeshBucketCount : MaxCombinedMeshBucketCount;
-        private bool UseRadialLayerCulling => config == null || config.UseRadialLayerCulling;
-        private int NeverLayerCullChunkDistance => config != null ? config.NeverLayerCullChunkDistance : 3;
+        public int NearSegmentCount => config != null
+            ? config.NearCombinedMeshBucketCount
+            : PlanetRenderConstants.MaxCombinedMeshBucketCount;
         private int MaxDeferredSegmentLodChunksBuiltPerFrame => segmentLodChunksBuiltPerFrame > 0
             ? segmentLodChunksBuiltPerFrame
             : config != null
@@ -165,9 +113,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             EnsureCombinedRenderer();
             TickChunkBehaviour();
             UpdateNearSegmentVisibility();
-            ProcessDeferredSegmentLodBuilds();
-            RefreshFarHemisphereIfNeeded();
-            UpdateCombinedMeshForView();
+            TickCombinedMeshBehaviour();
         }
 
         public void Configure(
@@ -225,7 +171,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             EnsureConfig();
 
-            int segmentCount = Mathf.Clamp(NearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount);
+            int segmentCount = Mathf.Clamp(
+                config != null ? config.NearCombinedMeshBucketCount : PlanetRenderConstants.MaxCombinedMeshBucketCount,
+                1,
+                PlanetRenderConstants.MaxCombinedMeshBucketCount);
             if (!TryGetCombinedMeshBucketGrid(segmentCount, out int3 grid))
             {
                 return;
@@ -453,10 +402,13 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             EnsureConfig();
             ApplyPlanetShapeToSphereGenerator();
 
-            int lodCount = Mathf.Clamp(config != null ? config.LodCount : SegmentLodCount, 1, SegmentLodCount);
-            int activeLod = Mathf.Clamp(ActiveSegmentLodIndex, 0, lodCount - 1);
+            int lodCount = Mathf.Clamp(config != null ? config.LodCount : PlanetRenderConstants.SegmentLodCount, 1, PlanetRenderConstants.SegmentLodCount);
+            int activeLod = Mathf.Clamp(PlanetRenderConstants.ActiveSegmentLodIndex, 0, lodCount - 1);
             int requestedCellSize = config.GetCellSizeAtLod(activeLod);
-            int segmentCount = Mathf.Clamp(NearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount);
+            int segmentCount = Mathf.Clamp(
+                config != null ? config.NearCombinedMeshBucketCount : PlanetRenderConstants.MaxCombinedMeshBucketCount,
+                1,
+                PlanetRenderConstants.MaxCombinedMeshBucketCount);
             TryGetCombinedMeshBucketGrid(segmentCount, out int3 segmentGrid);
 
             return new PlanetInitializationSettings
@@ -741,7 +693,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 return null;
             }
 
-            EnsureNearCombinedMeshBucketCount(NearCombinedMeshBucketCount);
+            EnsureNearCombinedMeshBucketCount(
+                config != null ? config.NearCombinedMeshBucketCount : PlanetRenderConstants.MaxCombinedMeshBucketCount);
             if (segmentIndex >= nearCombinedMeshBuckets.Count || nearCombinedMeshBuckets[segmentIndex].owner == null)
             {
                 return null;
@@ -762,7 +715,12 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         public int GetNearSegmentIndexForWorldPosition(Vector3 worldPosition)
         {
-            return GetSegmentIndexForWorldPosition(worldPosition, Mathf.Clamp(NearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount));
+            return GetSegmentIndexForWorldPosition(
+                worldPosition,
+                Mathf.Clamp(
+                    config != null ? config.NearCombinedMeshBucketCount : PlanetRenderConstants.MaxCombinedMeshBucketCount,
+                    1,
+                    PlanetRenderConstants.MaxCombinedMeshBucketCount));
         }
 
         private void RebuildDesiredChunkSet()
@@ -804,6 +762,14 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 MarkChunkVisibilityChanged);
         }
 
+        private void TickCombinedMeshBehaviour()
+        {
+            combinedMeshBehaviour.Tick(
+                ProcessDeferredSegmentLodBuilds,
+                RefreshFarHemisphereIfNeeded,
+                UpdateCombinedMeshForView);
+        }
+
         private void UpdateNearSegmentVisibility()
         {
             if (!useNearCombinedMeshes || !nearCombinedMeshesBuiltOnce)
@@ -836,7 +802,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private bool ShouldUsePlanetActionRadius()
         {
-            return UsePlanetActionRadius && sphereGenerator != null && config != null;
+            return (config == null || config.UsePlanetActionRadius) && sphereGenerator != null && config != null;
         }
 
         private bool RefreshAtmosphereState()
@@ -935,7 +901,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private bool ShouldCullRenderedChunks()
         {
-            return UseChunkCullingForRendering && UseChunkCulling();
+            return (config == null || config.UseChunkCullingForRendering) && UseChunkCulling();
         }
 
         private int CountVisibleChunks()
@@ -979,14 +945,20 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     coord = chunkCoord,
                     segmentId = GetSegmentIndexForChunkCoord(
                         chunkCoord,
-                        Mathf.Clamp(NearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount))
+                        Mathf.Clamp(
+                            config != null ? config.NearCombinedMeshBucketCount : PlanetRenderConstants.MaxCombinedMeshBucketCount,
+                            1,
+                            PlanetRenderConstants.MaxCombinedMeshBucketCount))
                 });
             }
         }
 
         private void RefreshPlanetDataBuildStateFromDesiredStates()
         {
-            int segmentCount = Mathf.Clamp(NearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount);
+            int segmentCount = Mathf.Clamp(
+                config != null ? config.NearCombinedMeshBucketCount : PlanetRenderConstants.MaxCombinedMeshBucketCount,
+                1,
+                PlanetRenderConstants.MaxCombinedMeshBucketCount);
             planetData.declaredChunks = new HashSet<int3>(declaredChunks);
             planetData.chunks.Clear();
             foreach (KeyValuePair<int3, DesiredChunkState> pair in desiredChunkStates)

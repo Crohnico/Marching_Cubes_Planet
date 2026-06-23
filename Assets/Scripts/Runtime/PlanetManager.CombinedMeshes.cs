@@ -16,11 +16,15 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             RemoveLegacyRootRendererComponents();
             EnsureVisibleCombinedMeshBucket();
             EnsureFarCombinedMeshBucket();
-            EnsureNearCombinedMeshBucketCount(NearCombinedMeshBucketCount);
+            EnsureNearCombinedMeshBucketCount(
+                config != null ? config.NearCombinedMeshBucketCount : PlanetRenderConstants.MaxCombinedMeshBucketCount);
 
             bool shouldUseNearMeshes = ShouldUseNearCombinedMeshes();
             int desiredBucketCount = shouldUseNearMeshes
-                ? Mathf.Clamp(NearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount)
+                ? Mathf.Clamp(
+                    config != null ? config.NearCombinedMeshBucketCount : PlanetRenderConstants.MaxCombinedMeshBucketCount,
+                    1,
+                    PlanetRenderConstants.MaxCombinedMeshBucketCount)
                 : 0;
 
             if (!combinedMeshRenderModeInitialized
@@ -69,7 +73,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 return;
             }
 
-            using (CombineMeshMarker.Auto())
+            using (PlanetCombinedMeshBehaviour.CombineMeshMarker.Auto())
             {
                 EnsureCombinedRenderer();
                 if (force || farCombinedMeshDirty || !IsFarCombinedMeshCached())
@@ -114,7 +118,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private bool ShouldUseFarHemisphereRefresh()
         {
-            return UseRadialLayerCulling
+            return (config == null || config.UseRadialLayerCulling)
                 && sphereGenerator != null
                 && !useNearCombinedMeshes
                 && IsFarCombinedMeshCached();
@@ -171,9 +175,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             ConfigurePlanetCenteredRenderTransform(visibleCombinedMeshBucket.owner.transform);
-            if (visibleCombinedMeshBucket.meshRenderer.sharedMaterial != TerrainMaterial)
+            Material terrainMaterial = sphereGenerator != null ? sphereGenerator.TerrainMaterial : null;
+            if (visibleCombinedMeshBucket.meshRenderer.sharedMaterial != terrainMaterial)
             {
-                visibleCombinedMeshBucket.meshRenderer.sharedMaterial = TerrainMaterial;
+                visibleCombinedMeshBucket.meshRenderer.sharedMaterial = terrainMaterial;
             }
 
             if (visibleCombinedMeshBucket.meshFilter.sharedMesh != visibleCombinedMeshBucket.mesh)
@@ -222,7 +227,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void EnsureNearCombinedMeshBucketCount(int requiredBucketCount)
         {
-            int safeCount = Mathf.Clamp(requiredBucketCount, 1, MaxCombinedMeshBucketCount);
+            int safeCount = Mathf.Clamp(requiredBucketCount, 1, PlanetRenderConstants.MaxCombinedMeshBucketCount);
             while (nearCombinedMeshBuckets.Count < safeCount)
             {
                 int bucketIndex = nearCombinedMeshBuckets.Count;
@@ -284,7 +289,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             if (meshRenderer != null)
             {
-                meshRenderer.sharedMaterial = TerrainMaterial;
+                meshRenderer.sharedMaterial = sphereGenerator != null ? sphereGenerator.TerrainMaterial : null;
             }
 
             return new CombinedMeshBucket
@@ -353,7 +358,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             Vector3 segmentCenter = GetSegmentLocalCenter(
                 bucketIndex,
-                Mathf.Clamp(NearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount));
+                Mathf.Clamp(
+                    config != null ? config.NearCombinedMeshBucketCount : PlanetRenderConstants.MaxCombinedMeshBucketCount,
+                    1,
+                    PlanetRenderConstants.MaxCombinedMeshBucketCount));
             bucketOwner.transform.localPosition = segmentCenter;
         }
 
@@ -441,9 +449,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     visibleCombinedMeshBucket.meshRenderer.enabled = showVisibleMesh;
                 }
 
-                if (visibleCombinedMeshBucket.meshRenderer.sharedMaterial != TerrainMaterial)
+                Material terrainMaterial = sphereGenerator != null ? sphereGenerator.TerrainMaterial : null;
+                if (visibleCombinedMeshBucket.meshRenderer.sharedMaterial != terrainMaterial)
                 {
-                    visibleCombinedMeshBucket.meshRenderer.sharedMaterial = TerrainMaterial;
+                    visibleCombinedMeshBucket.meshRenderer.sharedMaterial = terrainMaterial;
                 }
 
                 if (visibleCombinedMeshBucket.meshFilter.sharedMesh != visibleCombinedMeshBucket.mesh)
@@ -514,7 +523,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private Bounds BuildNearSegmentWorldBounds(int segmentIndex)
         {
-            int segmentCount = Mathf.Clamp(NearCombinedMeshBucketCount, 1, MaxCombinedMeshBucketCount);
+            int segmentCount = Mathf.Clamp(
+                config != null ? config.NearCombinedMeshBucketCount : PlanetRenderConstants.MaxCombinedMeshBucketCount,
+                1,
+                PlanetRenderConstants.MaxCombinedMeshBucketCount);
             if (!TryGetCombinedMeshBucketGrid(segmentCount, out int3 grid))
             {
                 return new Bounds(transform.position, Vector3.one);
@@ -684,7 +696,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             return !useNearCombinedMeshes
                 && activeChunks.Count > 0
-                && UseRadialLayerCulling;
+                && (config == null || config.UseRadialLayerCulling);
         }
 
         private void CopyFarMeshToVisibleMesh()
@@ -742,7 +754,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             Mesh targetMesh,
             bool applyFarCuts)
         {
-            using (BuildCombineInstancesMarker.Auto())
+            using (PlanetCombinedMeshBehaviour.BuildCombineInstancesMarker.Auto())
             {
                 combineInstances.Clear();
                 Matrix4x4 planetLocalToBucketLocal = GetPlanetLocalToBucketLocalMatrix(bucket);
@@ -777,7 +789,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     bucket.combineInstanceBuffer[i] = combineInstances[i];
                 }
 
-                using (CombineBucketMeshMarker.Auto())
+                using (PlanetCombinedMeshBehaviour.CombineBucketMeshMarker.Auto())
                 {
                     targetMesh.CombineMeshes(bucket.combineInstanceBuffer, true, true, false);
                     targetMesh.RecalculateBounds();
@@ -786,7 +798,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             if (bucket.meshRenderer != null)
             {
-                bucket.meshRenderer.sharedMaterial = TerrainMaterial;
+                bucket.meshRenderer.sharedMaterial = sphereGenerator != null ? sphereGenerator.TerrainMaterial : null;
             }
         }
 
@@ -809,7 +821,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private int GetSegmentIndexForChunkCoord(int3 chunkCoord, int bucketCount)
         {
-            int safeBucketCount = Mathf.Clamp(bucketCount, 1, MaxCombinedMeshBucketCount);
+            int safeBucketCount = Mathf.Clamp(bucketCount, 1, PlanetRenderConstants.MaxCombinedMeshBucketCount);
             if (!TryGetCombinedMeshBucketGrid(safeBucketCount, out int3 grid))
             {
                 unchecked
@@ -834,7 +846,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private int GetSegmentIndexForLocalPosition(Vector3 localPosition, int bucketCount)
         {
-            int safeBucketCount = Mathf.Clamp(bucketCount, 1, MaxCombinedMeshBucketCount);
+            int safeBucketCount = Mathf.Clamp(bucketCount, 1, PlanetRenderConstants.MaxCombinedMeshBucketCount);
             if (!TryGetCombinedMeshBucketGrid(safeBucketCount, out int3 grid))
             {
                 unchecked
@@ -867,7 +879,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private Vector3 GetSegmentLocalCenter(int segmentIndex, int bucketCount)
         {
-            int safeBucketCount = Mathf.Clamp(bucketCount, 1, MaxCombinedMeshBucketCount);
+            int safeBucketCount = Mathf.Clamp(bucketCount, 1, PlanetRenderConstants.MaxCombinedMeshBucketCount);
             if (!TryGetCombinedMeshBucketGrid(safeBucketCount, out int3 grid))
             {
                 return GetSpherePositionInManagerLocal();
@@ -891,7 +903,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private Bounds GetSegmentBounds(int segmentIndex, int bucketCount)
         {
-            int safeBucketCount = Mathf.Clamp(bucketCount, 1, MaxCombinedMeshBucketCount);
+            int safeBucketCount = Mathf.Clamp(bucketCount, 1, PlanetRenderConstants.MaxCombinedMeshBucketCount);
             if (!TryGetCombinedMeshBucketGrid(safeBucketCount, out int3 grid))
             {
                 float fallbackSize = sphereGenerator != null
@@ -938,67 +950,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
         }
 
-        private int GetCombinedVertexCount()
-        {
-            int count = 0;
-            if (visibleCombinedMeshBucket != null
-                && visibleCombinedMeshBucket.meshRenderer.enabled
-                && visibleCombinedMeshBucket.mesh != null)
-            {
-                count += visibleCombinedMeshBucket.mesh.vertexCount;
-            }
-
-            for (int i = 0; i < activeCombinedMeshBucketCount && i < nearCombinedMeshBuckets.Count; i++)
-            {
-                CombinedMeshBucket bucket = nearCombinedMeshBuckets[i];
-                int lodIndex = bucket.activeLodIndex;
-                Mesh mesh = GetSegmentLodMesh(bucket, lodIndex);
-                if (mesh != null && IsSegmentLodActive(bucket))
-                {
-                    count += mesh.vertexCount;
-                }
-            }
-
-            return count;
-        }
-
-        private int GetCombinedTriangleCount()
-        {
-            int count = 0;
-            if (visibleCombinedMeshBucket != null
-                && visibleCombinedMeshBucket.meshRenderer.enabled
-                && visibleCombinedMeshBucket.mesh != null)
-            {
-                count += GetMeshTriangleCount(visibleCombinedMeshBucket.mesh);
-            }
-
-            for (int i = 0; i < activeCombinedMeshBucketCount && i < nearCombinedMeshBuckets.Count; i++)
-            {
-                CombinedMeshBucket bucket = nearCombinedMeshBuckets[i];
-                int lodIndex = bucket.activeLodIndex;
-                Mesh mesh = GetSegmentLodMesh(bucket, lodIndex);
-                if (mesh == null || !IsSegmentLodActive(bucket))
-                {
-                    continue;
-                }
-
-                count += GetMeshTriangleCount(mesh);
-            }
-
-            return count;
-        }
-
-        private static int GetMeshTriangleCount(Mesh mesh)
-        {
-            int count = 0;
-            for (int subMesh = 0; subMesh < mesh.subMeshCount; subMesh++)
-            {
-                count += (int)mesh.GetIndexCount(subMesh) / 3;
-            }
-
-            return count;
-        }
-
         private bool ShouldRenderChunk(VoxelChunkState state, bool nearBucket, bool applyFarCuts)
         {
             if (nearBucket || !applyFarCuts)
@@ -1017,9 +968,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         {
             int layerMask = nearBucket || !applyFarCuts ? VoxelChunkLayerMask.All : GetChunkLayerMask(state);
             Matrix4x4 chunkTransform = planetLocalToBucketLocal * Matrix4x4.Translate(VoxelRuntimeMath.ToVector3(state.chunkOrigin));
-            AddChunkCombineInstance(state, InteriorSubMesh, VoxelChunkLayerMask.Interior, layerMask, chunkTransform);
-            AddChunkCombineInstance(state, TransitionSubMesh, VoxelChunkLayerMask.Transition, layerMask, chunkTransform);
-            AddChunkCombineInstance(state, SurfaceSubMesh, VoxelChunkLayerMask.Surface, layerMask, chunkTransform);
+            AddChunkCombineInstance(state, PlanetRenderConstants.InteriorSubMesh, VoxelChunkLayerMask.Interior, layerMask, chunkTransform);
+            AddChunkCombineInstance(state, PlanetRenderConstants.TransitionSubMesh, VoxelChunkLayerMask.Transition, layerMask, chunkTransform);
+            AddChunkCombineInstance(state, PlanetRenderConstants.SurfaceSubMesh, VoxelChunkLayerMask.Surface, layerMask, chunkTransform);
         }
 
         private void AddChunkCombineInstance(
@@ -1044,7 +995,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private int GetChunkLayerMask(VoxelChunkState state)
         {
-            if (!UseRadialLayerCulling || sphereGenerator == null)
+            if (!(config == null || config.UseRadialLayerCulling) || sphereGenerator == null)
             {
                 return VoxelChunkLayerMask.All;
             }
@@ -1070,14 +1021,15 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private bool IsChunkInsideNeverLayerCullDistance(int3 chunkCoord)
         {
-            if (NeverLayerCullChunkDistance <= 0)
+            int neverLayerCullChunkDistance = config != null ? config.NeverLayerCullChunkDistance : 3;
+            if (neverLayerCullChunkDistance <= 0)
             {
                 return false;
             }
 
             int3 centerChunk = GetCurrentCenterChunk();
             int3 delta = chunkCoord - centerChunk;
-            return math.lengthsq(delta) < NeverLayerCullChunkDistance * NeverLayerCullChunkDistance;
+            return math.lengthsq(delta) < neverLayerCullChunkDistance * neverLayerCullChunkDistance;
         }
 
         private static bool IsChunkOnPlayerHemisphere(Bounds chunkBounds, Vector3 sphereCenter, Vector3 playerPosition)

@@ -9,7 +9,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
     {
         private void UpdateSegmentLodCombinedMeshes()
         {
-            EnsureNearCombinedMeshBucketCount(NearCombinedMeshBucketCount);
+            EnsureNearCombinedMeshBucketCount(
+                config != null ? config.NearCombinedMeshBucketCount : PlanetRenderConstants.MaxCombinedMeshBucketCount);
             if (combinedMeshLayoutDirty)
             {
                 CancelDeferredSegmentLodBuilds();
@@ -178,7 +179,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 deferredSegmentLodChunkMeshes.Clear();
                 foreach (int3 chunkCoord in declaredChunks)
                 {
-                    if (GetSegmentIndexForChunkCoord(chunkCoord, NearCombinedMeshBucketCount) == key.bucketIndex)
+                    if (GetSegmentIndexForChunkCoord(
+                        chunkCoord,
+                        config != null ? config.NearCombinedMeshBucketCount : PlanetRenderConstants.MaxCombinedMeshBucketCount) == key.bucketIndex)
                     {
                         deferredSegmentLodChunkCoords.Add(chunkCoord);
                     }
@@ -225,7 +228,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 DestroyUnityObject(chunkMesh);
             }
 
-            activeDeferredSegmentLodBuild.nextChunkIndex++;
+            combinedMeshBehaviour.AdvanceDeferredSegmentLodBuild();
             return true;
         }
 
@@ -306,7 +309,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 bucket.combineInstanceBuffer[i] = combineInstances[i];
             }
 
-            using (CombineBucketMeshMarker.Auto())
+            using (PlanetCombinedMeshBehaviour.CombineBucketMeshMarker.Auto())
             {
                 mesh.CombineMeshes(bucket.combineInstanceBuffer, true, true, false);
                 mesh.RecalculateBounds();
@@ -318,9 +321,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private static VoxelChunkAltIndices BuildAltIndicesFromMesh(Mesh mesh)
         {
             return new VoxelChunkAltIndices(
-                mesh != null && mesh.subMeshCount > InteriorSubMesh ? (int)mesh.GetIndexCount(InteriorSubMesh) : 0,
-                mesh != null && mesh.subMeshCount > TransitionSubMesh ? (int)mesh.GetIndexCount(TransitionSubMesh) : 0,
-                mesh != null && mesh.subMeshCount > SurfaceSubMesh ? (int)mesh.GetIndexCount(SurfaceSubMesh) : 0);
+                mesh != null && mesh.subMeshCount > PlanetRenderConstants.InteriorSubMesh ? (int)mesh.GetIndexCount(PlanetRenderConstants.InteriorSubMesh) : 0,
+                mesh != null && mesh.subMeshCount > PlanetRenderConstants.TransitionSubMesh ? (int)mesh.GetIndexCount(PlanetRenderConstants.TransitionSubMesh) : 0,
+                mesh != null && mesh.subMeshCount > PlanetRenderConstants.SurfaceSubMesh ? (int)mesh.GetIndexCount(PlanetRenderConstants.SurfaceSubMesh) : 0);
         }
 
         private void CancelDeferredSegmentLodBuilds()
@@ -369,23 +372,23 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void EnsureSegmentLodCache(CombinedMeshBucket bucket)
         {
-            if (bucket.lodMeshes == null || bucket.lodMeshes.Length != SegmentLodCount)
+            if (bucket.lodMeshes == null || bucket.lodMeshes.Length != PlanetRenderConstants.SegmentLodCount)
             {
-                bucket.lodMeshes = new Mesh[SegmentLodCount];
+                bucket.lodMeshes = new Mesh[PlanetRenderConstants.SegmentLodCount];
             }
 
-            if (bucket.lodDirty == null || bucket.lodDirty.Length != SegmentLodCount)
+            if (bucket.lodDirty == null || bucket.lodDirty.Length != PlanetRenderConstants.SegmentLodCount)
             {
-                bucket.lodDirty = new bool[SegmentLodCount];
+                bucket.lodDirty = new bool[PlanetRenderConstants.SegmentLodCount];
                 for (int lodIndex = 0; lodIndex < bucket.lodDirty.Length; lodIndex++)
                 {
                     bucket.lodDirty[lodIndex] = true;
                 }
             }
 
-            if (bucket.lodCached == null || bucket.lodCached.Length != SegmentLodCount)
+            if (bucket.lodCached == null || bucket.lodCached.Length != PlanetRenderConstants.SegmentLodCount)
             {
-                bucket.lodCached = new bool[SegmentLodCount];
+                bucket.lodCached = new bool[PlanetRenderConstants.SegmentLodCount];
             }
 
             if (bucket.lodCache == null && !bucket.owner.TryGetComponent(out bucket.lodCache))
@@ -393,11 +396,11 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 bucket.lodCache = bucket.owner.AddComponent<VoxelSegmentLodMeshCache>();
             }
 
-            bucket.lodCache.Configure(TerrainMaterial);
+            bucket.lodCache.Configure(sphereGenerator != null ? sphereGenerator.TerrainMaterial : null);
             bucket.lodCache.LodMeshRequested -= HandleSegmentLodMeshRequested;
             bucket.lodCache.LodMeshRequested += HandleSegmentLodMeshRequested;
 
-            for (int lodIndex = 0; lodIndex < SegmentLodCount; lodIndex++)
+            for (int lodIndex = 0; lodIndex < PlanetRenderConstants.SegmentLodCount; lodIndex++)
             {
                 if (bucket.lodMeshes[lodIndex] != null)
                 {
@@ -742,7 +745,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             foreach (int3 chunkCoord in declaredChunks)
             {
-                if (GetSegmentIndexForChunkCoord(chunkCoord, NearCombinedMeshBucketCount) != bucketIndex)
+                if (GetSegmentIndexForChunkCoord(
+                    chunkCoord,
+                    config != null ? config.NearCombinedMeshBucketCount : PlanetRenderConstants.MaxCombinedMeshBucketCount) != bucketIndex)
                 {
                     continue;
                 }
@@ -787,7 +792,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                     bucket.combineInstanceBuffer[i] = combineInstances[i];
                 }
 
-                using (CombineBucketMeshMarker.Auto())
+                using (PlanetCombinedMeshBehaviour.CombineBucketMeshMarker.Auto())
                 {
                     mesh.CombineMeshes(bucket.combineInstanceBuffer, true, true, false);
                     mesh.RecalculateBounds();
@@ -857,7 +862,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private int ResolveActiveSegmentLodIndex()
         {
-            return Mathf.Clamp(ActiveSegmentLodIndex, 0, GetSegmentLodCount() - 1);
+            return Mathf.Clamp(PlanetRenderConstants.ActiveSegmentLodIndex, 0, GetSegmentLodCount() - 1);
         }
 
         private int GetSegmentLodBucketBuildsPerFrame()
@@ -874,7 +879,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private int GetSegmentLodCount()
         {
-            return Mathf.Clamp(config != null ? config.LodCount : SegmentLodCount, 1, SegmentLodCount);
+            return Mathf.Clamp(config != null ? config.LodCount : PlanetRenderConstants.SegmentLodCount, 1, PlanetRenderConstants.SegmentLodCount);
         }
     }
 }
