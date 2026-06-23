@@ -13,5 +13,10 @@ namespace MarchingCubesPlanet.VoxelEngine.Data
         {
             return chunkCoords * chunkSize;
         }
+
+        public static string BuildChunkName(int3 chunkCoord, int cellSize)
+        {
+            return $"VoxelChunk_{chunkCoord.x}_{chunkCoord.y}_{chunkCoord.z}_S{cellSize}";
+        }
     }
 }

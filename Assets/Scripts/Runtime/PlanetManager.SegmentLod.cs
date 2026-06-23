@@ -811,7 +811,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             out VoxelChunkAltIndices altIndices)
         {
             Mesh mesh = ChunkBuilder.BuildChunkMeshNow(
-                BuildChunkName(chunkCoord, cellSize),
+                VoxelChunkUtility.BuildChunkName(chunkCoord, cellSize),
                 chunkOrigin,
                 chunkSize,
                 cellSize,

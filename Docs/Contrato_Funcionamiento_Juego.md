@@ -199,6 +199,7 @@ Las responsabilidades quedan separadas asi:
 - `VoxelRuntimeMath`: utilidades matematicas/conversiones de tipos runtime.
 - `NativeListCopyUtility`: copias entre contenedores nativos y listas manejadas.
 - `ChunkBuilder`: construye requests de celdas, normaliza cell size de chunk, lanza jobs de evaluacion/generacion y devuelve builds o datos de mesh.
+- `PlanetChunkBehaviour`: fachada funcional de chunks que recibe `Tick` desde `PlanetManager.Update()`.
 - `PlanetChunkRuntime`: posee el estado runtime de chunks declarados, deseados y activos del planeta.
 - `MeshCrafter`: convierte datos de mesh en `Mesh` de Unity y construye far mesh/mesh data desde `PlanetData`.
 - `PlanetInitializer`: crea `PlanetData` cuando no existe en disco, delegando la generacion tecnica de chunks en `ChunkBuilder`.
@@ -211,7 +212,24 @@ Si aparece una utilidad generica o una fabrica de mesh/chunk dentro de `PlanetMa
 
 `PlanetManager` no es el propietario directo de la gestion runtime de chunks.
 
-La gestion runtime de chunks pertenece a `PlanetChunkRuntime`.
+La gestion funcional de chunks pertenece a `PlanetChunkBehaviour`.
+
+`PlanetManager.Update()` ejecuta el tick de chunks:
+
+```csharp
+chunkBehaviour.Tick(...);
+```
+
+`PlanetManager` no debe implementar directamente el update de visibilidad de chunks ni el ciclo de vida de desired/active chunks.
+
+`PlanetChunkBehaviour` se divide por responsabilidades:
+
+- `PlanetChunkBehaviour.Tick`: update/tick de la funcionalidad de chunks.
+- `PlanetChunkBehaviour.Declarations`: declaracion, liberacion e hidratacion de chunks.
+- `PlanetChunkBehaviour.Build`: desired chunks y builds sincronas/budgeted.
+- `PlanetChunkBehaviour.Lifecycle`: limpieza, dirty flags y conteos.
+
+`PlanetChunkRuntime` queda como estado interno y operaciones base usadas por `PlanetChunkBehaviour`.
 
 `PlanetChunkRuntime` tiene:
 
@@ -242,13 +260,13 @@ La gestion runtime de chunks pertenece a `PlanetChunkRuntime`.
 - Marcar combined meshes como dirty cuando cambia un chunk.
 - Actualizar renderer visibility cuando cambia la visibilidad de chunks.
 - Pedir a `ChunkBuilder` que construya chunks necesarios.
-- Pedir a `PlanetChunkRuntime` que complete o aplique el resultado.
+- Pedir a `PlanetChunkBehaviour` que complete o aplique el resultado.
 
 Regla importante:
 
 La logica de ciclo de vida de chunks no debe volver a `PlanetManager`.
 
-Si una funcion habla principalmente de `VoxelChunkState`, `DesiredChunkState`, declarar/liberar chunks, completar builds de chunks, visibilidad de chunks o destruccion de meshes de chunks, debe estar en `PlanetChunkRuntime` o en otro script dedicado de chunks.
+Si una funcion habla principalmente de `VoxelChunkState`, `DesiredChunkState`, declarar/liberar chunks, completar builds de chunks, visibilidad de chunks o destruccion de meshes de chunks, debe estar en `PlanetChunkBehaviour`, `PlanetChunkRuntime` o en otro script dedicado de chunks.
 
 #### PlanetData
 

@@ -1,13 +1,18 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using MarchingCubesPlanet.VoxelEngine.Data;
+using MarchingCubesPlanet.VoxelEngine.MarchingCubes;
 using Unity.Mathematics;
+using Unity.Profiling;
 using UnityEngine;
 
 namespace MarchingCubesPlanet.VoxelEngine.Runtime
 {
     internal sealed class PlanetChunkRuntime
     {
+        private static readonly ProfilerMarker RebuildDesiredMarker = new ProfilerMarker("VoxelEngine.RebuildDesiredChunks");
+
         private readonly Dictionary<int3, VoxelChunkState> activeChunks = new Dictionary<int3, VoxelChunkState>();
         private readonly Dictionary<int3, int> declaredChunkRefCounts = new Dictionary<int3, int>();
         private readonly Dictionary<int3, DesiredChunkState> desiredChunkStates = new Dictionary<int3, DesiredChunkState>();
@@ -16,6 +21,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private readonly List<int3> scratchChunkCoords = new List<int3>();
         private readonly List<VoxelCellBuildRequest> cellRequestBuffer = new List<VoxelCellBuildRequest>(32768);
         private readonly Plane[] cullingFrustumPlanes = new Plane[6];
+        private bool lastShouldCullRenderedChunks;
 
         public Dictionary<int3, VoxelChunkState> ActiveChunks => activeChunks;
         public Dictionary<int3, DesiredChunkState> DesiredChunkStates => desiredChunkStates;
@@ -56,8 +62,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         public void HydrateFromPlanetData(
             PlanetData planetData,
-            GameObject owner,
-            Func<int3, int, string> chunkNameFactory)
+            GameObject owner)
         {
             desiredChunks.Clear();
             desiredChunkStates.Clear();
@@ -77,7 +82,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
                 Mesh mesh = MeshCrafter.ToChunkUnityMesh(
                     chunk.mesh,
-                    chunkNameFactory(chunk.coord, chunk.cellSize));
+                    VoxelChunkUtility.BuildChunkName(chunk.coord, chunk.cellSize));
                 activeChunks[chunk.coord] = new VoxelChunkState
                 {
                     chunkCoord = chunk.coord,
@@ -135,10 +140,200 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             declaredChunks.Clear();
         }
 
-        public bool CompleteChunkBuild(
+        public void DeclareChunkBounds(int3 minInclusive, int3 maxInclusive)
+        {
+            for (int x = minInclusive.x; x <= maxInclusive.x; x++)
+            {
+                for (int y = minInclusive.y; y <= maxInclusive.y; y++)
+                {
+                    for (int z = minInclusive.z; z <= maxInclusive.z; z++)
+                    {
+                        DeclareChunk(new int3(x, y, z));
+                    }
+                }
+            }
+        }
+
+        public bool IsChunkDeclared(int3 chunkCoord)
+        {
+            return declaredChunks.Contains(chunkCoord);
+        }
+
+        public GameObject GetChunkObjectOrNull(int3 chunkCoord)
+        {
+            return activeChunks.TryGetValue(chunkCoord, out VoxelChunkState state)
+                ? state.owner
+                : null;
+        }
+
+        public void RebuildDesiredChunkSet(
+            int3 detailFocusKey,
+            Func<int3, int> resolveCellSize,
+            Action<int3> markCombinedMeshDirty)
+        {
+            using (RebuildDesiredMarker.Auto())
+            {
+                desiredChunks.Clear();
+                desiredChunkStates.Clear();
+
+                foreach (int3 chunkCoord in declaredChunks)
+                {
+                    int cellSize = resolveCellSize(chunkCoord);
+                    desiredChunks.Add(chunkCoord);
+                    desiredChunkStates[chunkCoord] = new DesiredChunkState(cellSize, detailFocusKey);
+                }
+
+                MarkVisibilityDirty();
+                RemoveUndesiredChunks(markCombinedMeshDirty);
+            }
+        }
+
+        public bool TryRebuildDesiredChunkSetFromPlanetData(
+            PlanetData planetData,
+            Action<int3> markCombinedMeshDirty)
+        {
+            if (planetData == null || planetData.chunks.Count == 0)
+            {
+                return false;
+            }
+
+            desiredChunks.Clear();
+            desiredChunkStates.Clear();
+            for (int i = 0; i < planetData.chunks.Count; i++)
+            {
+                PlanetChunkBuildData chunk = planetData.chunks[i];
+                if (chunk.cellSize <= 0)
+                {
+                    desiredChunks.Clear();
+                    desiredChunkStates.Clear();
+                    return false;
+                }
+
+                desiredChunks.Add(chunk.coord);
+                desiredChunkStates[chunk.coord] = new DesiredChunkState(
+                    chunk.cellSize,
+                    chunk.detailFocusKey);
+            }
+
+            MarkVisibilityDirty();
+            RemoveUndesiredChunks(markCombinedMeshDirty);
+            return true;
+        }
+
+        public IEnumerator BuildDesiredChunksBudgeted(
+            int3 centerChunk,
+            int maxChunksPerFrame,
+            int3 chunkSize,
+            ScalarFieldSettings scalarField,
+            MarchingCubesCaseTable caseTable,
+            GameObject owner,
+            Action<int3> markCombinedMeshDirty,
+            Action onChunkVisibilityDirty)
+        {
+            FillChunksNeedingBuild(centerChunk);
+
+            int chunksBuiltThisFrame = 0;
+            for (int i = 0; i < scratchChunkCoords.Count; i++)
+            {
+                int3 chunkCoord = scratchChunkCoords[i];
+                if (!desiredChunkStates.TryGetValue(chunkCoord, out DesiredChunkState desiredState)
+                    || IsChunkReady(chunkCoord, desiredState))
+                {
+                    continue;
+                }
+
+                CompleteStartedChunkBuild(
+                    ChunkBuilder.StartChunkBuild(
+                        chunkCoord,
+                        desiredState,
+                        chunkSize,
+                        scalarField,
+                        caseTable,
+                        cellRequestBuffer),
+                    owner,
+                    markCombinedMeshDirty,
+                    onChunkVisibilityDirty);
+                chunksBuiltThisFrame++;
+                if (chunksBuiltThisFrame >= maxChunksPerFrame)
+                {
+                    chunksBuiltThisFrame = 0;
+                    yield return null;
+                }
+            }
+        }
+
+        public void BuildDesiredChunksSynchronously(
+            int3 centerChunk,
+            int3 chunkSize,
+            ScalarFieldSettings scalarField,
+            MarchingCubesCaseTable caseTable,
+            GameObject owner,
+            Action<int3> markCombinedMeshDirty,
+            Action onChunkVisibilityDirty)
+        {
+            FillChunksNeedingBuild(centerChunk);
+
+            for (int i = 0; i < scratchChunkCoords.Count; i++)
+            {
+                int3 chunkCoord = scratchChunkCoords[i];
+                if (!desiredChunkStates.TryGetValue(chunkCoord, out DesiredChunkState desiredState)
+                    || IsChunkReady(chunkCoord, desiredState))
+                {
+                    continue;
+                }
+
+                CompleteStartedChunkBuild(
+                    ChunkBuilder.StartChunkBuild(
+                        chunkCoord,
+                        desiredState,
+                        chunkSize,
+                        scalarField,
+                        caseTable,
+                        cellRequestBuffer),
+                    owner,
+                    markCombinedMeshDirty,
+                    onChunkVisibilityDirty);
+            }
+        }
+
+        public bool UpdateVisibilityIfNeeded(
+            bool skipVisibilityUpdate,
+            bool shouldCull,
+            Camera camera,
+            Action<int3> markCombinedMeshDirty)
+        {
+            if (skipVisibilityUpdate)
+            {
+                VisibilityDirty = false;
+                lastShouldCullRenderedChunks = shouldCull;
+                return false;
+            }
+
+            if (!shouldCull && !lastShouldCullRenderedChunks)
+            {
+                VisibilityDirty = false;
+                return false;
+            }
+
+            if (shouldCull != lastShouldCullRenderedChunks)
+            {
+                lastShouldCullRenderedChunks = shouldCull;
+                MarkVisibilityDirty();
+            }
+
+            if (!VisibilityDirty)
+            {
+                return false;
+            }
+
+            bool visibilityChanged = UpdateVisibility(shouldCull, camera, markCombinedMeshDirty);
+            VisibilityDirty = false;
+            return visibilityChanged;
+        }
+
+        private bool CompleteChunkBuild(
             ChunkBuild chunkBuild,
             GameObject owner,
-            Func<int3, int, string> chunkNameFactory,
             out int3 changedChunkCoord)
         {
             chunkBuild.jobHandle.Complete();
@@ -157,7 +352,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
                 }
 
                 Mesh mesh = MeshCrafter.BuildChunkMesh(
-                    chunkNameFactory(chunkBuild.chunkCoord, chunkBuild.cellSize),
+                    VoxelChunkUtility.BuildChunkName(chunkBuild.chunkCoord, chunkBuild.cellSize),
                     chunkBuild.vertices,
                     chunkBuild.normals,
                     chunkBuild.uvs,
@@ -308,6 +503,58 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
 
             return count;
+        }
+
+        private void FillChunksNeedingBuild(int3 centerChunk)
+        {
+            scratchChunkCoords.Clear();
+            foreach (KeyValuePair<int3, DesiredChunkState> pair in desiredChunkStates)
+            {
+                if (!IsChunkReady(pair.Key, pair.Value))
+                {
+                    scratchChunkCoords.Add(pair.Key);
+                }
+            }
+
+            scratchChunkCoords.Sort((a, b) => CompareChunkCoordsByPriority(a, b, centerChunk));
+        }
+
+        private void CompleteStartedChunkBuild(
+            ChunkBuild chunkBuild,
+            GameObject owner,
+            Action<int3> markCombinedMeshDirty,
+            Action onChunkVisibilityDirty)
+        {
+            if (CompleteChunkBuild(chunkBuild, owner, out int3 changedChunkCoord))
+            {
+                onChunkVisibilityDirty();
+                markCombinedMeshDirty(changedChunkCoord);
+            }
+        }
+
+        private bool IsChunkReady(int3 chunkCoord, DesiredChunkState desiredState)
+        {
+            return activeChunks.TryGetValue(chunkCoord, out VoxelChunkState state)
+                && state.generated
+                && !state.dirty
+                && state.cellSize == desiredState.cellSize
+                && state.detailFocusKey.Equals(desiredState.detailFocusKey);
+        }
+
+        private static int CompareChunkCoordsByPriority(int3 a, int3 b, int3 centerChunk)
+        {
+            int distanceComparison = GetChunkDistance(a - centerChunk).CompareTo(GetChunkDistance(b - centerChunk));
+            if (distanceComparison != 0)
+            {
+                return distanceComparison;
+            }
+
+            return VoxelRuntimeMath.CompareInt3(a, b);
+        }
+
+        private static int GetChunkDistance(int3 chunkOffset)
+        {
+            return math.max(math.abs(chunkOffset.x), math.max(math.abs(chunkOffset.y), math.abs(chunkOffset.z)));
         }
 
         public static Bounds BuildChunkBounds(int3 chunkOrigin, int3 chunkSize)

@@ -25,7 +25,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private const int ActiveSegmentLodIndex = 2;
         private const int DefaultStartupFarChunkBuildsPerFrame = 8;
         private const int DefaultSegmentLodChunksBuiltPerFrame = 16;
-        private static readonly ProfilerMarker RebuildDesiredMarker = new ProfilerMarker("VoxelEngine.RebuildDesiredChunks");
         private static readonly ProfilerMarker CombineMeshMarker = new ProfilerMarker("VoxelEngine.CombineMesh");
         private static readonly ProfilerMarker BuildCombineInstancesMarker = new ProfilerMarker("VoxelEngine.BuildCombineInstances");
         private static readonly ProfilerMarker CombineBucketMeshMarker = new ProfilerMarker("VoxelEngine.CombineBucketMesh");
@@ -47,7 +46,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         [SerializeField, HideInInspector] private bool planetShapeInitialized;
         [SerializeField, HideInInspector] private bool atmosphereInitialized;
 
-        private readonly PlanetChunkRuntime chunkRuntime = new PlanetChunkRuntime();
+        private readonly PlanetChunkBehaviour chunkBehaviour = new PlanetChunkBehaviour();
         private readonly List<CombineInstance> combineInstances = new List<CombineInstance>();
         private readonly List<Mesh> scratchSegmentLodChunkMeshes = new List<Mesh>();
         private readonly List<int3> deferredSegmentLodChunkCoords = new List<int3>();
@@ -72,7 +71,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private GameObject nearMeshesRoot;
         private Vector3 lastFarHemisphereDirection;
         private bool hasLastFarHemisphereDirection;
-        private bool lastShouldCullRenderedChunks;
         private bool hasPlanetActionRadiusState;
         private bool isInsidePlanetActionRadius = true;
         private bool hasAtmosphereState;
@@ -87,27 +85,20 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private MarchingCubesCaseTable caseTable;
         private VoxelEngineConfig config;
 
-        private Dictionary<int3, VoxelChunkState> activeChunks => chunkRuntime.ActiveChunks;
-        private Dictionary<int3, DesiredChunkState> desiredChunkStates => chunkRuntime.DesiredChunkStates;
-        private HashSet<int3> declaredChunks => chunkRuntime.DeclaredChunks;
-        private HashSet<int3> desiredChunks => chunkRuntime.DesiredChunks;
-        private List<int3> scratchChunkCoords => chunkRuntime.ScratchChunkCoords;
-        private List<VoxelCellBuildRequest> cellRequestBuffer => chunkRuntime.CellRequestBuffer;
-        private Plane[] chunkCullingFrustumPlanes => chunkRuntime.CullingFrustumPlanes;
-        private bool chunkVisibilityDirty
-        {
-            get => chunkRuntime.VisibilityDirty;
-            set => chunkRuntime.VisibilityDirty = value;
-        }
+        private Dictionary<int3, VoxelChunkState> activeChunks => chunkBehaviour.ActiveChunks;
+        private Dictionary<int3, DesiredChunkState> desiredChunkStates => chunkBehaviour.DesiredChunkStates;
+        private HashSet<int3> declaredChunks => chunkBehaviour.DeclaredChunks;
+        private List<VoxelCellBuildRequest> cellRequestBuffer => chunkBehaviour.CellRequestBuffer;
+        private Plane[] chunkCullingFrustumPlanes => chunkBehaviour.CullingFrustumPlanes;
 
         public static event Action<PlanetManager, bool> PlayerAtmosphereStateChanged;
 
         public PlanetData PlanetData => planetData;
         public string ResolvedPlanetID => ResolvePlanetId();
         public bool StartupDone => startupDone;
-        public int DeclaredChunkCount => chunkRuntime.DeclaredChunkCount;
-        public int DesiredChunkCount => chunkRuntime.DesiredChunkCount;
-        public int ActiveChunkCount => chunkRuntime.ActiveChunkCount;
+        public int DeclaredChunkCount => chunkBehaviour.DeclaredChunkCount;
+        public int DesiredChunkCount => chunkBehaviour.DesiredChunkCount;
+        public int ActiveChunkCount => chunkBehaviour.ActiveChunkCount;
         public int VisibleChunkCount => CountVisibleChunks();
         public int CombinedVertexCount => GetCombinedVertexCount();
         public int CombinedTriangleCount => GetCombinedTriangleCount();
@@ -172,7 +163,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
             RefreshPlanetActionRadiusState();
             EnsureCombinedRenderer();
-            UpdateChunkVisibilityIfNeeded();
+            TickChunkBehaviour();
             UpdateNearSegmentVisibility();
             ProcessDeferredSegmentLodBuilds();
             RefreshFarHemisphereIfNeeded();
@@ -428,8 +419,8 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
         private Task InitializePlanet()
         {
             ClearChunks();
-            chunkRuntime.ApplyPlanetDataToDeclaredChunks(planetData);
-            chunkRuntime.HydrateFromPlanetData(planetData, gameObject, BuildChunkName);
+            chunkBehaviour.ApplyPlanetDataToDeclaredChunks(planetData);
+            chunkBehaviour.HydrateFromPlanetData(planetData, gameObject);
 
             MarkChunkVisibilityDirty();
             combinedMeshesDirty = true;
@@ -544,7 +535,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             }
             else
             {
-                chunkRuntime.ApplyPlanetDataToDeclaredChunks(planetData);
+                chunkBehaviour.ApplyPlanetDataToDeclaredChunks(planetData);
                 loadedStartupFar = TryLoadStartupFarMeshFromDisk();
             }
 
@@ -701,83 +692,46 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private IEnumerator BuildDesiredChunksBudgeted(int3 centerChunk, int maxChunksPerFrame)
         {
-            scratchChunkCoords.Clear();
-            foreach (KeyValuePair<int3, DesiredChunkState> pair in desiredChunkStates)
-            {
-                if (!IsChunkReady(pair.Key, pair.Value))
-                {
-                    scratchChunkCoords.Add(pair.Key);
-                }
-            }
-
-            scratchChunkCoords.Sort((a, b) => CompareChunkCoordsByPriority(a, b, centerChunk));
-
-            int chunksBuiltThisFrame = 0;
-            for (int i = 0; i < scratchChunkCoords.Count; i++)
-            {
-                int3 chunkCoord = scratchChunkCoords[i];
-                if (!desiredChunkStates.TryGetValue(chunkCoord, out DesiredChunkState desiredState)
-                    || IsChunkReady(chunkCoord, desiredState))
-                {
-                    continue;
-                }
-
-                CompleteChunkBuild(ChunkBuilder.StartChunkBuild(
-                    chunkCoord,
-                    desiredState,
-                    config.ChunkSize,
-                    GetScalarFieldSettings(),
-                    caseTable,
-                    cellRequestBuffer));
-                chunksBuiltThisFrame++;
-                if (chunksBuiltThisFrame >= maxChunksPerFrame)
-                {
-                    chunksBuiltThisFrame = 0;
-                    yield return null;
-                }
-            }
+            return chunkBehaviour.BuildDesiredChunksBudgeted(
+                centerChunk,
+                maxChunksPerFrame,
+                config.ChunkSize,
+                GetScalarFieldSettings(),
+                caseTable,
+                gameObject,
+                MarkCombinedMeshDirty,
+                MarkChunkVisibilityDirty);
         }
 
         public void DeclareChunk(int3 chunkCoord)
         {
-            chunkRuntime.DeclareChunk(chunkCoord);
+            chunkBehaviour.DeclareChunk(chunkCoord);
         }
 
         public void ReleaseChunk(int3 chunkCoord)
         {
-            chunkRuntime.ReleaseChunk(chunkCoord);
+            chunkBehaviour.ReleaseChunk(chunkCoord);
         }
 
         public void ClearDeclaredChunks()
         {
-            chunkRuntime.ClearDeclaredChunks();
+            chunkBehaviour.ClearDeclaredChunks();
             RefreshPlanetDataSnapshot();
         }
 
         public void DeclareChunkBounds(int3 minInclusive, int3 maxInclusive)
         {
-            for (int x = minInclusive.x; x <= maxInclusive.x; x++)
-            {
-                for (int y = minInclusive.y; y <= maxInclusive.y; y++)
-                {
-                    for (int z = minInclusive.z; z <= maxInclusive.z; z++)
-                    {
-                        DeclareChunk(new int3(x, y, z));
-                    }
-                }
-            }
+            chunkBehaviour.DeclareChunkBounds(minInclusive, maxInclusive);
         }
 
         public bool IsChunkDeclared(int3 chunkCoord)
         {
-            return declaredChunks.Contains(chunkCoord);
+            return chunkBehaviour.IsChunkDeclared(chunkCoord);
         }
 
         public GameObject GetChunkObjectOrNull(int3 chunkCoord)
         {
-            return activeChunks.TryGetValue(chunkCoord, out VoxelChunkState state)
-                ? state.owner
-                : null;
+            return chunkBehaviour.GetChunkObjectOrNull(chunkCoord);
         }
 
         public Transform GetNearSegmentTransformOrNull(int segmentIndex)
@@ -813,124 +767,41 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void RebuildDesiredChunkSet()
         {
-            using (RebuildDesiredMarker.Auto())
-            {
-                desiredChunks.Clear();
-                desiredChunkStates.Clear();
-                int3 detailFocusKey = GetCurrentDetailFocusKey();
-
-                foreach (int3 chunkCoord in declaredChunks)
-                {
-                    int cellSize = ResolveCellSizeForChunk(chunkCoord);
-                    desiredChunks.Add(chunkCoord);
-                    desiredChunkStates[chunkCoord] = new DesiredChunkState(cellSize, detailFocusKey);
-                }
-
-                MarkChunkVisibilityDirty();
-                RemoveUndesiredChunks();
-            }
+            chunkBehaviour.RebuildDesiredChunkSet(
+                GetCurrentDetailFocusKey(),
+                ResolveCellSizeForChunk,
+                MarkCombinedMeshDirty,
+                MarkChunkVisibilityDirty);
         }
 
         private bool TryRebuildDesiredChunkSetFromPlanetData()
         {
-            if (planetData == null || planetData.chunks.Count == 0)
-            {
-                return false;
-            }
-
-            desiredChunks.Clear();
-            desiredChunkStates.Clear();
-            for (int i = 0; i < planetData.chunks.Count; i++)
-            {
-                PlanetChunkBuildData chunk = planetData.chunks[i];
-                if (chunk.cellSize <= 0)
-                {
-                    desiredChunks.Clear();
-                    desiredChunkStates.Clear();
-                    return false;
-                }
-
-                desiredChunks.Add(chunk.coord);
-                desiredChunkStates[chunk.coord] = new DesiredChunkState(
-                    chunk.cellSize,
-                    chunk.detailFocusKey);
-            }
-
-            MarkChunkVisibilityDirty();
-            RemoveUndesiredChunks();
-            return true;
+            return chunkBehaviour.TryRebuildDesiredChunkSetFromPlanetData(
+                planetData,
+                MarkCombinedMeshDirty,
+                MarkChunkVisibilityDirty);
         }
 
         private void BuildDesiredChunksSynchronously(int3 centerChunk)
         {
-            scratchChunkCoords.Clear();
-            foreach (KeyValuePair<int3, DesiredChunkState> pair in desiredChunkStates)
-            {
-                if (!IsChunkReady(pair.Key, pair.Value))
-                {
-                    scratchChunkCoords.Add(pair.Key);
-                }
-            }
-
-            scratchChunkCoords.Sort((a, b) => CompareChunkCoordsByPriority(a, b, centerChunk));
-
-            for (int i = 0; i < scratchChunkCoords.Count; i++)
-            {
-                int3 chunkCoord = scratchChunkCoords[i];
-                if (!desiredChunkStates.TryGetValue(chunkCoord, out DesiredChunkState desiredState)
-                    || IsChunkReady(chunkCoord, desiredState))
-                {
-                    continue;
-                }
-
-                CompleteChunkBuild(ChunkBuilder.StartChunkBuild(
-                    chunkCoord,
-                    desiredState,
-                    config.ChunkSize,
-                    GetScalarFieldSettings(),
-                    caseTable,
-                    cellRequestBuffer));
-            }
+            chunkBehaviour.BuildDesiredChunksSynchronously(
+                centerChunk,
+                config.ChunkSize,
+                GetScalarFieldSettings(),
+                caseTable,
+                gameObject,
+                MarkCombinedMeshDirty,
+                MarkChunkVisibilityDirty);
         }
 
-        private bool IsChunkReady(int3 chunkCoord, DesiredChunkState desiredState)
+        private void TickChunkBehaviour()
         {
-            return activeChunks.TryGetValue(chunkCoord, out VoxelChunkState state)
-                && state.generated
-                && !state.dirty
-                && state.cellSize == desiredState.cellSize
-                && state.detailFocusKey.Equals(desiredState.detailFocusKey);
-        }
-
-        private void UpdateChunkVisibilityIfNeeded()
-        {
-            if (useNearCombinedMeshes || ShouldThrottlePlanetUpdatesOutsideActionRadius())
-            {
-                chunkVisibilityDirty = false;
-                lastShouldCullRenderedChunks = ShouldCullRenderedChunks();
-                return;
-            }
-
-            bool shouldCull = ShouldCullRenderedChunks();
-            if (!shouldCull && !lastShouldCullRenderedChunks)
-            {
-                chunkVisibilityDirty = false;
-                return;
-            }
-
-            if (shouldCull != lastShouldCullRenderedChunks)
-            {
-                lastShouldCullRenderedChunks = shouldCull;
-                MarkChunkVisibilityDirty();
-            }
-
-            if (!chunkVisibilityDirty)
-            {
-                return;
-            }
-
-            UpdateChunkVisibility();
-            chunkVisibilityDirty = false;
+            chunkBehaviour.Tick(
+                useNearCombinedMeshes || ShouldThrottlePlanetUpdatesOutsideActionRadius(),
+                ShouldCullRenderedChunks(),
+                playerChunkTracker != null ? playerChunkTracker.ChunkCullingCamera : null,
+                MarkCombinedMeshDirty,
+                MarkChunkVisibilityChanged);
         }
 
         private void UpdateNearSegmentVisibility()
@@ -955,20 +826,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             lastNearVisibilityCullRenderedChunks = shouldCull;
             MarkCombinedRendererVisibilityDirty();
             ApplyCombinedRendererVisibility();
-        }
-
-        private void UpdateChunkVisibility()
-        {
-            bool visibilityChanged = chunkRuntime.UpdateVisibility(
-                ShouldCullRenderedChunks(),
-                playerChunkTracker.ChunkCullingCamera,
-                MarkCombinedMeshDirty);
-
-            if (visibilityChanged)
-            {
-                combinedMeshesDirty = true;
-                MarkCombinedRendererVisibilityDirty();
-            }
         }
 
         private bool UseChunkCulling()
@@ -1083,37 +940,18 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private int CountVisibleChunks()
         {
-            return chunkRuntime.CountVisibleChunks(ShouldCullRenderedChunks());
-        }
-
-        private static int CompareChunkCoordsByPriority(int3 a, int3 b, int3 centerChunk)
-        {
-            int distanceComparison = GetChunkDistance(a - centerChunk).CompareTo(GetChunkDistance(b - centerChunk));
-            if (distanceComparison != 0)
-            {
-                return distanceComparison;
-            }
-
-            return VoxelRuntimeMath.CompareInt3(a, b);
-        }
-
-        private void CompleteChunkBuild(ChunkBuild chunkBuild)
-        {
-            if (chunkRuntime.CompleteChunkBuild(chunkBuild, gameObject, BuildChunkName, out int3 changedChunkCoord))
-            {
-                MarkChunkVisibilityDirty();
-                MarkCombinedMeshDirty(changedChunkCoord);
-            }
-        }
-
-        private static int GetChunkDistance(int3 chunkOffset)
-        {
-            return math.max(math.abs(chunkOffset.x), math.max(math.abs(chunkOffset.y), math.abs(chunkOffset.z)));
+            return chunkBehaviour.CountVisibleChunks(ShouldCullRenderedChunks());
         }
 
         private void MarkChunkVisibilityDirty()
         {
-            chunkRuntime.MarkVisibilityDirty();
+            chunkBehaviour.MarkVisibilityDirty();
+            MarkCombinedRendererVisibilityDirty();
+        }
+
+        private void MarkChunkVisibilityChanged()
+        {
+            combinedMeshesDirty = true;
             MarkCombinedRendererVisibilityDirty();
         }
 
@@ -1123,15 +961,9 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             return new Vector3(focus.x, focus.y, focus.z);
         }
 
-        private void RemoveUndesiredChunks()
-        {
-            chunkRuntime.RemoveUndesiredChunks(MarkCombinedMeshDirty);
-            MarkCombinedRendererVisibilityDirty();
-        }
-
         private void ClearChunks()
         {
-            chunkRuntime.ClearChunks();
+            chunkBehaviour.ClearChunks();
             MarkChunkVisibilityDirty();
             ClearCombinedMesh();
         }
@@ -1180,7 +1012,7 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
 
         private void MarkAllChunksDirty()
         {
-            chunkRuntime.MarkAllChunksDirty();
+            chunkBehaviour.MarkAllChunksDirty();
         }
 
         private ScalarFieldSettings GetScalarFieldSettings()
@@ -1307,11 +1139,6 @@ namespace MarchingCubesPlanet.VoxelEngine.Runtime
             {
                 caseTable = MarchingCubesCaseTableBuilder.Build(Allocator.Persistent);
             }
-        }
-
-        private static string BuildChunkName(int3 chunkCoord, int cellSize)
-        {
-            return $"VoxelChunk_{chunkCoord.x}_{chunkCoord.y}_{chunkCoord.z}_S{cellSize}";
         }
 
     }
