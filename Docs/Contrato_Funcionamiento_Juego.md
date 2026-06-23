@@ -15,6 +15,9 @@ Este documento responde a preguntas como:
 
 - Cada regla escrita aqui se considera intencional.
 - Si para hacer algo hay que modificar algo escrito aqui, no se hace hasta avisar que eso va a ocurrir.
+- No se puede eliminar nada que este escrito en la documentacion.
+- Si una linea documentada entra en conflicto con una peticion nueva o con un cambio de codigo, el agente debe pedir que una persona la elimine o la cambie manualmente.
+- Mientras ese conflicto siga escrito en la documentacion, el agente no puede atacar el problema por fuera ni hacer un workaround para evitar la regla documentada.
 
 
 ## Reglas confirmadas
