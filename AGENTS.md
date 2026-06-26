@@ -1,15 +1,46 @@
 # Instrucciones para agentes
 
-## Contrato obligatorio
+## Lectura obligatoria
 
-Antes de modificar gameplay, arquitectura de juego, inicializacion de sistemas o comportamiento runtime, hay que leer y respetar:
+Antes de tocar codigo, arquitectura, runtime, inicializacion, datos, render, memoria, persistencia, editor tooling o comportamiento jugable, hay que leer la documentacion existente en `Docs/`.
 
-- `Docs/Contrato_Funcionamiento_Juego.md`
+Regla:
 
-Ese documento es obligatorio. Si un cambio de codigo contradice el contrato, actualiza el contrato en el mismo cambio y deja la nueva decision escrita de forma explicita.
+```text
+Leer todos los documentos .md dentro de Docs antes de actuar.
+```
+
+Si en el futuro hay muchos documentos, leer como minimo:
+
+- El documento general de definicion tecnica.
+- El documento especifico del sistema que se vaya a tocar.
+- Cualquier documento enlazado desde esos documentos.
+
+## Documentos actuales
+
+- `Docs/Definicion_Tecnica_Proyecto.md`
+- `Docs/Calculo_Funcional_Datos_Planeta.md`
+- `Docs/Teoria_Implementacion.md`
+- `Docs/Implementacion_Funcional.md`
+- `Docs/01_PlanetImplementationLab.md`
+- `Docs/02_ComputeShaderLab.md`
+
+## Documento estanco
+
+`Docs/Definicion_Tecnica_Proyecto.md` queda estanco.
+
+No se debe modificar salvo que la persona lo pida explicitamente o que haya que revisitar una decision de arquitectura y se indique de forma clara.
 
 ## Regla practica
 
 - No introducir reglas de funcionamiento implicitas.
-- No cambiar el flujo de inicializacion sin revisar el contrato.
-- Si una decision sigue abierta, documentarla como pendiente en vez de asumirla como regla cerrada.
+- No asumir decisiones abiertas como cerradas.
+- Si una decision sigue abierta, documentarla como `TBD` o pendiente en el documento correspondiente.
+- Si un cambio contradice una documentacion existente, no hacer workaround silencioso: actualizar la documentacion en el mismo cambio o pedir confirmacion.
+- Cada sistema importante debe tener su documento propio antes de bajar a codigo.
+
+## Enfoque del proyecto
+
+El target principal es Meta Quest 3. Cualquier decision tecnica debe considerar rendimiento, RAM, VRAM, Garbage Collector, streaming, uso de disco, CPU y GPU desde el principio.
+
+La prioridad es construir una base medible, ligera y ampliable antes de implementar gameplay encima.
