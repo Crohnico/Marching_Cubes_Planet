@@ -103,6 +103,37 @@ PlanetImplementationLab
 
 Los documentos funcionales pueden proponer escenas auxiliares para investigar, pero el cierre real ocurre al integrar la capacidad en esa escena.
 
+## Regla de Labs
+
+Los documentos con nombre `Lab` no definen sistemas temporales que luego haya que rehacer.
+
+Definen un arnes de pruebas alrededor de codigo real.
+
+Patron esperado:
+
+```text
+SistemaReal
+SistemaRealEditor
+SistemaRealLab
+```
+
+Donde:
+
+```text
+SistemaReal    -> codigo que puede llegar al juego.
+SistemaRealEditor -> inspector/editor nativo si aporta claridad.
+SistemaRealLab -> botones, stress tests, metricas y diagnosticos.
+```
+
+Regla:
+
+```text
+El Lab no contiene la logica principal.
+El Lab no es la fuente de verdad.
+El Lab llama al sistema real y lo fuerza.
+El sistema real no debe depender del Lab.
+```
+
 ## Orden de documentos funcionales
 
 El orden inicial sera:

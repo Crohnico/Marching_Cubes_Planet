@@ -66,6 +66,38 @@ Validar que lo anterior no se ha roto.
 
 El objetivo es que cada deadline construya el proyecto real, no una coleccion de pruebas que despues haya que reconciliar.
 
+## Regla de Lab aditivo
+
+El laboratorio no debe ser una version temporal del sistema real.
+
+La regla de implementacion es:
+
+```text
+ClaseReal      -> sistema definitivo o reutilizable por el juego.
+ClaseRealEditor -> inspector/editor nativo si hace falta.
+ClaseRealLab   -> script aditivo para probar, medir y estresar ClaseReal.
+```
+
+Ejemplo conceptual:
+
+```text
+PlanetGpuBuffer
+PlanetGpuBufferEditor
+PlanetGpuBufferLab
+```
+
+El Lab puede tener botones, presets de stress, diagnosticos y casos extremos. La logica importante debe vivir en la clase real, no en el Lab.
+
+Reglas:
+
+```text
+El juego no depende de los Labs.
+Los Labs dependen del codigo real.
+Si se borra un Lab, no se pierde funcionalidad del motor.
+Ningun algoritmo importante vive solo dentro de un Lab.
+El Lab solo orquesta pruebas sobre sistemas reales.
+```
+
 ## Regla de codigo
 
 El codigo debe ser facil de leer, corregir y seguir.
@@ -136,6 +168,117 @@ buffer preasignado + count
 pool
 ring buffer
 presupuesto maximo explicito
+```
+
+## Consultas espaciales sin GC
+
+Los sistemas no deben pedir terreno cercano creando listas nuevas ni recorriendo objetos de escena.
+
+La forma base de consultar el mundo sera pedir celdas del grid por volumen:
+
+```text
+Dame todas las cells contenidas o intersectadas por una esfera de centro X y radio Y.
+```
+
+Regla:
+
+```text
+La consulta se resuelve en GridCoordinates.
+Si el origen viene de mundo Unity, primero se convierte WorldSpacePosition -> GridPosition.
+La salida escribe en un buffer preasignado y devuelve count.
+No se crea List<T> nueva en caminos calientes.
+```
+
+Esto aplica a:
+
+```text
+colisiones cercanas.
+terraformado.
+herramientas del jugador.
+rayos/escaneos.
+streaming local.
+cache de chunks.
+minerales/sustancias consultadas por zona.
+```
+
+La consulta debe declarar su intencion:
+
+```text
+CenterInside   -> la celda cuenta si su centro cae dentro del volumen.
+Intersects     -> la celda cuenta si su volumen toca el volumen consultado.
+FullyContained -> la celda cuenta si esta completamente dentro del volumen.
+```
+
+Para una celda 1x1x1, su punto representativo es:
+
+```text
+cellCenter = cellCoordinates + 0.5
+```
+
+`CenterInside` es barato y sirve para muchas herramientas. `Intersects` es mas conservador y sirve para no perder terreno cercano en colision, streaming o terraformado. `FullyContained` es mas estricto y solo debe usarse cuando el borde no importe.
+
+Regla:
+
+```text
+Si ocultar o ignorar una celda puede romper gameplay o hacer desaparecer algo visible, usar Intersects.
+```
+
+La consulta puede hacer una primera pasada por AABB para limitar el rango de celdas y despues filtrar por esfera. La version exacta se define en `Docs/03_Coordenadas_Y_Receta.md`.
+
+## Mesh sin GC
+
+Cuando una malla se construye o modifica desde CPU, se debe evitar generar basura accidental.
+
+La direccion preferida es:
+
+```text
+List<T> preasignada o NativeArray persistente.
+Capacidad maxima conocida.
+Clear + rellenado manual.
+Uso de overloads con start/length cuando aplique.
+Mesh.MarkDynamic si la malla cambia con frecuencia.
+Evitar propiedades antiguas que devuelven arrays y generan allocations.
+```
+
+Ejemplo conceptual:
+
+```text
+vertices = List<Vector3>(maxVertices)
+uvs      = List<Vector4>(maxVertices)
+indices  = List<int>(maxIndices)
+
+mesh.SetVertices(vertices, 0, vertexCount, flags)
+mesh.SetUVs(0, uvs, 0, vertexCount, flags)
+mesh.SetTriangles(indices, 0, indexCount, submesh, calculateBounds: false, baseVertex: 0)
+```
+
+Esta optimizacion aplica cuando:
+
+```text
+La geometria nace o se modifica en CPU.
+Hay meshes debug actualizadas a menudo.
+Hay proxies CPU.
+Hay meshes de colision locales.
+Hay fallback CPU.
+Hay chunks que por decision concreta se bajan a Mesh clasica.
+```
+
+No aplica como solucion principal cuando:
+
+```text
+El dato nace y vive en GPU.
+El render lee directamente de GraphicsBuffer.
+El resultado es una RenderTexture.
+El objetivo del test es validar Compute Shader, no actualizar Mesh desde CPU.
+La malla es estatica o se crea una vez sin coste relevante.
+```
+
+Regla:
+
+```text
+No traer datos de GPU a CPU solo para poder usar SetVertices.
+Si el camino natural es GPU -> GraphicsBuffer -> render, se prueba ese camino.
+Si el camino natural es CPU -> Mesh, se usa la ruta sin GC.
 ```
 
 ## Herramientas comunes desde el principio
@@ -318,6 +461,33 @@ Criterio de cierre:
 No hay ambiguedad entre coordenada logica y coordenada visual.
 El resto de sistemas puede depender de esta base.
 ```
+
+## Presets procedurales de planeta
+
+Los planetas seran procedurales. La fuente de verdad no sera una malla guardada a mano ni un volumen completo persistido.
+
+Ademas de la receta concreta de un planeta, existiran presets o perfiles procedurales que definiran familias de planetas:
+
+```text
+Forma tipo luna.
+Planeta con crateres.
+Planeta sin agua.
+Planeta sin atmosfera.
+Planeta mas o menos acuoso.
+Planeta solo agua.
+Planeta gaseoso.
+Planeta toxico.
+Otros perfiles futuros.
+```
+
+Regla:
+
+```text
+PlanetPreset define una familia o intencion procedural.
+PlanetRecipe define un planeta concreto instanciado desde seed, preset y parametros.
+```
+
+Los presets no se definen en detalle en este documento. Se documentaran cuando empecemos a bajar la generacion de planetas y sus perfiles.
 
 ## Paso 2 - Funcion del planeta en GPU
 
@@ -976,6 +1146,14 @@ Metricas iniciales de RAM/VRAM/CPU/GPU.
 ```
 
 No se pasa a chunks locales si esto no esta estable.
+
+Validacion de plataforma:
+
+```text
+El primer deadline se valida en PC/Editor.
+Quest 3 no es obligatoria en este primer deadline.
+La validacion en Quest 3 entra en el segundo bloque, cuando haya player y prueba real en dispositivo.
+```
 
 ## Regla final
 

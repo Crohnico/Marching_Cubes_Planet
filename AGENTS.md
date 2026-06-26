@@ -24,6 +24,8 @@ Si en el futuro hay muchos documentos, leer como minimo:
 - `Docs/Implementacion_Funcional.md`
 - `Docs/01_PlanetImplementationLab.md`
 - `Docs/02_ComputeShaderLab.md`
+- `Docs/03_Coordenadas_Y_Receta.md`
+- `Docs/04_Gestion_RAM_VRAM.md`
 
 ## Documento estanco
 

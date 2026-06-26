@@ -121,19 +121,418 @@ Estado de soporte runtime.
 Diagnostico legible del ultimo test.
 ```
 
-La salida visible puede ser simple:
+La salida visible tendra dos versiones iniciales:
 
 ```text
-RenderTexture con patron generado por compute.
-Mesh debug con datos calculados por compute.
-Buffer de valores mostrado parcialmente en Inspector.
+Version 1 -> Mesh debug.
+Version 2 -> RenderTexture debug.
 ```
 
-La primera opcion preferida es una `RenderTexture` debug porque permite ver resultado sin depender todavia de geometria procedural.
+Motivo:
+
+```text
+Mesh es una via critica futura para proxies, chunks, colisiones y debug.
+RenderTexture es una via critica futura para impostores y debug GPU directo.
+Queremos dejar vivas las dos rutas desde el inicio.
+```
+
+La `Mesh debug` de esta fase no valida todavia la generacion real de geometria desde GPU. Sirve para confirmar que el laboratorio puede mostrar geometria controlada, registrar meshes runtime y liberarlas.
+
+La `RenderTexture debug` valida la escritura directa desde Compute Shader y prepara el camino conceptual para impostores.
+
+## Formato exacto del Compute Shader minimo
+
+El primer Compute Shader del proyecto sera una prueba minima de pipeline GPU.
+
+No se considera una prueba real de carga del motor porque no tiene suficiente "grosor" tecnico:
+
+```text
+No genera geometria.
+No evalua campo escalar.
+No trabaja sobre grid 3D.
+No compacta datos.
+No hace Marching Cubes.
+No valida payload de triangulos.
+No simula chunks reales.
+```
+
+Sirve para empezar la implementacion porque valida lo basico:
+
+```text
+Unity carga un ComputeShader.
+C# crea y registra un GraphicsBuffer.
+C# crea y registra una RenderTexture escribible.
+GPU escribe en buffer y textura.
+El resultado se puede ver en RenderTexture.
+El Lab puede mostrar tambien una Mesh debug registrada y liberable.
+El dispatch se puede repetir.
+Los recursos se pueden liberar.
+El stress inicial no deja fugas evidentes.
+```
+
+Archivo propuesto:
+
+```text
+Assets/Shaders/Compute/PlanetComputeDebug.compute
+```
+
+Kernel inicial:
+
+```text
+CS_DebugWrite
+```
+
+Recursos del shader:
+
+```text
+RWStructuredBuffer<float4> _DebugSamples
+RWTexture2D<float4> _DebugTexture
+
+int _BufferCount
+int _TextureWidth
+int _TextureHeight
+uint _Seed
+uint _DispatchIndex
+```
+
+Thread group inicial:
+
+```text
+[numthreads(64, 1, 1)]
+```
+
+Motivo:
+
+```text
+64,1,1 es simple.
+Encaja bien con un buffer lineal.
+Permite aprender el flujo base sin mezclar todavia grids 2D/3D.
+Nos obliga a calcular correctamente el numero de grupos desde C#.
+```
+
+Regla:
+
+```text
+El tamaño del grupo se declara en el shader.
+C# debe consultarlo con GetKernelThreadGroupSizes.
+C# no debe asumir a mano que siempre sera 64.
+```
+
+El kernel debe usar un indice lineal:
+
+```text
+index = SV_DispatchThreadID.x
+```
+
+Debe escribir:
+
+```text
+_DebugSamples[index] si index < _BufferCount.
+_DebugTexture[x, y] si index < _TextureWidth * _TextureHeight.
+```
+
+Regla obligatoria:
+
+```text
+Todo acceso a buffer o textura debe comprobar limites.
+```
+
+Motivo:
+
+```text
+El dispatch se lanza por grupos.
+Normalmente habra mas threads lanzados que elementos reales.
+En DX11 algunos accesos fuera de rango pueden parecer inocuos.
+En mobile/Vulkan/GLES/Metal pueden romper o producir comportamiento indefinido.
+```
+
+Salida esperada:
+
+```text
+Un patron de color visible en RenderTexture.
+Valores float4 escritos en el buffer.
+Una Mesh debug visible, creada y liberada por el Lab.
+Misma seed + mismo dispatchIndex produce mismo resultado.
+Cambiar seed o dispatchIndex cambia el patron.
+```
+
+Formato de dato inicial:
+
+```text
+float4
+stride = 16 bytes
+```
+
+Motivo:
+
+```text
+Es facil de alinear.
+Es facil de inspeccionar.
+Evita empezar con structs complejos antes de dominar el pipeline.
+```
+
+Este paso debe quedar bien cerrado antes de pasar a pruebas de mas grosor.
+
+### Version 1 - Mesh debug
+
+La primera via visible sera una Mesh debug pequeña y controlada.
+
+Objetivo:
+
+```text
+Validar que el Lab puede crear, mostrar, registrar y liberar una Mesh runtime.
+Validar materiales debug.
+Validar conteo de vertices/indices.
+Validar Release de Mesh.
+```
+
+No objetivo:
+
+```text
+No validar Marching Cubes.
+No validar triangulacion GPU.
+No hacer readback de GPU para rellenar la Mesh.
+No usar SetVertices como prueba de rendimiento principal de Compute Shader.
+```
+
+Regla:
+
+```text
+La Mesh debug de esta fase puede ser CPU/simple.
+No se traen datos GPU a CPU solo para mostrar esta Mesh.
+```
+
+La optimizacion de Mesh sin GC queda documentada en `Docs/Teoria_Implementacion.md`.
+
+En esta fase no se usa como prueba principal porque el objetivo del documento 02 es validar el pipeline Compute Shader y la vida de recursos GPU. La ruta sin GC de Mesh se usara cuando haya geometria CPU real, proxies CPU, colision local o fallback CPU.
+
+### Version 2 - RenderTexture debug
+
+La segunda via visible sera una RenderTexture escrita por el Compute Shader.
+
+Objetivo:
+
+```text
+Validar escritura directa GPU -> RenderTexture.
+Mostrar resultado sin readback.
+Preparar el camino para impostores.
+Validar enableRandomWrite.
+Registrar y liberar RenderTexture runtime.
+```
+
+Uso futuro:
+
+```text
+Impostores astronomicos.
+Capturas de planeta lejano.
+Texturas cacheadas de representaciones baratas.
+Debug visual de kernels.
+```
+
+Regla:
+
+```text
+La RenderTexture es la salida principal del kernel minimo.
+La Mesh debug acompaña al Lab, pero no demuestra que el compute genere geometria real.
+```
+
+## Ampliacion posterior del Compute Shader Lab
+
+El kernel minimo no es suficiente para validar el motor. Despues de cerrarlo, el Lab necesitara al menos una segunda fase de Compute Shader con mas cuerpo.
+
+La segunda prueba se llamara conceptualmente:
+
+```text
+VoxelDensityDebug
+```
+
+Objetivo:
+
+```text
+Validar un grid 3D de densidad en GPU sin entrar todavia en Marching Cubes.
+```
+
+Esta prueba ya se parece mas al problema real porque trabaja con:
+
+```text
+Grid 3D.
+Indexado 3D -> lineal.
+Campo escalar simple.
+Clasificacion aire/solido.
+Volumen en GPU.
+Visualizacion barata por slice.
+```
+
+No entra:
+
+```text
+Marching Cubes.
+Triangulos.
+Normales.
+Materiales finales.
+Chunks reales.
+Cuevas.
+Ruido continental.
+Voronoi.
+```
+
+Archivo propuesto:
+
+```text
+Assets/Shaders/Compute/PlanetVoxelDensityDebug.compute
+```
+
+Kernels propuestos:
+
+```text
+CS_WriteSphereDensityGrid
+CS_WriteDensitySlice
+```
+
+`CS_WriteSphereDensityGrid` calcula un volumen 3D de densidad usando una esfera perfecta:
+
+```text
+density = radius - distance(position, center)
+```
+
+Clasificacion:
+
+```text
+density > 0  -> solido
+density <= 0 -> aire
+```
+
+Buffers iniciales:
+
+```text
+RWStructuredBuffer<float> _DensityBuffer
+RWStructuredBuffer<uint> _VoxelStateBuffer
+```
+
+`CS_WriteDensitySlice` pinta una seccion 2D del volumen a una `RenderTexture` para debug:
+
+```text
+sliceAxis
+sliceIndex
+DensityBuffer -> RenderTexture debug
+```
+
+Desde Inspector se debe poder:
+
+```text
+Cambiar tamaño del grid.
+Cambiar radio de la esfera.
+Cambiar slice visible.
+Cambiar eje de slice.
+Regenerar densidad.
+Repintar slice.
+Liberar buffers.
+Ejecutar stress.
+```
+
+Presets iniciales de grid:
+
+```text
+Low:
+    gridSize: 32x32x32
+
+Medium:
+    gridSize: 64x64x64
+
+High:
+    gridSize: 96x96x96
+
+VeryHigh:
+    gridSize: 128x128x128
+
+Extreme:
+    gridSize: 160x160x160 o 192x192x192
+    requiere aviso en Inspector
+```
+
+La prueba debe medir:
+
+```text
+Elementos totales del grid.
+Bytes estimados de DensityBuffer.
+Bytes estimados de VoxelStateBuffer.
+Tiempo CPU de dispatch.
+Buffers vivos.
+RenderTextures vivas.
+Resultado visual de slice.
+Release correcto.
+```
+
+Regla:
+
+```text
+La segunda prueba no sustituye al documento 05_Forma_Planeta_GPU.
+Solo valida la base volumetrica minima.
+La forma procedural real del planeta se define e implementa despues.
+```
+
+Despues de `VoxelDensityDebug`, las siguientes ampliaciones deberan acercarse mas a cargas reales:
+
+```text
+Kernels 2D y/o 3D.
+Varios buffers agrupados con criterio.
+Pruebas de tamaño parecido a chunks.
+Patrones de acceso parecidos a grid voxel.
+Escritura de datos estructurados.
+Dispatches encadenados si aporta valor.
+Medicion de coste al subir volumen de trabajo.
+Comparacion GraphicsBuffer vs ComputeBuffer solo donde tenga sentido.
+```
+
+La ampliacion no debe colarse dentro del primer kernel minimo. El primer paso debe quedar pequeño, limpio y medible.
 
 ## Componentes/scripts previstos
 
-### PlanetComputeShaderLabModule
+### PlanetComputeShaderRunner
+
+Sistema real minimo para ejecutar un Compute Shader.
+
+Responsabilidad:
+
+```text
+Recibir ComputeShader y kernel.
+Crear o recibir buffers necesarios.
+Configurar parametros.
+Ejecutar Dispatch.
+Exponer estado minimo de ejecucion.
+No depender del laboratorio.
+```
+
+Este componente/clase es codigo aprovechable por el motor. El Lab lo usa, pero no lo define.
+
+No debe:
+
+```text
+Tener botones de stress.
+Conocer presets de laboratorio.
+Conocer PlanetImplementationLab.
+Mostrar UI.
+```
+
+### PlanetGpuBufferHandle
+
+Dato/helper real para guardar informacion de un buffer vivo.
+
+Responsabilidad:
+
+```text
+Tipo de buffer.
+Numero de elementos.
+Stride.
+Bytes estimados.
+Nombre debug.
+Estado vivo/liberado.
+Referencia al recurso GPU.
+```
+
+Este helper debe poder usarse fuera del Lab.
+
+### PlanetComputeShaderRunnerLab
 
 Modulo principal del laboratorio para esta fase.
 
@@ -142,8 +541,8 @@ Responsabilidad:
 ```text
 Heredar de PlanetLabModule.
 Validar soporte de Compute Shader.
-Crear recursos de prueba.
-Ejecutar dispatches.
+Crear recursos de prueba usando codigo real.
+Ejecutar dispatches usando PlanetComputeShaderRunner.
 Registrar recursos en PlanetLabResourceRegistry.
 Capturar metricas.
 Liberar recursos.
@@ -158,11 +557,12 @@ Implementar Marching Cubes.
 Guardar datos persistentes.
 Conocer estados del planeta.
 Convertirse en manager global.
+Contener logica que deba vivir en PlanetComputeShaderRunner.
 ```
 
 ### PlanetComputeShaderLabEditor
 
-`CustomEditor` nativo de Unity para `PlanetComputeShaderLabModule`.
+`CustomEditor` nativo de Unity para `PlanetComputeShaderRunnerLab`.
 
 Responsabilidad:
 
@@ -185,7 +585,9 @@ No crear UI en Game View para controlar este modulo.
 
 Configuracion serializada del modulo.
 
-Puede empezar como campos serializados dentro del modulo. Si crece demasiado, se separara en `ScriptableObject`.
+Debe vivir en el Inspector de `PlanetComputeShaderRunnerLab`.
+
+No debe empezar como `ScriptableObject`, porque es configuracion del arnes de pruebas, no del sistema real.
 
 Responsabilidad:
 
@@ -196,6 +598,10 @@ Definir modo de buffer.
 Definir salida visible.
 Definir limites de seguridad.
 ```
+
+Si crece demasiado, se separara en una clase serializable o drawer/editor propio, manteniendolo dentro del Inspector del Lab.
+
+Si aparece una configuracion necesaria para runtime real, se definira aparte como dato del sistema real.
 
 ### PlanetComputeLabResultView
 
@@ -212,22 +618,21 @@ No crear recursos sin registrarlos.
 
 Puede ser un plano en la escena con un material debug o un objeto tecnico equivalente.
 
-### PlanetComputeBufferHandle
-
-Dato o helper pequeño para guardar informacion de un buffer vivo.
-
-Responsabilidad:
+Regla de nombres:
 
 ```text
-Tipo de buffer.
-Numero de elementos.
-Stride.
-Bytes estimados.
-Nombre debug.
-Estado vivo/liberado.
+PlanetComputeShaderRunner    -> codigo real.
+PlanetComputeShaderRunnerLab -> pruebas y stress del codigo real.
+PlanetComputeShaderLabEditor -> botones del Lab en Inspector.
 ```
 
-Este helper no sustituye al `PlanetLabResourceRegistry`; solo facilita que el modulo sepa que ha creado.
+Si durante la implementacion aparece un nombre mas claro, se puede ajustar, pero debe conservarse la separacion:
+
+```text
+Real.
+Editor.
+Lab.
+```
 
 ## Flujo funcional
 
@@ -286,9 +691,9 @@ Se permite codigo simple en botones de Inspector y preparacion no caliente, pero
 Los datos CPU de prueba deben tener dueño claro:
 
 ```text
-PlanetComputeShaderLabModule crea.
-PlanetComputeShaderLabModule reutiliza.
-PlanetComputeShaderLabModule libera o limpia referencias.
+PlanetComputeShaderRunnerLab solicita.
+PlanetComputeShaderRunner crea/reutiliza cuando aplique.
+PlanetComputeShaderRunnerLab libera o pide liberar al sistema real.
 PlanetLabResourceRegistry registra estimacion si el dato es grande.
 ```
 
@@ -393,6 +798,11 @@ Dispatch Once
 Dispatch 100x
 Run GraphicsBuffer Stress
 Run ComputeBuffer Stress
+Run Stress Low
+Run Stress Medium
+Run Stress High
+Run Stress VeryHigh
+Run Stress Extreme
 Run Comparison
 Capture Module Metrics
 Release Module
@@ -436,6 +846,77 @@ ComputeBuffer Stress no deja recursos vivos.
 Run Comparison muestra resultado legible.
 ```
 
+Presets iniciales:
+
+```text
+Low:
+    bufferElementCount: 16k
+    outputTexture: 256x256
+    dispatchRepeatCount: 1
+    cycleCount: 10
+    releaseBetweenCycles: true
+
+Medium:
+    bufferElementCount: 128k
+    outputTexture: 512x512
+    dispatchRepeatCount: 10
+    cycleCount: 25
+    releaseBetweenCycles: true
+
+High:
+    bufferElementCount: 512k
+    outputTexture: 1024x1024
+    dispatchRepeatCount: 50
+    cycleCount: 50
+    releaseBetweenCycles: true
+
+VeryHigh:
+    bufferElementCount: 1M
+    outputTexture: 1024x1024
+    dispatchRepeatCount: 75
+    cycleCount: 75
+    releaseBetweenCycles: true
+
+Extreme:
+    bufferElementCount: 2M
+    outputTexture: 2048x2048
+    dispatchRepeatCount: 100
+    cycleCount: 100
+    releaseBetweenCycles: configurable
+```
+
+Intencion de cada preset:
+
+```text
+Low      -> smoke test rapido.
+Medium   -> carga normal de desarrollo.
+High     -> presion seria.
+VeryHigh -> prueba pesada controlada de 1M elementos.
+Extreme  -> prueba para intentar romper limites.
+```
+
+Reglas de cortafuegos:
+
+```text
+VeryHigh y Extreme solo se ejecutan con boton manual.
+Extreme debe mostrar aviso claro en Inspector.
+Ningun stress pesado se ejecuta automaticamente al entrar en Play.
+Debe capturar metricas antes y despues.
+Debe ejecutar Release al terminar o permitir Release manual inmediato.
+Debe existir limite duro configurable desde Inspector.
+```
+
+Limites iniciales:
+
+```text
+maxBufferElementCount = 2_000_000
+maxTextureSize = 2048
+maxDispatchRepeatCount = 100
+maxCycleCount = 100
+```
+
+Estos valores son editables desde el Inspector del Lab. No son constantes del motor.
+
 Pruebas de limite:
 
 ```text
@@ -462,7 +943,7 @@ El diagnostico detecta recurso vivo tras Release simulado.
 Tests PlayMode esperados:
 
 ```text
-PlanetComputeShaderLabModule existe en la escena de laboratorio.
+PlanetComputeShaderRunnerLab existe en la escena de laboratorio.
 ValidateModule no lanza excepciones.
 InitModule no lanza excepciones si hay soporte.
 ReleaseModule no lanza excepciones.
@@ -508,6 +989,32 @@ Medicion GPU fiable en Quest 3.
 Exportar snapshots a archivo.
 ```
 
+## Validacion de plataforma
+
+El primer deadline de este documento se valida en PC/Editor.
+
+```text
+Quest 3 no es obligatoria para cerrar este primer bloque.
+```
+
+Motivo:
+
+```text
+Antes de entrar en dispositivo necesitamos cerrar flujo basico, recursos, botones, release y stress.
+La prueba en Quest 3 entra en el segundo bloque, cuando exista player y escenario real de uso.
+```
+
+Aunque Quest 3 no cierre este deadline, las decisiones siguen considerando Quest 3 desde el principio:
+
+```text
+Buffers limitados.
+Pocos recursos por kernel.
+Sin readback bloqueante.
+Sin allocations en caminos calientes.
+Release explicito.
+Stress con cortafuegos.
+```
+
 ## Riesgos
 
 Riesgos principales:
@@ -538,10 +1045,6 @@ Stress test antes de construir sistemas encima.
 Decisiones abiertas:
 
 ```text
-Formato exacto del Compute Shader minimo.
-Si la salida visible inicial sera RenderTexture o mesh debug.
-Tamaño inicial de presets Low/Medium/High/Extreme.
-Si PlanetComputeLabSettings nace como campos serializados o ScriptableObject.
 Uso de ProfilerRecorder.
 Medicion GPU fiable en PC.
 Medicion GPU fiable en Quest 3.
@@ -551,9 +1054,10 @@ Exportar snapshots a archivo.
 Decision inicial no bloqueante:
 
 ```text
-Empezar con RenderTexture debug.
+Empezar con Mesh debug y RenderTexture debug.
 Usar GraphicsBuffer como camino principal.
 Usar ComputeBuffer solo para comparativa.
+Usar VoxelDensityDebug como segunda prueba con mas grosor.
 Medir memoria GPU por estimacion propia.
 Validar manualmente con herramientas de Unity cuando haga falta.
 ```

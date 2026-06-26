@@ -71,6 +71,37 @@ Crear gameplay.
 
 El laboratorio no debe convertirse en el motor entero. Solo coordina pruebas y expone controles.
 
+Regla de diseño:
+
+```text
+El laboratorio es aditivo al codigo real.
+No es una version temporal del motor.
+```
+
+Patron esperado:
+
+```text
+ClaseReal
+ClaseRealEditor
+ClaseRealLab
+```
+
+Donde:
+
+```text
+ClaseReal      -> sistema definitivo o reutilizable por gameplay/runtime.
+ClaseRealEditor -> inspector/editor nativo si hace falta.
+ClaseRealLab   -> botones, stress tests, metricas y diagnosticos.
+```
+
+Regla:
+
+```text
+Si se borra ClaseRealLab, ClaseReal sigue existiendo y funcionando.
+Ningun algoritmo importante debe vivir solo en un Lab.
+El Lab solo invoca, mide, fuerza y valida codigo real.
+```
+
 ## Relacion con otros documentos
 
 Documentos base:
@@ -335,7 +366,7 @@ Las pruebas de la escena deben mostrar diagnostico legible, no solo numeros.
 
 ### PlanetLabStressPreset
 
-`ScriptableObject` de configuracion para stress tests.
+Dato serializado de configuracion para stress tests dentro del Inspector del Lab.
 
 Responsabilidad:
 
@@ -350,16 +381,17 @@ Definir si se fuerza liberar entre ciclos.
 Decision:
 
 ```text
-PlanetLabStressPreset sera un ScriptableObject.
+PlanetLabStressPreset no sera un ScriptableObject.
+Vivira como dato serializado dentro del Lab que lo usa.
 ```
 
 Motivo:
 
 ```text
-Los presets son datos reutilizables.
-Queremos poder crear varios perfiles desde el editor.
-Queremos comparar Low/Medium/High/Extreme sin tocar codigo.
-Queremos evitar llenar el controlador del laboratorio con configuracion suelta.
+Los presets de stress pertenecen al arnes de pruebas.
+No son parte del sistema real del juego.
+No queremos generar assets sueltos para configuracion que solo existe para machacar el Lab.
+Queremos editar Low/Medium/High/Extreme directamente en el Inspector del Lab.
 ```
 
 Presets iniciales esperados:
@@ -413,13 +445,16 @@ En codigo, estos campos deberian tener ayuda de Inspector:
 Regla:
 
 ```text
-El ScriptableObject define datos.
+El preset define datos.
 No ejecuta pruebas.
 No crea recursos.
 No libera recursos.
+No vive como asset.
 ```
 
-La ejecucion vive en el modulo o controlador que recibe el preset.
+La ejecucion vive en el Lab o controlador que recibe el preset.
+
+Si en el futuro aparece una configuracion reutilizable por el juego real, se creara otro tipo de dato separado. No se reutilizara automaticamente el preset del Lab como configuracion runtime.
 
 ### PlanetLabCameraRig
 
