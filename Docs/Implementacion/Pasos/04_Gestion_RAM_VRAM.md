@@ -88,10 +88,10 @@ Documentos base:
 ```text
 Docs/Definicion_Tecnica_Proyecto.md
 Docs/Teoria_Implementacion.md
-Docs/Implementacion_Funcional.md
-Docs/01_PlanetImplementationLab.md
-Docs/02_ComputeShaderLab.md
-Docs/03_Coordenadas_Y_Receta.md
+Docs/Implementacion/Pasos_de_Implementacion.md
+Docs/Implementacion/Pasos/01_PlanetImplementationLab.md
+Docs/Implementacion/Pasos/02_ComputeShaderLab.md
+Docs/Implementacion/Pasos/03_Coordenadas_Y_Receta.md
 ```
 
 Este documento prepara:
@@ -274,7 +274,7 @@ Cada stress o prueba importante:
 - PlanetMemorySnapshot after.
 - PlanetMemorySnapshot after Release.
 
-> Nota arrastrada desde `Docs/02_ComputeShaderLab.md`: la matriz de stress incluye `GraphicsBuffer Stress`, `ComputeBuffer Stress`, `Stress Low`, `Stress Medium`, `Stress High`, `Stress VeryHigh` y `Stress Extreme`. En 02 la masa relevante es solo la masa de datos calculados del buffer `float4`: `bufferElementCount * 16 bytes`. Quedan fuera de esa lectura RenderTexture de debug, meshes, materiales, texturas runtime, heap global del Editor y VRAM real total. En Editor/PC, el 2026-06-27, todos los registros revisados terminaron OK y con `liveResourceCount=0`, `ownedGpuEstimatedBytes=0 bytes (0 MiB / 0 GiB)` y `ownedCpuEstimatedBytes=0 bytes (0 MiB / 0 GiB)` tras Release. Los valores `managedHeapBytes` de esos JSON no se deben usar como peso RAM/VRAM por stress porque salen de `GC.GetTotalMemory(false)` y miden heap gestionado global de la sesion.
+> Nota arrastrada desde `Docs/Implementacion/Pasos/02_ComputeShaderLab.md`: la matriz de stress incluye `GraphicsBuffer Stress`, `ComputeBuffer Stress`, `Stress Low`, `Stress Medium`, `Stress High`, `Stress VeryHigh` y `Stress Extreme`. En 02 la masa relevante es solo la masa de datos calculados del buffer `float4`: `bufferElementCount * 16 bytes`. Quedan fuera de esa lectura RenderTexture de debug, meshes, materiales, texturas runtime, heap global del Editor y VRAM real total. En Editor/PC, el 2026-06-27, todos los registros revisados terminaron OK y con `liveResourceCount=0`, `ownedGpuEstimatedBytes=0 bytes (0 MiB / 0 GiB)` y `ownedCpuEstimatedBytes=0 bytes (0 MiB / 0 GiB)` tras Release. Los valores `managedHeapBytes` de esos JSON no se deben usar como peso RAM/VRAM por stress porque salen de `GC.GetTotalMemory(false)` y miden heap gestionado global de la sesion.
 
 Hitos o sospecha de fuga:
 - Unity Memory Profiler Snapshot before.

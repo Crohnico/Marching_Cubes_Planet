@@ -1,13 +1,10 @@
 {
-    "name": "MarchingCubesPlanet.Lab.Editor",
-    "rootNamespace": "MarchingCubesPlanet.Lab.Editor",
+    "name": "MarchingCubesPlanet.Preview",
+    "rootNamespace": "MarchingCubesPlanet.Preview",
     "references": [
-        "MarchingCubesPlanet.Lab",
-        "MarchingCubesPlanet.Preview"
+        "MarchingCubesPlanet.Coordinates"
     ],
-    "includePlatforms": [
-        "Editor"
-    ],
+    "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,

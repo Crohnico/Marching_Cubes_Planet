@@ -83,7 +83,7 @@ Cerrar disponibilidad real de todos los ProfilerRecorder.
 Capturar todos los snapshots finales de memoria.
 ```
 
-Este documento no sustituye a `Docs/04_Gestion_RAM_VRAM.md`. Solo da una forma usable de ejecutar sus pruebas en VR/Quest.
+Este documento no sustituye a `Docs/Implementacion/Pasos/04_Gestion_RAM_VRAM.md`. Solo da una forma usable de ejecutar sus pruebas en VR/Quest.
 
 ## Relacion con otros documentos
 
@@ -92,11 +92,11 @@ Documentos base:
 ```text
 Docs/Definicion_Tecnica_Proyecto.md
 Docs/Teoria_Implementacion.md
-Docs/Implementacion_Funcional.md
-Docs/01_PlanetImplementationLab.md
-Docs/02_ComputeShaderLab.md
-Docs/03_Coordenadas_Y_Receta.md
-Docs/04_Gestion_RAM_VRAM.md
+Docs/Implementacion/Pasos_de_Implementacion.md
+Docs/Implementacion/Pasos/01_PlanetImplementationLab.md
+Docs/Implementacion/Pasos/02_ComputeShaderLab.md
+Docs/Implementacion/Pasos/03_Coordenadas_Y_Receta.md
+Docs/Implementacion/Pasos/04_Gestion_RAM_VRAM.md
 ```
 
 Este documento desbloquea la ejecucion comoda de pruebas en:

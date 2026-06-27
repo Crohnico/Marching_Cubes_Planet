@@ -13,7 +13,7 @@ Si una validacion falla por contexto incorrecto, debe fallar de forma directa y 
 Definir la prueba de cierre del primer bloque tecnico antes de empezar:
 
 ```text
-Docs/06_Forma_Planeta_GPU.md
+Docs/Implementacion/Pasos/06_Forma_Planeta_GPU.md
 ```
 
 Este documento no define un sistema nuevo del motor. Define el gate de validacion que decide si la base comun esta lista.
@@ -156,6 +156,7 @@ No oculta una fuga, allocation caliente o recurso sin owner.
 [ ] Las consultas espaciales escriben en buffer preasignado y devuelven count.
 [ ] Un overflow de buffer de query se diagnostica sin crear memoria nueva.
 [ ] Las pruebas de receta no crean recursos GPU ni recursos pesados artificiales.
+[ ] Queda apuntado revisitar `03_Coordenadas_Y_Receta` para incorporar orbitas planetarias y su efecto sobre placement, conversiones y calculos derivados.
 ```
 
 ### 6. RAM, memoria GPU estimada y GC
@@ -275,7 +276,7 @@ No queda ningun bloqueante automatico.
 Release All queda probado desde Inspector y UI VR.
 Los snapshots propios y oficiales quedan disponibles o con diagnostico claro.
 Quest Link permite usar el Lab con gafas, movimiento y rayo.
-El proyecto queda listo para empezar `Docs/06_Forma_Planeta_GPU.md`.
+El proyecto queda listo para empezar `Docs/Implementacion/Pasos/06_Forma_Planeta_GPU.md`.
 ```
 
 ## Resultado de ejecucion
@@ -303,4 +304,5 @@ Notas:
 ```text
 Fecha del deadline.
 Formato final del registro historico de resultados si queremos conservar varias ejecuciones.
+Revisitar `03_Coordenadas_Y_Receta` para modelar que los planetas orbitan: el centro del planeta no sera siempre estatico y eso afecta a PlanetPlacement, conversiones Grid/World/Stellar, floating origin y calculos dependientes del tiempo.
 ```

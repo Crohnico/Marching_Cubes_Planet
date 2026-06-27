@@ -119,6 +119,193 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!1 &1000200000
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1000200002}
+  - component: {fileID: 1000200001}
+  m_Layer: 0
+  m_Name: PlanetComputeShaderRunnerLab
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1000200001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1000200000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 40cc454fb81d4827b2f0b8238d77f0a9, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: MarchingCubesPlanet.Lab::MarchingCubesPlanet.Lab.PlanetComputeShaderRunnerLab
+  computeShader: {fileID: 7200000, guid: f0c086cae7534ce4a9d0b739b8e98d01, type: 3}
+  resourceRegistry: {fileID: 1146611496}
+  bufferMode: 0
+  settings:
+    bufferElementCount: 16384
+    dispatchRepeatCount: 1
+    outputTextureWidth: 256
+    outputTextureHeight: 256
+    maxBufferElementCount: 2000000
+    maxTextureSize: 2048
+    maxDispatchRepeatCount: 100
+    maxCycleCount: 100
+    releaseBetweenCycles: 1
+    captureMetricsEachCycle: 0
+  seed: 12345
+  supportsComputeShaders: 0
+  supportsInstancing: 0
+  kernelThreadGroupSizeX: 0
+  lastAction:
+  lastManualStressEvidencePath:
+  lastSnapshot:
+    operationName:
+    frame: 0
+    realtimeSinceStartup: 0
+    frameDeltaMs: 0
+    fpsApprox: 0
+    managedHeapBytes: 0
+    ownedCpuEstimatedBytes: 0
+    ownedGpuEstimatedBytes: 0
+    liveGraphicsBuffers: 0
+    liveComputeBuffers: 0
+    liveRenderTextures: 0
+    liveRuntimeMeshes: 0
+    liveRuntimeTextures: 0
+    liveRuntimeMaterials: 0
+    liveResourceCount: 0
+    operationMs: 0
+    diagnostic:
+      severity: 0
+      title:
+      probableCause:
+      recommendedAction:
+      relatedMetrics:
+  lastDiagnostic:
+    severity: 0
+    title:
+    probableCause:
+    recommendedAction:
+    relatedMetrics:
+--- !u!4 &1000200002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1000200000}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1146611497}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1000300000
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1000300002}
+  - component: {fileID: 1000300001}
+  m_Layer: 0
+  m_Name: PlanetRecipeLab
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1000300001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1000300000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 761e15e5c7ee4b74a28ca09494758a55, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: MarchingCubesPlanet.Lab::MarchingCubesPlanet.Lab.PlanetRecipeLab
+  resourceRegistry: {fileID: 1146611496}
+  recipe:
+    gridRadius: 1000
+    worldScale: 4
+    seed: 12345
+    isoLevel: 0
+    recipeVersion: 1
+  placement:
+    planetWorldCenter: {x: 0, y: 0, z: 0}
+  gridPositionInput: {x: 1000, y: 0, z: 0}
+  worldPositionInput: {x: 4000, y: 0, z: 0}
+  queryCenter: {x: 0, y: 0, z: 0}
+  queryRadius: 1.5
+  queryMode: 0
+  queryBufferCapacity: 256
+  lastGridResult: {x: 0, y: 0, z: 0}
+  lastWorldResult: {x: 0, y: 0, z: 0}
+  lastQueryWrittenCount: 0
+  lastQueryMatchedCount: 0
+  lastQueryOverflow: 0
+  lastAction:
+  lastSnapshot:
+    operationName:
+    frame: 0
+    realtimeSinceStartup: 0
+    frameDeltaMs: 0
+    fpsApprox: 0
+    managedHeapBytes: 0
+    ownedCpuEstimatedBytes: 0
+    ownedGpuEstimatedBytes: 0
+    liveGraphicsBuffers: 0
+    liveComputeBuffers: 0
+    liveRenderTextures: 0
+    liveRuntimeMeshes: 0
+    liveRuntimeTextures: 0
+    liveRuntimeMaterials: 0
+    liveResourceCount: 0
+    operationMs: 0
+    diagnostic:
+      severity: 0
+      title:
+      probableCause:
+      recommendedAction:
+      relatedMetrics:
+  lastDiagnostic:
+    severity: 0
+    title:
+    probableCause:
+    recommendedAction:
+    relatedMetrics:
+--- !u!4 &1000300002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1000300000}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1146611497}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1146611494
 GameObject:
   m_ObjectHideFlags: 0
@@ -147,7 +334,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d303608e9ddc6464daf58f662e9d5685, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: MarchingCubesPlanet.Lab::MarchingCubesPlanet.Lab.PlanetImplementationLabController
   resourceRegistry: {fileID: 1146611496}
   modules: []
@@ -196,9 +383,12 @@ MonoBehaviour:
     releaseBetweenCycles: 1
     captureMetricsEachCycle: 0
   lastSnapshot:
-    operationName: 
+    operationName:
     frame: 0
     realtimeSinceStartup: 0
+    frameDeltaMs: 0
+    fpsApprox: 0
+    managedHeapBytes: 0
     ownedCpuEstimatedBytes: 0
     ownedGpuEstimatedBytes: 0
     liveGraphicsBuffers: 0
@@ -211,17 +401,17 @@ MonoBehaviour:
     operationMs: 0
     diagnostic:
       severity: 0
-      title: 
-      probableCause: 
-      recommendedAction: 
-      relatedMetrics: 
+      title:
+      probableCause:
+      recommendedAction:
+      relatedMetrics:
   lastDiagnostic:
     severity: 0
-    title: 
-    probableCause: 
-    recommendedAction: 
-    relatedMetrics: 
-  lastAction: 
+    title:
+    probableCause:
+    recommendedAction:
+    relatedMetrics:
+  lastAction:
 --- !u!114 &1146611496
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -232,7 +422,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 670d5ed321ceb1f4f898b50d5ed59f6e, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: MarchingCubesPlanet.Lab::MarchingCubesPlanet.Lab.PlanetLabResourceRegistry
   records: []
 --- !u!4 &1146611497
@@ -251,192 +441,6 @@ Transform:
   - {fileID: 1000200002}
   - {fileID: 1000300002}
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1000200000
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1000200002}
-  - component: {fileID: 1000200001}
-  m_Layer: 0
-  m_Name: PlanetComputeShaderRunnerLab
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &1000200001
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1000200000}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 40cc454fb81d4827b2f0b8238d77f0a9, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: MarchingCubesPlanet.Lab::MarchingCubesPlanet.Lab.PlanetComputeShaderRunnerLab
-  computeShader: {fileID: 7200000, guid: f0c086cae7534ce4a9d0b739b8e98d01, type: 3}
-  resourceRegistry: {fileID: 1146611496}
-  bufferMode: 0
-  settings:
-    bufferElementCount: 16384
-    dispatchRepeatCount: 1
-    outputTextureWidth: 256
-    outputTextureHeight: 256
-    maxBufferElementCount: 2000000
-    maxTextureSize: 2048
-    maxDispatchRepeatCount: 100
-    maxCycleCount: 100
-    releaseBetweenCycles: 1
-    captureMetricsEachCycle: 0
-  seed: 12345
-  supportsComputeShaders: 0
-  supportsInstancing: 0
-  kernelThreadGroupSizeX: 0
-  lastAction: 
-  lastSnapshot:
-    operationName: 
-    frame: 0
-    realtimeSinceStartup: 0
-    frameDeltaMs: 0
-    fpsApprox: 0
-    managedHeapBytes: 0
-    ownedCpuEstimatedBytes: 0
-    ownedGpuEstimatedBytes: 0
-    liveGraphicsBuffers: 0
-    liveComputeBuffers: 0
-    liveRenderTextures: 0
-    liveRuntimeMeshes: 0
-    liveRuntimeTextures: 0
-    liveRuntimeMaterials: 0
-    liveResourceCount: 0
-    operationMs: 0
-    diagnostic:
-      severity: 0
-      title: 
-      probableCause: 
-      recommendedAction: 
-      relatedMetrics: 
-  lastDiagnostic:
-    severity: 0
-    title: 
-    probableCause: 
-    recommendedAction: 
-    relatedMetrics: 
---- !u!4 &1000200002
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1000200000}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 1146611497}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1000300000
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1000300002}
-  - component: {fileID: 1000300001}
-  m_Layer: 0
-  m_Name: PlanetRecipeLab
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &1000300001
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1000300000}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 761e15e5c7ee4b74a28ca09494758a55, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: MarchingCubesPlanet.Lab::MarchingCubesPlanet.Lab.PlanetRecipeLab
-  resourceRegistry: {fileID: 1146611496}
-  recipe:
-    gridRadius: 1000
-    worldScale: 4
-    seed: 12345
-    isoLevel: 0
-    recipeVersion: 1
-  placement:
-    planetWorldCenter: {x: 0, y: 0, z: 0}
-  gridPositionInput: {x: 1000, y: 0, z: 0}
-  worldPositionInput: {x: 4000, y: 0, z: 0}
-  queryCenter: {x: 0, y: 0, z: 0}
-  queryRadius: 1.5
-  queryMode: 0
-  queryBufferCapacity: 256
-  lastGridResult: {x: 0, y: 0, z: 0}
-  lastWorldResult: {x: 0, y: 0, z: 0}
-  lastQueryWrittenCount: 0
-  lastQueryMatchedCount: 0
-  lastQueryOverflow: 0
-  lastAction: 
-  lastSnapshot:
-    operationName: 
-    frame: 0
-    realtimeSinceStartup: 0
-    frameDeltaMs: 0
-    fpsApprox: 0
-    managedHeapBytes: 0
-    ownedCpuEstimatedBytes: 0
-    ownedGpuEstimatedBytes: 0
-    liveGraphicsBuffers: 0
-    liveComputeBuffers: 0
-    liveRenderTextures: 0
-    liveRuntimeMeshes: 0
-    liveRuntimeTextures: 0
-    liveRuntimeMaterials: 0
-    liveResourceCount: 0
-    operationMs: 0
-    diagnostic:
-      severity: 0
-      title: 
-      probableCause: 
-      recommendedAction: 
-      relatedMetrics: 
-  lastDiagnostic:
-    severity: 0
-    title: 
-    probableCause: 
-    recommendedAction: 
-    relatedMetrics: 
---- !u!4 &1000300002
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1000300000}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 1146611497}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1795443600
 GameObject:
@@ -546,7 +550,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 474bcb49853aa07438625e644c072ee6, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalLightData
   m_UsePipelineSettings: 1
   m_AdditionalLightsShadowResolutionTier: 2
@@ -624,7 +628,7 @@ Camera:
     width: 1
     height: 1
   near clip plane: 0.05
-  far clip plane: 10000
+  far clip plane: 60000
   field of view: 60
   orthographic: 0
   orthographic size: 5
@@ -668,7 +672,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalCameraData
   m_RenderShadows: 1
   m_RequiresDepthTextureOption: 2
@@ -702,6 +706,67 @@ MonoBehaviour:
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
   m_Version: 2
+--- !u!1 &2000400000
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2000400001}
+  - component: {fileID: 2000400002}
+  m_Layer: 0
+  m_Name: PlanetRecipePayloadPreview
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2000400001
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2000400000}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 8000}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2000400002
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2000400000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 87e4ca63ef39489d8f86983a0c455f46, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: MarchingCubesPlanet.Preview::MarchingCubesPlanet.Preview.PlanetRecipePayloadPreview
+  recipe:
+    gridRadius: 1000
+    worldScale: 4
+    seed: 12345
+    isoLevel: 0
+    recipeVersion: 1
+  placement:
+    planetWorldCenter: {x: 0, y: 0, z: 0}
+  faceResolution: 103
+  generateVertexColors: 1
+  materialOverride: {fileID: 0}
+  derivedTriangleCount: 127308
+  derivedVertexCount: 64896
+  derivedIndexCount: 381924
+  derivedWorldRadius: 4000
+  hasLiveMesh: 0
+  lastDiagnostic:
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -709,3 +774,4 @@ SceneRoots:
   - {fileID: 1146611497}
   - {fileID: 1956837502}
   - {fileID: 1795443602}
+  - {fileID: 2000400001}

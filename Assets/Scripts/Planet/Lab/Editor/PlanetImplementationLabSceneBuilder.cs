@@ -1,4 +1,5 @@
 using MarchingCubesPlanet.Lab;
+using MarchingCubesPlanet.Preview;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -21,6 +22,7 @@ namespace MarchingCubesPlanet.Lab.Editor
             PlanetImplementationLabController controller = root.AddComponent<PlanetImplementationLabController>();
             CreateComputeShaderLab(root.transform, registry);
             CreateRecipeLab(root.transform, registry);
+            CreateRecipePayloadPreview();
 
             SerializedObject serializedController = new SerializedObject(controller);
             serializedController.FindProperty("resourceRegistry").objectReferenceValue = registry;
@@ -79,6 +81,15 @@ namespace MarchingCubesPlanet.Lab.Editor
             serializedRecipeLab.ApplyModifiedPropertiesWithoutUndo();
 
             return recipeLab;
+        }
+
+        private static PlanetRecipePayloadPreview CreateRecipePayloadPreview()
+        {
+            GameObject previewObject = new GameObject("PlanetRecipePayloadPreview");
+            previewObject.transform.position = Vector3.zero;
+            previewObject.transform.rotation = Quaternion.identity;
+            previewObject.transform.localScale = Vector3.one;
+            return previewObject.AddComponent<PlanetRecipePayloadPreview>();
         }
 
         private static void AddSceneToBuildSettings(string scenePath)

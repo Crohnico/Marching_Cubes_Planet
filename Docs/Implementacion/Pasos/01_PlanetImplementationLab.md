@@ -117,8 +117,8 @@ Documentos base:
 ```text
 Docs/Definicion_Tecnica_Proyecto.md
 Docs/Teoria_Implementacion.md
-Docs/Implementacion_Funcional.md
-Docs/Calculo_Funcional_Datos_Planeta.md
+Docs/Implementacion/Pasos_de_Implementacion.md
+Docs/Implementacion/Calculo_Funcional_Datos_Planeta.md
 ```
 
 Documentos que dependen de este:

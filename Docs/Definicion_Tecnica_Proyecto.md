@@ -28,6 +28,19 @@ En este juego vamos a crear un universo completo para Quest 3.
 
 Para evitar la sobrecarga, no vamos a cargar el universo entero a la vez. La unidad grande de carga sera el sistema estelar. Cargaremos sistema estelar a sistema estelar, y aun asi cada sistema estelar ya debe tratarse como una carga grande y compleja.
 
+Cada sistema estelar tendra al menos un sol o cuerpo central equivalente. Los planetas del sistema orbitan alrededor de ese sol, y los planetas podran tener lunas orbitando alrededor de ellos.
+
+Regla conceptual:
+
+```text
+Sistema estelar
+-> sol / cuerpo central
+-> planetas orbitando el sol
+-> lunas orbitando planetas
+```
+
+Esto significa que la posicion de un planeta no debe asumirse como estatica para siempre. El centro de cada planeta y de cada luna debe poder derivarse de su estado orbital en un tiempo dado. Las conversiones de coordenadas, el placement, el floating origin, el streaming y las representaciones visibles deben prepararse para trabajar con cuerpos cuya posicion cambia dentro del sistema estelar.
+
 El flujo inicial sera:
 
 1. El jugador ejecuta el juego.

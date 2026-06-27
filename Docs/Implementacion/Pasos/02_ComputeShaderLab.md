@@ -73,8 +73,8 @@ Documentos base:
 ```text
 Docs/Definicion_Tecnica_Proyecto.md
 Docs/Teoria_Implementacion.md
-Docs/Implementacion_Funcional.md
-Docs/01_PlanetImplementationLab.md
+Docs/Implementacion/Pasos_de_Implementacion.md
+Docs/Implementacion/Pasos/01_PlanetImplementationLab.md
 ```
 
 Este documento prepara:
@@ -1199,7 +1199,7 @@ El modulo de Compute Shader puede cerrarse primero en PC/Editor para validar flu
 Pero el primer deadline global del proyecto no se cierra hasta tener preparado el setup de player/Quest Link definido en:
 
 ```text
-Docs/05_Quest3_Player_Setup.md
+Docs/Implementacion/Pasos/05_Quest3_Player_Setup.md
 ```
 
 Ese setup permite ejecutar la bateria completa de pruebas del deadline desde Inspector o UI VR.

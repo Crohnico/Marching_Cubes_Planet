@@ -1,4 +1,4 @@
-# Implementacion funcional
+# Pasos de implementacion
 
 ## Regla de validacion y workarounds
 
@@ -186,7 +186,7 @@ El orden inicial sera:
 03_Coordenadas_Y_Receta
 04_Gestion_RAM_VRAM
 05_Quest3_Player_Setup
-Deadline_01_05_Base_Validation
+_deadline_01-05
 06_Forma_Planeta_GPU
 07_Proxy_Planeta_Lejano
 08_Payload_Triangulos

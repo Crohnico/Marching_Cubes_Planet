@@ -96,10 +96,10 @@ Documentos base:
 ```text
 Docs/Definicion_Tecnica_Proyecto.md
 Docs/Teoria_Implementacion.md
-Docs/Implementacion_Funcional.md
-Docs/Calculo_Funcional_Datos_Planeta.md
-Docs/01_PlanetImplementationLab.md
-Docs/02_ComputeShaderLab.md
+Docs/Implementacion/Pasos_de_Implementacion.md
+Docs/Implementacion/Calculo_Funcional_Datos_Planeta.md
+Docs/Implementacion/Pasos/01_PlanetImplementationLab.md
+Docs/Implementacion/Pasos/02_ComputeShaderLab.md
 ```
 
 Documentos que dependen de este:

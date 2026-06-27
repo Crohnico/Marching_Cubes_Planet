@@ -138,7 +138,7 @@ Si un comentario es necesario porque hay contexto de arquitectura, debe apuntar 
 
 ```text
 // Ver Docs/Teoria_Implementacion.md - Paso 4
-// Ver Docs/Calculo_Funcional_Datos_Planeta.md - Campo escalar
+// Ver Docs/Implementacion/Calculo_Funcional_Datos_Planeta.md - Campo escalar
 ```
 
 No queremos codigo críptico para ahorrar lineas. Tampoco queremos codigo inflado con defensas, wrappers o comentarios que no aportan.
@@ -231,7 +231,7 @@ Regla:
 Si ocultar o ignorar una celda puede romper gameplay o hacer desaparecer algo visible, usar Intersects.
 ```
 
-La consulta puede hacer una primera pasada por AABB para limitar el rango de celdas y despues filtrar por esfera. La version exacta se define en `Docs/03_Coordenadas_Y_Receta.md`.
+La consulta puede hacer una primera pasada por AABB para limitar el rango de celdas y despues filtrar por esfera. La version exacta se define en `Docs/Implementacion/Pasos/03_Coordenadas_Y_Receta.md`.
 
 ## Mesh sin GC
 
@@ -508,7 +508,7 @@ Implementar en GPU la funcion que define la forma exterior del planeta.
 Fuente teorica:
 
 ```text
-Docs/Calculo_Funcional_Datos_Planeta.md
+Docs/Implementacion/Calculo_Funcional_Datos_Planeta.md
 ```
 
 Funciones a evaluar:
@@ -720,7 +720,7 @@ Preparar el proyecto para probar PlanetImplementationLab en VR con Quest 3, Ques
 Documento funcional:
 
 ```text
-Docs/05_Quest3_Player_Setup.md
+Docs/Implementacion/Pasos/05_Quest3_Player_Setup.md
 ```
 
 Que se implementa:
@@ -1171,7 +1171,7 @@ El planeta base sigue siendo procedural.
 El gate de validacion entre los documentos `01` a `05` y el inicio de `06_Forma_Planeta_GPU` vive en:
 
 ```text
-Docs/Deadline_01_05_Base_Validation.md
+Docs/Implementacion/Pasos/_deadline_01-05.md
 ```
 
 Ese documento define:
@@ -1187,7 +1187,7 @@ Resultado de ejecucion del deadline.
 Regla:
 
 ```text
-No se empieza `Docs/06_Forma_Planeta_GPU.md` si `Docs/Deadline_01_05_Base_Validation.md` no esta en verde.
+No se empieza `Docs/Implementacion/Pasos/06_Forma_Planeta_GPU.md` si `Docs/Implementacion/Pasos/_deadline_01-05.md` no esta en verde.
 ```
 
 ## Regla final
