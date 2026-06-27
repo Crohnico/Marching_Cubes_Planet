@@ -1,5 +1,13 @@
 # 04 - Gestion RAM/VRAM
 
+## Regla de validacion y workarounds
+
+Cada validacion ejecutable debe correr solo en el contexto definido por este documento.
+
+No se deben añadir `if/else` defensivos, ramas alternativas, fallbacks o workarounds para ejecutar una validacion fuera de su contexto definido.
+
+Si una validacion falla por contexto incorrecto, debe fallar de forma directa y diagnostica. Si existe una alternativa tecnica para rodear el fallo, primero se pregunta si ese workaround es deseado y despues se documenta la decision.
+
 ## Objetivo
 
 Definir la politica comun de memoria del motor antes de implementar forma GPU, proxy lejano, payload de triangulos, chunks, colisiones o terraformado.
@@ -265,6 +273,8 @@ Cada stress o prueba importante:
 - PlanetMemorySnapshot before.
 - PlanetMemorySnapshot after.
 - PlanetMemorySnapshot after Release.
+
+> Nota arrastrada desde `Docs/02_ComputeShaderLab.md`: la matriz de stress incluye `GraphicsBuffer Stress`, `ComputeBuffer Stress`, `Stress Low`, `Stress Medium`, `Stress High`, `Stress VeryHigh` y `Stress Extreme`. En 02 la masa relevante es solo la masa de datos calculados del buffer `float4`: `bufferElementCount * 16 bytes`. Quedan fuera de esa lectura RenderTexture de debug, meshes, materiales, texturas runtime, heap global del Editor y VRAM real total. En Editor/PC, el 2026-06-27, todos los registros revisados terminaron OK y con `liveResourceCount=0`, `ownedGpuEstimatedBytes=0 bytes (0 MiB / 0 GiB)` y `ownedCpuEstimatedBytes=0 bytes (0 MiB / 0 GiB)` tras Release. Los valores `managedHeapBytes` de esos JSON no se deben usar como peso RAM/VRAM por stress porque salen de `GC.GetTotalMemory(false)` y miden heap gestionado global de la sesion.
 
 Hitos o sospecha de fuga:
 - Unity Memory Profiler Snapshot before.

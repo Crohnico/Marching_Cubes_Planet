@@ -1,0 +1,16 @@
+{
+    "name": "MarchingCubesPlanet.Lab",
+    "rootNamespace": "MarchingCubesPlanet.Lab",
+    "references": [
+        "MarchingCubesPlanet.Compute"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

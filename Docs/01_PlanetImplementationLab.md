@@ -1,5 +1,13 @@
 # 01 - PlanetImplementationLab
 
+## Regla de validacion y workarounds
+
+Cada validacion ejecutable debe correr solo en el contexto definido por este documento.
+
+No se deben añadir `if/else` defensivos, ramas alternativas, fallbacks o workarounds para ejecutar una validacion fuera de su contexto definido.
+
+Si una validacion falla por contexto incorrecto, debe fallar de forma directa y diagnostica. Si existe una alternativa tecnica para rodear el fallo, primero se pregunta si ese workaround es deseado y despues se documenta la decision.
+
 ## Objetivo
 
 Definir la escena tecnica acumulativa donde vamos a construir, probar y medir la base del motor del planeta.
@@ -214,6 +222,9 @@ public abstract class PlanetLabModule : MonoBehaviour
     public abstract void ReleaseModule();
     public abstract bool ValidateModule();
     public abstract PlanetLabMetricsSnapshot CaptureMetrics();
+
+    public virtual void RunModuleTest() { }
+    public virtual void RunModuleStress() { }
 }
 ```
 
@@ -233,6 +244,7 @@ Regla:
 PlanetLabModule debe ser fino.
 No debe convertirse en una base pesada.
 No debe contener logica especifica de Compute, planetas, chunks o render.
+RunModuleTest y RunModuleStress solo coordinan acciones manuales genericas y pueden ser sobrescritos por cada modulo.
 ```
 
 Si mas adelante estos contratos se necesitan fuera del laboratorio, en clases puras o en sistemas que no sean `MonoBehaviour`, se extraera una interfaz:
@@ -850,12 +862,21 @@ PlanetLabResourceRegistry queda a cero tras liberar registros mock.
 StressPreset valida valores minimos/maximos.
 ```
 
-TBD:
+Decision aplicada:
 
 ```text
-Formato exacto de tests con Unity Test Framework.
-Si los tests de escena viven en Assets/Tests/PlayMode.
-Si los tests puros viven en Assets/Tests/EditMode.
+Usar Unity Test Framework.
+Los tests de escena viven en Assets/Tests/PlayMode.
+Los tests puros viven en Assets/Tests/EditMode.
+```
+
+Test de evidencia aplicado:
+
+```text
+PlanetImplementationLabEvidencePlayModeTests ejecuta Validate Scene, Smoke Test, Stress Low/Medium/High/Extreme, Force GC Check, Force GPU Release y Release/Reset.
+El resultado se guarda como JSON en Assets/Resources/PlanetLabReports/PlanetImplementationLab_SmokeEvidence.json.
+El test valida que cada paso termina sin excepcion, con diagnostico OK y sin recursos registrados vivos.
+Esta exportacion pertenece al arnes de validacion del Lab, no al runtime final del juego.
 ```
 
 ## Metricas
@@ -882,7 +903,7 @@ TBD:
 Uso de ProfilerRecorder.
 Medicion GPU fiable en PC.
 Medicion GPU fiable en Quest 3.
-Exportar snapshots a archivo.
+Exportar historicos comparables de snapshots a archivo.
 ```
 
 ## Riesgos
@@ -916,7 +937,7 @@ Decisiones abiertas:
 ```text
 Estructura exacta de carpetas para scripts runtime/editor/tests.
 Como mediremos VRAM real en Quest 3.
-Como se exportaran metricas si hace falta compararlas.
+Como se exportaran historicos comparables de metricas si hace falta compararlas.
 ```
 
 Decision inicial no bloqueante:

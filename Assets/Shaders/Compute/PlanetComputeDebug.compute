@@ -1,0 +1,42 @@
+#pragma kernel CS_DebugWrite
+
+RWStructuredBuffer<float4> _DebugSamples;
+RWTexture2D<float4> _DebugTexture;
+
+int _BufferCount;
+int _TextureWidth;
+int _TextureHeight;
+uint _Seed;
+uint _DispatchIndex;
+int _DispatchBaseIndex;
+
+float DebugValue(uint index)
+{
+    uint state = index * 1664525u + _Seed * 1013904223u + _DispatchIndex * 747796405u;
+    uint masked = state & 1023u;
+    return masked / 1023.0;
+}
+
+[numthreads(64, 1, 1)]
+void CS_DebugWrite(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = (uint)max(_DispatchBaseIndex, 0) + dispatchThreadId.x;
+    float value = DebugValue(index);
+    float4 color = float4(value, 1.0 - value, frac(value + 0.333), 1.0);
+
+    if (index < (uint)_BufferCount)
+    {
+        _DebugSamples[index] = color;
+    }
+
+    uint textureWidth = (uint)max(_TextureWidth, 0);
+    uint textureHeight = (uint)max(_TextureHeight, 0);
+    uint texturePixelCount = textureWidth * textureHeight;
+
+    if (textureWidth > 0 && textureHeight > 0 && index < texturePixelCount)
+    {
+        uint x = index % textureWidth;
+        uint y = index / textureWidth;
+        _DebugTexture[uint2(x, y)] = color;
+    }
+}

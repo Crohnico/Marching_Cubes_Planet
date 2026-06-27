@@ -1,5 +1,13 @@
 # 05 - Quest3 Player Setup
 
+## Regla de validacion y workarounds
+
+Cada validacion ejecutable debe correr solo en el contexto definido por este documento.
+
+No se deben añadir `if/else` defensivos, ramas alternativas, fallbacks o workarounds para ejecutar una validacion fuera de su contexto definido.
+
+Si una validacion falla por contexto incorrecto, debe fallar de forma directa y diagnostica. Si existe una alternativa tecnica para rodear el fallo, primero se pregunta si ese workaround es deseado y despues se documenta la decision.
+
 ## Objetivo
 
 Preparar el proyecto y `PlanetImplementationLab` para poder ejecutarse como experiencia VR basica en Meta Quest 3.

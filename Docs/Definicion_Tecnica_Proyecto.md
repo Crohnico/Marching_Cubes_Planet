@@ -1,5 +1,13 @@
 # Definicion tecnica del proyecto
 
+## Regla de validacion y workarounds
+
+Cada validacion ejecutable debe correr solo en el contexto definido por este documento.
+
+No se deben añadir `if/else` defensivos, ramas alternativas, fallbacks o workarounds para ejecutar una validacion fuera de su contexto definido.
+
+Si una validacion falla por contexto incorrecto, debe fallar de forma directa y diagnostica. Si existe una alternativa tecnica para rodear el fallo, primero se pregunta si ese workaround es deseado y despues se documenta la decision.
+
 Este documento define como vamos a programar el "motor" de nuestro juego: el alcance tecnico, el acercamiento a cada tarea y las decisiones que van a guiar la arquitectura.
 
 Aunque el proyecto tambien saldra para PC, su target principal son las Meta Quest 3. Esa restriccion marca desde el principio el nivel de complejidad de la arquitectura: necesitamos construir sistemas capaces de generar, mantener y renderizar mundos ambiciosos sin olvidar que el hardware objetivo principal es VR standalone.

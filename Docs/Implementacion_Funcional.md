@@ -1,5 +1,13 @@
 # Implementacion funcional
 
+## Regla de validacion y workarounds
+
+Cada validacion ejecutable debe correr solo en el contexto definido por este documento.
+
+No se deben añadir `if/else` defensivos, ramas alternativas, fallbacks o workarounds para ejecutar una validacion fuera de su contexto definido.
+
+Si una validacion falla por contexto incorrecto, debe fallar de forma directa y diagnostica. Si existe una alternativa tecnica para rodear el fallo, primero se pregunta si ese workaround es deseado y despues se documenta la decision.
+
 Este documento organiza la bajada a codigo del proyecto.
 
 No sustituye a `Docs/Teoria_Implementacion.md`. Lo complementa. La teoria dice en que orden avanzar; este documento define como vamos a escribir los documentos funcionales de cada sistema antes de implementarlo.
@@ -446,3 +454,4 @@ Pero no se deja contradiccion silenciosa.
 ```
 
 La documentacion no debe ser literatura muerta. Tiene que ser el mapa que usamos para programar.
+

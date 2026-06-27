@@ -4,7 +4,11 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
+  m_Scenes:
+  - enabled: 1
+    path: Assets/Scenes/PlanetImplementationLab.unity
+    guid: 320c493c9308e4b49b9cdbb43e7385d1
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
+    com.unity.xr.openxr.settings4: {fileID: 11400000, guid: 1088ee482b8640f4cb555f6ae078c8f6, type: 2}
   m_UseUCBPForAssetBundles: 0

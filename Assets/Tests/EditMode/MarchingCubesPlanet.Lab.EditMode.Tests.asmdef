@@ -1,0 +1,22 @@
+{
+    "name": "MarchingCubesPlanet.Lab.EditMode.Tests",
+    "rootNamespace": "MarchingCubesPlanet.Lab.Tests",
+    "references": [
+        "MarchingCubesPlanet.Compute",
+        "MarchingCubesPlanet.Lab"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ],
+    "noEngineReferences": false
+}

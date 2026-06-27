@@ -1,5 +1,13 @@
 # 02 - ComputeShaderLab
 
+## Regla de validacion y workarounds
+
+Cada validacion ejecutable debe correr solo en el contexto definido por este documento.
+
+No se deben añadir `if/else` defensivos, ramas alternativas, fallbacks o workarounds para ejecutar una validacion fuera de su contexto definido.
+
+Si una validacion falla por contexto incorrecto, debe fallar de forma directa y diagnostica. Si existe una alternativa tecnica para rodear el fallo, primero se pregunta si ese workaround es deseado y despues se documenta la decision.
+
 ## Objetivo
 
 Definir el primer modulo tecnico para aprender, probar y cerrar el camino minimo de trabajo con Compute Shaders dentro de `PlanetImplementationLab`.
@@ -194,6 +202,7 @@ int _TextureWidth
 int _TextureHeight
 uint _Seed
 uint _DispatchIndex
+int _DispatchBaseIndex
 ```
 
 Thread group inicial:
@@ -217,6 +226,8 @@ Regla:
 El tamaño del grupo se declara en el shader.
 C# debe consultarlo con GetKernelThreadGroupSizes.
 C# no debe asumir a mano que siempre sera 64.
+C# debe respetar el limite maximo de grupos por eje de Unity.
+Si un preset grande supera ese limite, el dispatch se trocea en varios Dispatch usando _DispatchBaseIndex.
 ```
 
 El kernel debe usar un indice lineal:
@@ -588,6 +599,8 @@ Configuracion serializada del modulo.
 
 Debe vivir en el Inspector de `PlanetComputeShaderRunnerLab`.
 
+Debe vivir en el assembly/namespace del Lab, no en el assembly real `MarchingCubesPlanet.Compute`.
+
 No debe empezar como `ScriptableObject`, porque es configuracion del arnes de pruebas, no del sistema real.
 
 Responsabilidad:
@@ -625,6 +638,8 @@ Regla de nombres:
 PlanetComputeShaderRunner    -> codigo real.
 PlanetComputeShaderRunnerLab -> pruebas y stress del codigo real.
 PlanetComputeShaderLabEditor -> botones del Lab en Inspector.
+PlanetGpuBufferMode          -> tipo neutral del sistema real de buffers GPU.
+PlanetComputeMemory          -> helper neutral para estimaciones basicas de memoria compute.
 ```
 
 Si durante la implementacion aparece un nombre mas claro, se puede ajustar, pero debe conservarse la separacion:
@@ -633,6 +648,15 @@ Si durante la implementacion aparece un nombre mas claro, se puede ajustar, pero
 Real.
 Editor.
 Lab.
+```
+
+Regla de frontera aplicada:
+
+```text
+Assets/Scripts/Planet/Compute/Runtime no contiene tipos con semantica Lab.
+Los settings, presets, botones y evidencias viven en Lab.
+El sistema real Compute expone tipos neutrales reutilizables por el motor.
+PlanetComputeShaderRunner conserva DispatchDebugWrite solo como adaptador del kernel minimo de 02, no como contrato final de dispatch del motor.
 ```
 
 ## Flujo funcional
@@ -754,7 +778,7 @@ TBD:
 Uso de ProfilerRecorder.
 Medicion GPU fiable en PC.
 Medicion GPU fiable en Quest 3.
-Exportar snapshots a archivo.
+Exportar historicos comparables de snapshots a archivo.
 ```
 
 De momento asumimos que el set de herramientas de Unity sera suficiente para inspeccionar manualmente cuando haga falta.
@@ -795,6 +819,9 @@ Validate Module
 Init Module
 Create GraphicsBuffer Test
 Create ComputeBuffer Test
+Create RenderTexture Debug
+Create Mesh Debug
+Create Visible Output Debug
 Dispatch Once
 Dispatch 100x
 Run GraphicsBuffer Stress
@@ -813,7 +840,6 @@ Reset Module State
 Botones opcionales:
 
 ```text
-Create Output Texture
 Clear Output Texture
 Randomize Input Data
 Force Large Buffer
@@ -837,6 +863,9 @@ Pruebas minimas:
 Abrir PlanetImplementationLab.
 Validate Module detecta si falta ComputeShader.
 Init Module crea estado valido.
+Create RenderTexture Debug crea y registra la RenderTexture debug.
+Create Mesh Debug crea y registra la Mesh debug.
+Create Visible Output Debug crea la Mesh debug con la RenderTexture asignada al material.
 Dispatch Once genera salida visible.
 Dispatch 100x no genera basura evidente.
 Release Module libera recursos.
@@ -959,6 +988,179 @@ Si SystemInfo.supportsComputeShaders es false, el modulo debe quedar desactivado
 Si el entorno de test no permite Compute Shader real, no se marca como fallo de logica del modulo.
 ```
 
+Test de evidencia aplicado:
+
+```text
+PlanetComputeShaderLabEvidencePlayModeTests ejecuta Validate Module, GraphicsBuffer/ComputeBuffer smoke, Dispatch 100x, Run Comparison, GraphicsBuffer Stress, ComputeBuffer Stress, Stress Low y Stress Medium.
+El resultado se guarda como JSON en Assets/Resources/PlanetLabReports/PlanetComputeShaderLab_SmokeEvidence.json.
+El test valida que cada accion no lanza excepcion y que cada checkpoint de release/stress limpio queda con diagnostico OK y sin recursos registrados vivos.
+VeryHigh y Extreme quedan fuera de ejecucion automatica porque requieren boton manual segun el cortafuegos de este documento.
+Esta exportacion pertenece al arnes de validacion del Lab, no al runtime final del juego.
+
+PlanetComputeShaderRunnerLabPlayModeTests valida explicitamente las dos rutas visibles del documento 02:
+- RenderTexture debug creada y expuesta como OutputTexture.
+- Mesh debug creada mediante PlanetComputeLabResultView.
+- MeshFilter con sharedMesh asignada.
+- MeshRenderer con material asignado.
+- Material de debug usando la RenderTexture como textura visible.
+- ResourceRegistry con RenderTexture y Mesh vivos antes de Release.
+- ResourceRegistry limpio despues de Release.
+
+PlanetComputeShaderRunnerLabPlayModeTests tambien valida los botones manuales especificos:
+- Create RenderTexture Debug.
+- Create Mesh Debug.
+- Create Visible Output Debug.
+```
+
+Evidencia manual aplicada:
+
+```text
+Cada boton manual de stress del CustomEditor de PlanetComputeShaderRunnerLab guarda evidencia JSON al terminar.
+El archivo rapido se guarda en Assets/Resources/PlanetLabReports/PlanetComputeShaderLab_ManualStressEvidence_Latest.json.
+Cada ejecucion tambien guarda un historico con timestamp en Assets/Resources/PlanetLabReports/PlanetComputeShaderLab_ManualStressEvidence_YYYYMMDD_HHMMSS_NombreStress.json.
+Todos los botones manuales de stress deben quedar persistidos por esta via cuando se ejecuten manualmente.
+Si el stress manual lanza excepcion, el CustomEditor guarda igualmente la evidencia con el campo exception antes de relanzar el fallo.
+```
+
+Resultado de evidencia de stress en Editor/PC:
+
+```text
+Fecha de ejecucion: 2026-06-27.
+Unity: 6000.3.11f1.
+Plataforma: WindowsEditor.
+
+Alcance de masa medida en 02:
+- Solo masa de datos calculados del buffer float4.
+- Formula: bufferElementCount * 16 bytes.
+- No incluye RenderTexture de debug.
+- No incluye meshes.
+- No incluye materiales.
+- No incluye texturas runtime.
+- No incluye heap global del Editor.
+- dispatchRepeatCount y ciclos de stress no multiplican esta masa residente porque reutilizan el buffer del preset.
+
+Evidencia generada por tests:
+
+Archivo:
+- Assets/Resources/PlanetLabReports/PlanetComputeShaderLab_SmokeEvidence.json
+
+GraphicsBuffer Stress:
+- masa de datos calculados: 16384 elementos * 16 bytes = 262144 bytes (0.25 MiB / 0.000 GiB).
+- resultado: OK.
+- excepcion: ninguna.
+- operationMs: 3.9911.
+- liveResourceCount final: 0.
+- ownedGpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+- ownedCpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+
+ComputeBuffer Stress:
+- masa de datos calculados: 16384 elementos * 16 bytes = 262144 bytes (0.25 MiB / 0.000 GiB).
+- resultado: OK.
+- excepcion: ninguna.
+- operationMs: 3.9269.
+- liveResourceCount final: 0.
+- ownedGpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+- ownedCpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+
+Stress Low:
+- masa de datos calculados: 16384 elementos * 16 bytes = 262144 bytes (0.25 MiB / 0.000 GiB).
+- resultado: OK.
+- excepcion: ninguna.
+- operationMs: 3.0719.
+- liveResourceCount final: 0.
+- ownedGpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+- ownedCpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+
+Stress Medium:
+- masa de datos calculados: 131072 elementos * 16 bytes = 2097152 bytes (2.00 MiB / 0.002 GiB).
+- resultado: OK.
+- excepcion: ninguna.
+- operationMs: 7.6805.
+- liveResourceCount final: 0.
+- ownedGpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+- ownedCpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+
+Run Comparison:
+- masa de datos calculados: 16384 elementos * 16 bytes = 262144 bytes (0.25 MiB / 0.000 GiB) por via.
+- masa residente maxima de datos calculados: 262144 bytes (0.25 MiB / 0.000 GiB), porque GraphicsBuffer y ComputeBuffer se ejecutan de forma secuencial con Release entre medias.
+- resultado: OK.
+- excepcion: ninguna.
+- operationMs: 0.6267.
+- liveResourceCount final: 0.
+- ownedGpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+- ownedCpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+
+Archivo:
+- Assets/Resources/PlanetLabReports/PlanetImplementationLab_SmokeEvidence.json
+
+Stress Low:
+- masa de datos calculados: 16384 elementos * 16 bytes = 262144 bytes (0.25 MiB / 0.000 GiB).
+- resultado: OK.
+- excepcion: ninguna.
+- operationMs: 1.1540.
+- liveResourceCount final: 0.
+- ownedGpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+- ownedCpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+
+Stress Medium:
+- masa de datos calculados: 131072 elementos * 16 bytes = 2097152 bytes (2.00 MiB / 0.002 GiB).
+- resultado: OK.
+- excepcion: ninguna.
+- operationMs: 3.0076.
+- liveResourceCount final: 0.
+- ownedGpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+- ownedCpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+
+Stress High:
+- masa de datos calculados: 524288 elementos * 16 bytes = 8388608 bytes (8.00 MiB / 0.008 GiB).
+- resultado: OK.
+- excepcion: ninguna.
+- operationMs: 8.5243.
+- liveResourceCount final: 0.
+- ownedGpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+- ownedCpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+
+Stress Extreme:
+- masa de datos calculados: 2000000 elementos * 16 bytes = 32000000 bytes (30.52 MiB / 0.030 GiB).
+- resultado: OK.
+- excepcion: ninguna.
+- operationMs: 20.0407.
+- liveResourceCount final: 0.
+- ownedGpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+- ownedCpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+
+Evidencia generada por ejecucion manual:
+
+Stress VeryHigh:
+- archivo: Assets/Resources/PlanetLabReports/PlanetComputeShaderLab_ManualStressEvidence_20260627_170650_RunStressVeryHigh.json
+- masa de datos calculados: 1000000 elementos * 16 bytes = 16000000 bytes (15.26 MiB / 0.015 GiB).
+- resultado: OK.
+- excepcion: ninguna.
+- operationMs: 36.8768.
+- liveResourceCount final: 0.
+- ownedGpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+- ownedCpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+
+Extreme:
+- archivo: Assets/Resources/PlanetLabReports/PlanetComputeShaderLab_ManualStressEvidence_20260627_170655_RunStressExtreme.json
+- masa de datos calculados: 2000000 elementos * 16 bytes = 32000000 bytes (30.52 MiB / 0.030 GiB).
+- resultado: OK.
+- excepcion: ninguna.
+- operationMs: 64.1865.
+- liveResourceCount final: 0.
+- ownedGpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+- ownedCpuEstimatedBytes final: 0 bytes (0 MiB / 0 GiB).
+
+Lectura:
+El limite de thread groups queda resuelto mediante dispatch troceado con _DispatchBaseIndex.
+Los tests generaron evidencia para GraphicsBuffer Stress, ComputeBuffer Stress, Stress Low, Stress Medium, Run Comparison, Stress High y Stress Extreme.
+La ejecucion manual genero evidencia historica separada para Stress VeryHigh y Stress Extreme.
+No hay fuga propia registrada tras los stress con evidencia guardada.
+La evidencia actual valida estado final limpio, pero no captura pico maximo transitorio durante el stress.
+managedHeapBytes queda excluido de esta lectura porque sale de GC.GetTotalMemory(false) y mide heap gestionado global de la sesion, no peso RAM/VRAM propio del stress.
+La medicion de 02 se limita a masa de datos calculados. Texturas, meshes, materiales, heap global y VRAM real total quedan fuera de este paso.
+```
+
 ## Metricas
 
 Metricas iniciales:
@@ -987,7 +1189,7 @@ Tiempo GPU real.
 Uso de ProfilerRecorder.
 Medicion GPU fiable en PC.
 Medicion GPU fiable en Quest 3.
-Exportar snapshots a archivo.
+Exportar historicos comparables de snapshots a archivo.
 ```
 
 ## Validacion de plataforma
@@ -1046,7 +1248,7 @@ Decisiones abiertas:
 Uso de ProfilerRecorder.
 Medicion GPU fiable en PC.
 Medicion GPU fiable en Quest 3.
-Exportar snapshots a archivo.
+Exportar historicos comparables de snapshots a archivo.
 ```
 
 Decision inicial no bloqueante:
