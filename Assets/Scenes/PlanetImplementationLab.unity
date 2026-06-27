@@ -249,6 +249,7 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1000200002}
+  - {fileID: 1000300002}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1000200000
@@ -335,6 +336,100 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1000200000}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1146611497}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1000300000
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1000300002}
+  - component: {fileID: 1000300001}
+  m_Layer: 0
+  m_Name: PlanetRecipeLab
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1000300001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1000300000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 761e15e5c7ee4b74a28ca09494758a55, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MarchingCubesPlanet.Lab::MarchingCubesPlanet.Lab.PlanetRecipeLab
+  resourceRegistry: {fileID: 1146611496}
+  recipe:
+    gridRadius: 1000
+    worldScale: 4
+    seed: 12345
+    isoLevel: 0
+    recipeVersion: 1
+  placement:
+    planetWorldCenter: {x: 0, y: 0, z: 0}
+  gridPositionInput: {x: 1000, y: 0, z: 0}
+  worldPositionInput: {x: 4000, y: 0, z: 0}
+  queryCenter: {x: 0, y: 0, z: 0}
+  queryRadius: 1.5
+  queryMode: 0
+  queryBufferCapacity: 256
+  lastGridResult: {x: 0, y: 0, z: 0}
+  lastWorldResult: {x: 0, y: 0, z: 0}
+  lastQueryWrittenCount: 0
+  lastQueryMatchedCount: 0
+  lastQueryOverflow: 0
+  lastAction: 
+  lastSnapshot:
+    operationName: 
+    frame: 0
+    realtimeSinceStartup: 0
+    frameDeltaMs: 0
+    fpsApprox: 0
+    managedHeapBytes: 0
+    ownedCpuEstimatedBytes: 0
+    ownedGpuEstimatedBytes: 0
+    liveGraphicsBuffers: 0
+    liveComputeBuffers: 0
+    liveRenderTextures: 0
+    liveRuntimeMeshes: 0
+    liveRuntimeTextures: 0
+    liveRuntimeMaterials: 0
+    liveResourceCount: 0
+    operationMs: 0
+    diagnostic:
+      severity: 0
+      title: 
+      probableCause: 
+      recommendedAction: 
+      relatedMetrics: 
+  lastDiagnostic:
+    severity: 0
+    title: 
+    probableCause: 
+    recommendedAction: 
+    relatedMetrics: 
+--- !u!4 &1000300002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1000300000}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}

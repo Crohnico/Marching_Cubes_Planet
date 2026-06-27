@@ -20,6 +20,7 @@ namespace MarchingCubesPlanet.Lab.Editor
             PlanetLabResourceRegistry registry = root.AddComponent<PlanetLabResourceRegistry>();
             PlanetImplementationLabController controller = root.AddComponent<PlanetImplementationLabController>();
             CreateComputeShaderLab(root.transform, registry);
+            CreateRecipeLab(root.transform, registry);
 
             SerializedObject serializedController = new SerializedObject(controller);
             serializedController.FindProperty("resourceRegistry").objectReferenceValue = registry;
@@ -63,6 +64,21 @@ namespace MarchingCubesPlanet.Lab.Editor
             serializedComputeLab.ApplyModifiedPropertiesWithoutUndo();
 
             return computeLab;
+        }
+
+        private static PlanetRecipeLab CreateRecipeLab(Transform parent, PlanetLabResourceRegistry registry)
+        {
+            GameObject recipeObject = new GameObject("PlanetRecipeLab");
+            recipeObject.transform.SetParent(parent, false);
+            recipeObject.transform.localPosition = new Vector3(0f, 0f, 0f);
+
+            PlanetRecipeLab recipeLab = recipeObject.AddComponent<PlanetRecipeLab>();
+
+            SerializedObject serializedRecipeLab = new SerializedObject(recipeLab);
+            serializedRecipeLab.FindProperty("resourceRegistry").objectReferenceValue = registry;
+            serializedRecipeLab.ApplyModifiedPropertiesWithoutUndo();
+
+            return recipeLab;
         }
 
         private static void AddSceneToBuildSettings(string scenePath)

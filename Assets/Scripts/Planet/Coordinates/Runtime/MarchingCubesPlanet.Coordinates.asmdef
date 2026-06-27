@@ -1,10 +1,7 @@
 {
-    "name": "MarchingCubesPlanet.Lab",
-    "rootNamespace": "MarchingCubesPlanet.Lab",
-    "references": [
-        "MarchingCubesPlanet.Compute",
-        "MarchingCubesPlanet.Coordinates"
-    ],
+    "name": "MarchingCubesPlanet.Coordinates",
+    "rootNamespace": "MarchingCubesPlanet.Coordinates",
+    "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

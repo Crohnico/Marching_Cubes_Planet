@@ -2,6 +2,7 @@
     "name": "MarchingCubesPlanet.Lab.PlayMode.Tests",
     "rootNamespace": "MarchingCubesPlanet.Lab.Tests",
     "references": [
+        "MarchingCubesPlanet.Coordinates",
         "MarchingCubesPlanet.Compute",
         "MarchingCubesPlanet.Lab"
     ],
