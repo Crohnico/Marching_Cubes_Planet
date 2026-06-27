@@ -32,7 +32,8 @@ Entra:
 Registro de recursos vivos.
 Presupuestos iniciales de RAM y memoria GPU estimada.
 Handles para recursos registrados.
-Snapshots de memoria.
+Snapshots ligeros propios del Lab.
+Snapshots oficiales de Unity Memory Profiler.
 Diagnosticos legibles.
 Reglas de ownership.
 Reglas de Release.
@@ -70,7 +71,7 @@ Cerrar medicion perfecta de VRAM real en Quest 3.
 Optimizar todos los presupuestos finales.
 ```
 
-Este documento define la base. Los presupuestos finales se ajustaran con profiling real.
+Este documento define la politica de medicion, ownership, snapshots y liberacion. Los valores numericos finales de presupuesto se ajustaran cuando tengamos mediciones reales.
 
 ## Relacion con otros documentos
 
@@ -88,14 +89,15 @@ Docs/03_Coordenadas_Y_Receta.md
 Este documento prepara:
 
 ```text
-05_Forma_Planeta_GPU
-06_Proxy_Planeta_Lejano
-07_Payload_Triangulos
-08_Estados_Planeta
-09_Chunks_Locales
-10_Streaming_Prioridades
-13_Colisiones_Locales
-14_Terraformado
+05_Quest3_Player_Setup
+06_Forma_Planeta_GPU
+07_Proxy_Planeta_Lejano
+08_Payload_Triangulos
+09_Estados_Planeta
+10_Chunks_Locales
+11_Streaming_Prioridades
+14_Colisiones_Locales
+15_Terraformado
 ```
 
 ## Datos de entrada
@@ -115,7 +117,37 @@ Politica de vida del recurso.
 Presupuestos iniciales:
 
 ```text
-TBD con profiling real.
+La politica queda definida en este documento.
+
+Hardware objetivo base:
+- Meta Quest 3 / Quest 3S basica.
+- 8 GiB de RAM LPDDR5.
+- Memoria compartida/unificada entre CPU, GPU, sistema, runtime XR y aplicacion.
+- No existe una VRAM dedicada que podamos presupuestar como en PC.
+
+Presupuesto provisional exacto para el primer bloque del Lab:
+- ownedCpuEstimatedBytes soft: 384 MiB.
+- ownedCpuEstimatedBytes hard: 512 MiB.
+- ownedGpuEstimatedBytes soft: 384 MiB.
+- ownedGpuEstimatedBytes hard: 512 MiB.
+- ownedCombinedEstimatedBytes soft: 768 MiB.
+- ownedCombinedEstimatedBytes hard: 1024 MiB.
+- singleResourceEstimatedBytes soft: 128 MiB.
+- singleResourceEstimatedBytes hard: 256 MiB.
+- liveGraphicsBuffers hard: 128.
+- liveComputeBuffers hard: 64.
+- liveRenderTextures hard: 16.
+- liveRuntimeMeshes hard: 128.
+- liveRuntimeTextures hard: 16.
+- liveRuntimeMaterials hard: 32.
+
+En la primera implementacion se usaran limites provisionales editables desde el Inspector del Lab.
+Estos limites sirven como cortafuegos para detectar fugas, acumulacion accidental y casos extremos.
+No se consideran presupuestos finales del motor.
+
+Los presupuestos finales se ajustaran despues de medir en:
+- Unity Editor/PC durante el primer bloque.
+- Build real en Quest 3 cuando exista una escena representativa.
 ```
 
 Regla:
@@ -136,6 +168,7 @@ Memoria GPU estimada propia.
 Contadores por tipo de recurso.
 Snapshots antes/despues.
 Deltas entre snapshots.
+Capturas oficiales .snap cuando se pida analisis profundo.
 Diagnostico legible.
 Ultimo modulo que creo/libero recursos.
 Tiempo de creacion.
@@ -164,6 +197,232 @@ Regla:
 La estimacion propia es la fuente principal de ownership.
 Unity Profiler es validacion externa.
 No esperamos que ambas cifras coincidan exactamente.
+```
+
+### Doble snapshot obligatorio
+
+Desde el primer bloque se usaran dos tipos de snapshot.
+
+```text
+PlanetMemorySnapshot:
+- captura ligera propia del Lab.
+- guarda recursos registrados, estimaciones, contadores Unity disponibles y tiempos.
+- sirve para deltas rapidos, stress tests, Release All y diagnosticos inmediatos.
+- no se ejecuta por frame por defecto.
+
+Unity Memory Profiler Snapshot:
+- captura oficial de Unity.
+- se guarda como archivo .snap.
+- sirve para analisis profundo de memoria en Editor, Player y Quest 3.
+- se usa como validacion externa desde el principio del proyecto.
+```
+
+Regla:
+
+```text
+PlanetMemorySnapshot no sustituye a Unity Memory Profiler.
+Unity Memory Profiler no sustituye al registro propio de ownership.
+Se usan los dos desde el minuto 0.
+```
+
+Regla de separacion:
+
+```text
+Las capturas de memoria no forman parte del sistema oficial de gameplay/render.
+No deben permear al runtime caliente.
+No deben condicionar la generacion, el render, el streaming, la fisica ni el gameplay.
+No deben ejecutarse por frame.
+No deben introducir trabajo extra en builds finales salvo modo diagnostico explicito.
+```
+
+El sistema real puede exponer contadores ligeros y registrar ownership, pero no debe depender de capturar snapshots:
+
+```text
+Sistema real:
+- registra recursos grandes.
+- libera recursos grandes.
+- expone contadores ligeros si hace falta.
+
+Lab / Editor / Dev diagnostics:
+- captura PlanetMemorySnapshot.
+- solicita Unity Memory Profiler Snapshot.
+- compara deltas.
+- genera diagnosticos pesados.
+```
+
+Motivo:
+
+```text
+El snapshot propio responde rapido: que creo el proyecto, quien lo posee y si Release lo solto.
+El snapshot oficial responde profundo: que ve Unity realmente, que queda vivo y que pasa en Player/dispositivo.
+Mantener las capturas fuera del runtime real evita computo innecesario en Quest 3.
+```
+
+Uso esperado:
+
+```text
+Cada stress o prueba importante:
+- PlanetMemorySnapshot before.
+- PlanetMemorySnapshot after.
+- PlanetMemorySnapshot after Release.
+
+Hitos o sospecha de fuga:
+- Unity Memory Profiler Snapshot before.
+- Unity Memory Profiler Snapshot after.
+- Unity Memory Profiler Snapshot after Release si aporta valor.
+```
+
+Regla Quest 3:
+
+```text
+La validacion fuerte de memoria no se considera cerrada solo con Editor.
+Cuando exista build representativa, se capturaran snapshots oficiales en Quest 3.
+```
+
+### ProfilerRecorder counters iniciales
+
+El Lab intentara crear `ProfilerRecorder` para un set inicial cerrado de contadores.
+
+Regla:
+
+```text
+El nombre del counter debe coincidir exactamente con el nombre que expone Unity.
+Si un counter no existe en la version/plataforma/build actual, se marca como unavailable.
+Un counter unavailable no rompe la prueba ni el sistema real.
+```
+
+Counters obligatorios a intentar para memoria de proceso:
+
+```text
+ProfilerCategory.Memory / "App Resident Memory"
+ProfilerCategory.Memory / "App Committed Memory"
+ProfilerCategory.Memory / "Total Used Memory"
+ProfilerCategory.Memory / "Total Reserved Memory"
+ProfilerCategory.Memory / "System Used Memory"
+ProfilerCategory.Memory / "System Total Used Memory"
+```
+
+Uso:
+
+```text
+App Resident Memory      -> memoria residente del proceso segun el SO.
+App Committed Memory     -> memoria comprometida del proceso segun el SO.
+Total Used Memory        -> memoria usada por la aplicacion segun Unity.
+Total Reserved Memory    -> memoria reservada por la aplicacion segun Unity.
+System Used Memory       -> memoria residente segun SO; suele coincidir con App Resident Memory.
+System Total Used Memory -> memoria usada total del dispositivo si la plataforma la expone.
+```
+
+Counters obligatorios a intentar para GC:
+
+```text
+ProfilerCategory.Memory / "GC Used Memory"
+ProfilerCategory.Memory / "GC Reserved Memory"
+ProfilerCategory.Memory / "GC Allocated In Frame"
+ProfilerCategory.Memory / "GC Allocation In Frame Count"
+```
+
+Uso:
+
+```text
+GC Used Memory              -> heap gestionado usado.
+GC Reserved Memory          -> heap gestionado reservado.
+GC Allocated In Frame       -> bytes gestionados asignados en el frame.
+GC Allocation In Frame Count -> numero de allocations gestionadas en el frame.
+```
+
+Nota:
+
+```text
+GC Allocated In Frame y GC Allocation In Frame Count pueden no estar disponibles en release players.
+Son especialmente utiles en Editor y Development Player.
+```
+
+Counters obligatorios a intentar para memoria/render GPU relacionada:
+
+```text
+ProfilerCategory.Render / "Used Buffers Bytes"
+ProfilerCategory.Render / "Used Buffers Count"
+ProfilerCategory.Render / "Render Textures Bytes"
+ProfilerCategory.Render / "Render Textures Count"
+ProfilerCategory.Render / "Used Textures Bytes"
+ProfilerCategory.Render / "Used Textures Count"
+ProfilerCategory.Memory / "Gfx Used Memory"
+ProfilerCategory.Memory / "Gfx Reserved Memory"
+ProfilerCategory.Memory / "Texture Memory"
+ProfilerCategory.Memory / "Mesh Memory"
+```
+
+Uso:
+
+```text
+Used Buffers Bytes     -> memoria usada por buffers GPU segun Unity.
+Used Buffers Count     -> numero total de buffers GPU segun Unity.
+Render Textures Bytes  -> memoria usada por RenderTextures.
+Render Textures Count  -> numero de RenderTextures usadas en el frame.
+Used Textures Bytes    -> memoria usada por texturas si la plataforma lo expone.
+Used Textures Count    -> numero de texturas usadas si la plataforma lo expone.
+Gfx Used Memory        -> estimacion Unity/driver de memoria grafica usada.
+Gfx Reserved Memory    -> estimacion Unity/driver de memoria grafica reservada.
+Texture Memory         -> memoria de texturas cargadas.
+Mesh Memory            -> memoria de meshes cargadas.
+```
+
+Counters obligatorios a intentar para payload visible:
+
+```text
+ProfilerCategory.Render / "Draw Calls Count"
+ProfilerCategory.Render / "SetPass Calls Count"
+ProfilerCategory.Render / "Triangles Count"
+ProfilerCategory.Render / "Vertices Count"
+ProfilerCategory.Render / "Vertex Buffer Upload In Frame Bytes"
+ProfilerCategory.Render / "Index Buffer Upload In Frame Bytes"
+ProfilerCategory.Render / "Vertex Buffer Upload In Frame Count"
+ProfilerCategory.Render / "Index Buffer Upload In Frame Count"
+```
+
+Uso:
+
+```text
+Draw Calls Count                    -> draw calls del frame.
+SetPass Calls Count                  -> cambios de pass/material.
+Triangles Count                      -> triangulos procesados.
+Vertices Count                       -> vertices procesados.
+Vertex Buffer Upload In Frame Bytes  -> bytes de vertices subidos a GPU en el frame.
+Index Buffer Upload In Frame Bytes   -> bytes de indices subidos a GPU en el frame.
+Vertex Buffer Upload In Frame Count  -> numero de subidas de vertices.
+Index Buffer Upload In Frame Count   -> numero de subidas de indices.
+```
+
+Counters secundarios a intentar solo para diagnostico:
+
+```text
+ProfilerCategory.Memory / "Profiler Used Memory"
+ProfilerCategory.Memory / "Profiler Reserved Memory"
+ProfilerCategory.Memory / "Object Count"
+ProfilerCategory.Memory / "Asset Count"
+ProfilerCategory.Memory / "GameObject Count"
+ProfilerCategory.Memory / "Scene Object Count"
+ProfilerCategory.Memory / "Material Count"
+ProfilerCategory.Memory / "Mesh Count"
+ProfilerCategory.Memory / "Texture Count"
+```
+
+Regla:
+
+```text
+Los counters secundarios no participan en hard limits.
+Sirven para explicar deltas raros y solo se muestran si estan disponibles.
+```
+
+Implementacion esperada:
+
+```text
+PlanetMemoryLab intenta registrar todos los counters al inicializar.
+Cada counter guarda category, name, unit, isAvailable y lastValue.
+Los snapshots guardan valor o unavailable.
+Los hard limits del proyecto se basan primero en nuestra estimacion propia.
+Los counters Unity sirven para validar tendencias, no para reemplazar ownership.
 ```
 
 ### Ownership
@@ -230,6 +489,68 @@ Si se supera un presupuesto, el sistema debe emitir diagnostico.
 No debe aumentar el presupuesto silenciosamente.
 ```
 
+### Presupuesto inicial Quest 3
+
+El presupuesto inicial del Lab parte de la Quest 3 mas basica como restriccion practica.
+
+Dato base:
+
+```text
+RAM fisica del dispositivo objetivo: 8 GiB.
+Tipo de memoria: LPDDR5.
+Modelo de memoria: compartida/unificada.
+VRAM dedicada: no aplica.
+```
+
+Regla:
+
+```text
+No presupuestamos contra 8 GiB completos.
+El sistema operativo, Horizon OS, Unity, XR runtime, compositor, tracking, assets base y gameplay futuro tambien usan memoria.
+```
+
+Por eso el primer bloque usara limites deliberadamente conservadores para memoria propiedad del proyecto:
+
+```text
+CPU propia estimada:
+    soft: 384 MiB
+    hard: 512 MiB
+
+GPU propia estimada:
+    soft: 384 MiB
+    hard: 512 MiB
+
+CPU + GPU propia estimada:
+    soft: 768 MiB
+    hard: 1024 MiB
+
+Recurso individual:
+    soft: 128 MiB
+    hard: 256 MiB
+```
+
+Interpretacion:
+
+```text
+soft -> Warning. La prueba puede continuar, pero debe mostrar diagnostico.
+hard -> Critical. La prueba no debe seguir creciendo sin confirmacion manual.
+```
+
+Regla:
+
+```text
+Estos limites son presupuesto del Lab del primer bloque, no promesa de memoria final del juego.
+Se ajustaran con snapshots propios, Unity Profiler, Unity Memory Profiler y build real en Quest 3.
+```
+
+No se permite:
+
+```text
+Subir el limite porque un stress test falla.
+Subir el limite sin anotar la medicion que lo justifica.
+Usar el presupuesto como excusa para dejar recursos vivos tras Release.
+```
+
 ### Reutilizacion
 
 Reutilizar no significa acumular sin limite.
@@ -288,6 +609,134 @@ Motivo:
 Es configuracion de pruebas de la escena tecnica.
 No queremos assets de presupuesto antes de medir.
 Si luego hace falta un perfil reutilizable real, se definira aparte.
+```
+
+Decision de configuracion:
+
+```text
+Los presupuestos finales/oficiales no viviran en un archivo externo de texto.
+Viviran como un dato interno del proyecto, definido donde sea mas simple de editar y consultar desde codigo.
+
+El archivo externo en Quest 3 sera solo un override de prueba para profiling.
+La ejecucion siempre usa una copia runtime plana llamada PlanetMemoryBudget.
+```
+
+Motivo:
+
+```text
+Durante pruebas reales en Quest 3 no queremos generar una build nueva por cada ajuste pequeño de presupuesto.
+Si subimos o bajamos un 1%, debe bastar con editar el archivo de configuracion y pulsar un boton de recarga de prueba.
+
+Pero esa comodidad de prueba no debe convertirse en el formato final oficial del juego.
+```
+
+Separacion:
+
+```text
+PlanetMemoryBudgetDefaults:
+- dato interno del proyecto.
+- fuente oficial de valores por defecto.
+- versionable con el codigo/proyecto.
+- facil de consultar desde codigo.
+- no depende de leer archivos externos en runtime.
+
+PlanetMemoryBudgetTestOverrideFile:
+- archivo externo de texto.
+- editable fuera de Unity.
+- vive en la carpeta persistente/configurable de la app en Quest 3.
+- sirve solo para ajustar presupuestos durante profiling en dispositivo.
+- no se lee por frame.
+- no es el formato final oficial.
+
+PlanetMemoryBudget:
+- struct/clase de datos runtime plana.
+- se crea leyendo PlanetMemoryBudgetDefaults y luego aplicando el override externo si existe.
+- es la version que usan registry, diagnosticos y checks de presupuesto.
+- no depende de UnityEngine.Object.
+- no lee disco por frame.
+```
+
+Regla:
+
+```text
+El sistema oficial usa PlanetMemoryBudget ya resuelto.
+El archivo externo solo puede modificar la copia runtime durante pruebas o profiling.
+El archivo externo no reemplaza al dato oficial del proyecto.
+```
+
+Ubicacion:
+
+```text
+La ruta concreta debe resolverse con Application.persistentDataPath o un wrapper propio equivalente.
+En Quest/Android esto debe apuntar a la carpeta persistente de la aplicacion, asociada al package debug actual `com.Perodry.debug`.
+El Lab debe mostrar la ruta exacta en Inspector para poder copiar/editar el archivo desde fuera.
+```
+
+Formato inicial del archivo:
+
+```text
+JSON legible.
+Extension sugerida: planet-memory-budget.json.
+Nombre recomendado: planet-memory-budget.override.json.
+```
+
+Campos minimos:
+
+```text
+profileName
+targetPlatform
+ownedCpuSoftMiB
+ownedCpuHardMiB
+ownedGpuSoftMiB
+ownedGpuHardMiB
+ownedCombinedSoftMiB
+ownedCombinedHardMiB
+singleResourceSoftMiB
+singleResourceHardMiB
+liveGraphicsBuffersHard
+liveComputeBuffersHard
+liveRenderTexturesHard
+liveRuntimeMeshesHard
+liveRuntimeTexturesHard
+liveRuntimeMaterialsHard
+```
+
+Flujo:
+
+```text
+1. El sistema carga PlanetMemoryBudgetDefaults.
+2. Crea una copia runtime PlanetMemoryBudget.
+3. En Lab/dev diagnostics, busca el archivo externo de override.
+4. Si existe y valida, aplica sus valores sobre la copia runtime.
+5. Si no existe, usa los valores por defecto.
+6. Si existe pero es invalido, usa defaults y muestra diagnostico.
+7. El Lab puede ejecutar Reload Test Budget para releer el archivo manualmente.
+```
+
+Boton esperado:
+
+```text
+Reload Test Budget
+```
+
+Regla:
+
+```text
+Reload Test Budget es herramienta de Lab/dev diagnostics.
+No debe ejecutarse automaticamente en runtime oficial.
+No debe convertirse en polling de archivo.
+No debe tocar sistemas calientes mientras estan generando/renderizando.
+```
+
+No se permite:
+
+```text
+Leer el archivo de presupuesto cada frame.
+Modificar el archivo automaticamente porque una prueba excedio presupuesto.
+Usar el archivo externo como estado mutable de gameplay.
+Usar el archivo externo como fuente oficial final.
+Mezclar presets de stress del Lab con presupuestos oficiales del juego.
+Fallar la aplicacion si el archivo no existe.
 ```
 
 ### PlanetResourceRegistry
@@ -382,13 +831,193 @@ liveRuntimeMeshes
 liveRuntimeTextures
 liveRuntimeMaterials
 unityTotalUsedMemoryBytes
+unityTotalReservedMemoryBytes
+unityAppResidentMemoryBytes
+unityAppCommittedMemoryBytes
+unitySystemUsedMemoryBytes
+unitySystemTotalUsedMemoryBytes
 unityGcUsedBytes
+unityGcReservedBytes
 unityGcAllocFrameBytes
+unityGcAllocFrameCount
 unityGraphicsDriverBytes
+unityGfxReservedBytes
+unityRenderUsedBuffersBytes
+unityRenderUsedBuffersCount
+unityRenderTextureBytes
+unityRenderTextureCount
+unityUsedTextureBytes
+unityUsedTextureCount
+unityTextureMemoryBytes
+unityMeshMemoryBytes
+unityDrawCalls
+unitySetPassCalls
+unityTriangles
+unityVertices
+unityVertexBufferUploadFrameBytes
+unityIndexBufferUploadFrameBytes
 operationMs
 ```
 
 Los campos Unity pueden empezar vacios si aun no tenemos ProfilerRecorder.
+
+Regla:
+
+```text
+PlanetMemorySnapshot es obligatorio para pruebas del Lab.
+Debe ser barato, serializable/mostrable en Inspector y suficiente para comparar deltas.
+No debe intentar guardar todo el grafo de objetos de Unity.
+No debe ser dependencia de sistemas oficiales de gameplay, render, streaming o fisica.
+No debe capturarse automaticamente en caminos calientes.
+```
+
+### Exportacion de snapshots propios
+
+Los snapshots propios del Lab se podran exportar en un formato legible de dos partes.
+
+Objetivo:
+
+```text
+Poder abrir un archivo y saber en pocos segundos si una prueba esta correcta, en aviso o en peligro.
+Poder bajar despues al detalle completo sin repetir la prueba.
+```
+
+Formato:
+
+```text
+Parte 1 -> cabecera resumen.
+Parte 2 -> datos completos.
+```
+
+La cabecera debe ser corta y facil de leer.
+
+Campos iniciales de cabecera:
+
+```text
+status
+riskLevel
+operationName
+budgetResult
+releaseResult
+gcResult
+topIssue
+recommendedAction
+```
+
+Significado:
+
+```text
+status            -> OK, Warning o Critical.
+riskLevel         -> Low, Medium, High o Unknown.
+operationName     -> prueba, stress o accion que genero el snapshot.
+budgetResult      -> dentro de presupuesto, cerca del limite o excedido.
+releaseResult     -> limpio, quedan recursos vivos o no aplica.
+gcResult          -> sin GC relevante, GC detectado o unavailable.
+topIssue          -> problema principal en una frase.
+recommendedAction -> siguiente accion recomendada.
+```
+
+Regla:
+
+```text
+La cabecera debe poder leerse sin entender todos los contadores.
+Si la cabecera dice OK, la prueba debe haber quedado dentro de presupuesto y sin recursos propios vivos inesperados.
+Si la cabecera dice Warning o Critical, debe explicar por que.
+```
+
+La segunda parte guarda todos los datos disponibles:
+
+```text
+snapshot metadata.
+presupuestos usados.
+estimaciones propias.
+recursos vivos por owner.
+recursos vivos por tipo.
+ProfilerRecorder disponibles.
+ProfilerRecorder unavailable.
+deltas before/after si aplica.
+diagnosticos generados.
+ruta del snapshot oficial .snap si existe.
+version de Unity si esta disponible.
+plataforma/build si esta disponible.
+```
+
+Formato de archivo inicial:
+
+```text
+JSON legible.
+Indentado.
+Una exportacion por operacion o comparacion.
+Extension sugerida: .planet-memory.json.
+```
+
+Regla:
+
+```text
+La exportacion propia vive en Lab/Editor/dev diagnostics.
+No forma parte del runtime oficial.
+No se escribe por frame.
+No debe ejecutarse automaticamente en builds finales salvo modo diagnostico explicito.
+```
+
+Estructura conceptual:
+
+```json
+{
+  "summary": {
+    "status": "Warning",
+    "riskLevel": "Medium",
+    "operationName": "Stress Medium",
+    "budgetResult": "ownedCombinedEstimatedBytes near soft limit",
+    "releaseResult": "clean",
+    "gcResult": "GC Allocated In Frame detected",
+    "topIssue": "Managed allocations detected during stress.",
+    "recommendedAction": "Review hot path allocations before increasing budget."
+  },
+  "details": {
+    "snapshot": {},
+    "budgets": {},
+    "ownedEstimates": {},
+    "resourcesByOwner": [],
+    "resourcesByType": [],
+    "profilerCounters": [],
+    "unavailableCounters": [],
+    "diagnostics": []
+  }
+}
+```
+
+No se debe usar este JSON como formato de savegame ni como contrato de runtime. Es una herramienta de inspeccion del Lab.
+
+### PlanetUnityMemoryProfilerCapture
+
+Helper del Lab para solicitar capturas oficiales de Unity Memory Profiler.
+
+Responsabilidad:
+
+```text
+Capturar snapshots oficiales .snap cuando el paquete este disponible.
+Guardar o mostrar la ruta del ultimo snapshot.
+Etiquetar la captura con operacion, modulo y momento.
+Emitir diagnostico claro si el paquete o la plataforma no permite capturar.
+No reemplazar PlanetMemorySnapshot.
+```
+
+Regla:
+
+```text
+Unity Memory Profiler forma parte de las herramientas obligatorias desde el primer bloque.
+Las capturas oficiales se usan para analisis profundo, no para medir cada frame.
+Este helper vive en Lab/Editor/dev diagnostics.
+El runtime oficial no debe depender de este helper.
+```
+
+Rutas:
+
+```text
+Usar la ubicacion por defecto de Unity Memory Profiler cuando sea posible.
+Si se define ruta propia, debe quedar documentada y visible en el Lab.
+```
 
 ### PlanetMemoryDiagnostics
 
@@ -471,11 +1100,29 @@ Flujo de registro:
 Flujo de snapshot:
 
 ```text
-1. Capture Before.
+1. Capture Own Before.
 2. Ejecutar operacion.
-3. Capture After.
+3. Capture Own After.
 4. Calcular delta.
 5. Generar diagnostico.
+```
+
+Flujo de snapshot oficial:
+
+```text
+1. Capture Unity Memory Snapshot Before si la prueba lo requiere.
+2. Ejecutar operacion o stress.
+3. Capture Unity Memory Snapshot After.
+4. Release All.
+5. Capture Unity Memory Snapshot After Release si se investiga fuga.
+6. Comparar en Unity Memory Profiler.
+```
+
+Regla:
+
+```text
+Los snapshots oficiales son mas pesados.
+Se usan desde el principio, pero bajo boton o en hitos claros, no en bucles por frame.
 ```
 
 Flujo de Release All:
@@ -618,6 +1265,12 @@ Capture Snapshot
 Capture Before
 Capture After
 Compare Last Snapshots
+Capture Unity Memory Snapshot
+Capture Unity Memory Before
+Capture Unity Memory After
+Export Last Own Snapshot
+Export Last Own Snapshot Comparison
+Reload Test Budget
 Run Allocation Smoke Test
 Run Registry Smoke Test
 Run Release Smoke Test
@@ -655,6 +1308,9 @@ Pruebas minimas:
 Abrir PlanetImplementationLab.
 Validate Memory Setup no da errores.
 Capture Snapshot genera datos visibles.
+Capture Unity Memory Snapshot genera un .snap o un diagnostico claro si no esta disponible.
+Export Last Own Snapshot genera un JSON con cabecera resumen y detalle completo.
+Reload Test Budget relee el archivo externo de presupuesto y muestra diagnostico.
 Registrar recurso mock aumenta contador.
 Liberar recurso mock baja contador.
 Release All deja contadores propios a cero.
@@ -698,6 +1354,8 @@ TransferOwnership cambia propietario.
 PlanetMemorySnapshot calcula deltas.
 PlanetMemoryDiagnostics detecta fuga propia simulada.
 PlanetMemoryDiagnostics detecta presupuesto superado.
+PlanetUnityMemoryProfilerCapture informa unavailable sin romper si el paquete/plataforma no permite capturar.
+La exportacion propia incluye summary legible y details completos.
 ```
 
 Tests PlayMode esperados:
@@ -709,6 +1367,7 @@ Release All no lanza excepcion.
 Release All dos veces no lanza excepcion.
 Stress Low termina sin recursos vivos.
 Un modulo registrado responde a Release All.
+Capture Unity Memory Snapshot queda disponible como prueba manual obligatoria.
 ```
 
 Tests condicionados:
@@ -716,6 +1375,7 @@ Tests condicionados:
 ```text
 Si ProfilerRecorder no esta disponible, no falla la logica propia.
 Si un contador Unity no existe en una plataforma, queda como unavailable.
+Si un counter cambia de nombre entre versiones de Unity, el Lab debe mostrar el nombre fallido.
 ```
 
 ## Metricas
@@ -738,9 +1398,32 @@ lastOperationMs
 lastReleaseMs
 lastStressMs
 unityTotalUsedMemoryBytes si disponible
+unityTotalReservedMemoryBytes si disponible
+unityAppResidentMemoryBytes si disponible
+unityAppCommittedMemoryBytes si disponible
+unitySystemUsedMemoryBytes si disponible
+unitySystemTotalUsedMemoryBytes si disponible
 unityGraphicsDriverBytes si disponible
+unityGfxReservedBytes si disponible
+unityRenderUsedBuffersBytes si disponible
+unityRenderUsedBuffersCount si disponible
+unityRenderTextureBytes si disponible
+unityRenderTextureCount si disponible
+unityUsedTextureBytes si disponible
+unityUsedTextureCount si disponible
 unityGcUsedBytes si disponible
+unityGcReservedBytes si disponible
 unityGcAllocFrameBytes si disponible
+unityGcAllocFrameCount si disponible
+unityDrawCalls si disponible
+unitySetPassCalls si disponible
+unityTriangles si disponible
+unityVertices si disponible
+unityVertexBufferUploadFrameBytes si disponible
+unityIndexBufferUploadFrameBytes si disponible
+lastUnityMemorySnapshotPath si existe
+lastUnityMemorySnapshotMs si existe
+lastOwnSnapshotExportPath si existe
 lastDiagnostic
 ```
 
@@ -776,6 +1459,7 @@ Registro obligatorio de recursos grandes.
 Ownership explicito.
 Release All probado.
 Snapshots before/after.
+Snapshots oficiales Unity Memory Profiler en hitos y sospechas de fuga.
 Diagnosticos legibles.
 Presupuestos editables.
 Pools con capacidad maxima.
@@ -788,17 +1472,19 @@ Profiler como validacion externa.
 Decisiones abiertas:
 
 ```text
-Valores iniciales exactos de presupuesto RAM/GPU.
-Contadores exactos de ProfilerRecorder que usaremos.
-Formato final de exportacion de snapshots si hace falta.
-Si los presupuestos finales seran assets o datos runtime.
+Ajuste final de presupuestos RAM/GPU despues de profiling en Quest 3 real.
+Disponibilidad real de cada ProfilerRecorder en la version exacta de Unity y en Quest 3.
 ```
 
 Decision inicial no bloqueante:
 
 ```text
 Medir primero con estimacion propia.
-Usar Unity Profiler como validacion externa.
+Usar Unity Profiler y Unity Memory Profiler como validacion externa desde el primer bloque.
+Capturar snapshots oficiales .snap en hitos, stress importantes y sospechas de fuga.
+Usar el set inicial cerrado de ProfilerRecorder definido en este documento.
+Marcar counters no disponibles como unavailable.
+Exportar snapshots propios como JSON legible con cabecera resumen y detalle completo.
 Mantener presupuestos editables en Inspector del Lab.
 No bloquear el primer deadline por no tener VRAM real perfecta.
 Registrar todos los recursos grandes manualmente.
@@ -815,8 +1501,9 @@ Todo recurso grande se registra.
 Todo recurso grande tiene liberacion explicita.
 Release All vuelve los contadores propios a cero.
 Los snapshots comparan before/after.
+Los snapshots oficiales de Unity Memory Profiler pueden capturarse desde el Lab o dan diagnostico claro.
 Los diagnosticos traducen numeros a accion.
 Los stress tests miden tiempo, memoria y recursos vivos.
 ```
 
-No se pasa fuerte a `05_Forma_Planeta_GPU`, `06_Proxy_Planeta_Lejano` o `07_Payload_Triangulos` sin esta base integrada en `PlanetImplementationLab`.
+No se pasa fuerte a `05_Quest3_Player_Setup`, `06_Forma_Planeta_GPU`, `07_Proxy_Planeta_Lejano` o `08_Payload_Triangulos` sin esta base integrada en `PlanetImplementationLab`.

@@ -74,9 +74,10 @@ Este documento prepara:
 ```text
 03_Coordenadas_Y_Receta
 04_Gestion_RAM_VRAM
-05_Forma_Planeta_GPU
-06_Proxy_Planeta_Lejano
-07_Payload_Triangulos
+05_Quest3_Player_Setup
+06_Forma_Planeta_GPU
+07_Proxy_Planeta_Lejano
+08_Payload_Triangulos
 ```
 
 ## Datos de entrada
@@ -466,7 +467,7 @@ Release correcto.
 Regla:
 
 ```text
-La segunda prueba no sustituye al documento 05_Forma_Planeta_GPU.
+La segunda prueba no sustituye al documento 06_Forma_Planeta_GPU.
 Solo valida la base volumetrica minima.
 La forma procedural real del planeta se define e implementa despues.
 ```
@@ -991,20 +992,17 @@ Exportar snapshots a archivo.
 
 ## Validacion de plataforma
 
-El primer deadline de este documento se valida en PC/Editor.
+El modulo de Compute Shader puede cerrarse primero en PC/Editor para validar flujo basico, recursos, botones, release y stress.
+
+Pero el primer deadline global del proyecto no se cierra hasta tener preparado el setup de player/Quest Link definido en:
 
 ```text
-Quest 3 no es obligatoria para cerrar este primer bloque.
+Docs/05_Quest3_Player_Setup.md
 ```
 
-Motivo:
+Ese setup permite ejecutar la bateria completa de pruebas del deadline desde Inspector o UI VR.
 
-```text
-Antes de entrar en dispositivo necesitamos cerrar flujo basico, recursos, botones, release y stress.
-La prueba en Quest 3 entra en el segundo bloque, cuando exista player y escenario real de uso.
-```
-
-Aunque Quest 3 no cierre este deadline, las decisiones siguen considerando Quest 3 desde el principio:
+Las decisiones de este documento siguen considerando Quest 3 desde el principio:
 
 ```text
 Buffers limitados.
@@ -1076,4 +1074,4 @@ El modulo tiene stress tests.
 El modulo deja diagnostico legible.
 ```
 
-No se pasa a `05_Forma_Planeta_GPU` si antes no sabemos crear, usar, medir y liberar recursos GPU con seguridad suficiente.
+No se pasa a `05_Quest3_Player_Setup` ni a `06_Forma_Planeta_GPU` si antes no sabemos crear, usar, medir y liberar recursos GPU con seguridad suficiente.

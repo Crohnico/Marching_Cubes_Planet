@@ -98,13 +98,14 @@ Documentos que dependen de este:
 
 ```text
 04_Gestion_RAM_VRAM
-05_Forma_Planeta_GPU
-06_Proxy_Planeta_Lejano
-07_Payload_Triangulos
-08_Estados_Planeta
-09_Chunks_Locales
-14_Terraformado
-15_Persistencia
+05_Quest3_Player_Setup
+06_Forma_Planeta_GPU
+07_Proxy_Planeta_Lejano
+08_Payload_Triangulos
+09_Estados_Planeta
+10_Chunks_Locales
+15_Terraformado
+16_Persistencia
 ```
 
 ## Datos de entrada
@@ -957,7 +958,7 @@ Texture runtime.
 La receta se enviara a GPU en documentos posteriores, especialmente en:
 
 ```text
-05_Forma_Planeta_GPU
+06_Forma_Planeta_GPU
 ```
 
 ## Liberacion de recursos
@@ -1169,12 +1170,12 @@ FloatingOriginSystem / Sistema Estelar:
 - como se oculta o suaviza el recenter en VR.
 - como se sincroniza floating origin con multijugador.
 
-05_Forma_Planeta_GPU / Generacion de planetas:
+06_Forma_Planeta_GPU / Generacion de planetas:
 - definicion final de PlanetPreset.
 - familias de planeta.
 - como seed + preset + parametros producen PlanetRecipe.
 
-15_Persistencia:
+16_Persistencia:
 - formato final de persistencia de PlanetRecipe.
 - si PlanetRecipe vive en archivo propio, savegame o generador procedural.
 ```
@@ -1209,4 +1210,4 @@ Las consultas espaciales basicas son testeables y sin allocations.
 El Lab solo prueba el sistema real.
 ```
 
-No se pasa a `05_Forma_Planeta_GPU` si antes no esta clara la conversion entre grid y mundo.
+No se pasa a `05_Quest3_Player_Setup` ni a `06_Forma_Planeta_GPU` si antes no esta clara la conversion entre grid y mundo.

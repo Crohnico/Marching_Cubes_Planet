@@ -32,6 +32,40 @@ Luego se implementa.
 
 Si durante la implementacion aparece una decision nueva, se vuelve al documento y se deja escrita.
 
+## Documentos como instrucciones para el agente
+
+Los documentos funcionales se escriben como instrucciones de implementacion para el agente que vaya a bajar el sistema a codigo.
+
+No son notas generales ni literatura de diseño. Deben permitir implementar sin adivinar intenciones, sin avanzar de mas y sin cerrar decisiones abiertas por accidente.
+
+Regla:
+
+```text
+Escribir cada paso como si Codex tuviera que implementarlo despues leyendo solo la documentacion.
+```
+
+Esto implica:
+
+```text
+El alcance debe decir claramente que entra.
+El fuera de alcance debe decir claramente que no se toca todavia.
+Los componentes previstos deben separar codigo real, Lab y Editor.
+Los flujos deben marcar el orden esperado de uso.
+Las reglas de RAM/VRAM deben dejar claro que vive en runtime y que vive solo en Lab/debug.
+Los TBD deben quedar escritos y no resolverse implicitamente en codigo.
+```
+
+Si una parte no esta escrita, no se debe asumir como cerrada. Se documenta como `TBD`, se propone una decision no bloqueante o se pide confirmacion antes de implementarla.
+
+Objetivo practico:
+
+```text
+Evitar que el agente implemente una arquitectura mas grande de la necesaria.
+Evitar que mezcle sistemas reales con herramientas de Lab.
+Evitar que convierta pruebas, snapshots, diagnosticos o botones en dependencias del runtime oficial.
+Evitar que avance al siguiente paso sin haber cerrado medicion, liberacion y pruebas del paso actual.
+```
+
 ## Formato de cada documento funcional
 
 Cada documento funcional debe seguir esta estructura base.
@@ -143,17 +177,19 @@ El orden inicial sera:
 02_ComputeShaderLab
 03_Coordenadas_Y_Receta
 04_Gestion_RAM_VRAM
-05_Forma_Planeta_GPU
-06_Proxy_Planeta_Lejano
-07_Payload_Triangulos
-08_Estados_Planeta
-09_Chunks_Locales
-10_Streaming_Prioridades
-11_Cuevas
-12_Minerales_Sustancias
-13_Colisiones_Locales
-14_Terraformado
-15_Persistencia
+05_Quest3_Player_Setup
+Deadline_01_05_Base_Validation
+06_Forma_Planeta_GPU
+07_Proxy_Planeta_Lejano
+08_Payload_Triangulos
+09_Estados_Planeta
+10_Chunks_Locales
+11_Streaming_Prioridades
+12_Cuevas
+13_Minerales_Sustancias
+14_Colisiones_Locales
+15_Terraformado
+16_Persistencia
 ```
 
 El orden puede cambiar si aparece un bloqueo tecnico, pero no se debe saltar a codigo de un sistema importante sin su documento funcional.
@@ -260,7 +296,60 @@ Que pasa si se supera presupuesto?
 Como se prueba que Release funciona?
 ```
 
-## 05 - Forma planeta GPU
+## 05 - Quest3 Player Setup
+
+Documento para preparar el player VR basico, Quest Link, UI de pruebas con rayo y build Android/Quest antes de ejecutar el deadline completo.
+
+Debe concretar:
+
+```text
+Configuracion Android/XR.
+Generacion de APK/Player.
+Play en Editor con Quest Link.
+Camara/player VR basico.
+Movimiento normal de camara/player en el Lab.
+UI de pruebas clicable con rayo.
+Botones sencillos para lanzar pruebas de los Labs.
+```
+
+Preguntas a resolver:
+
+```text
+Que paquete/componentes XR usamos para el rig?
+Como movemos la camara/player en el Lab?
+Como se implementa el rayo de interaccion?
+Como agrupamos los botones de pruebas sin duplicar logica de los Labs?
+```
+
+Regla:
+
+```text
+El documento 05 prepara la forma de probar.
+El deadline ejecuta todas las pruebas y queda bloqueado hasta que pasen.
+```
+
+## Deadline 01-05 - Validacion de base
+
+Documento para cerrar el gate entre los documentos `01` a `05` y el inicio de `06_Forma_Planeta_GPU`.
+
+Debe concretar:
+
+```text
+Lista completa de checks.
+Bloqueantes automaticos.
+Evidencias minimas.
+Definition of Done.
+Resultado de ejecucion del deadline.
+```
+
+Regla:
+
+```text
+Este documento no define un sistema nuevo del motor.
+Define la prueba que decide si se puede empezar el documento 06.
+```
+
+## 06 - Forma planeta GPU
 
 Documento para bajar a codigo la funcion de forma exterior.
 
@@ -283,7 +372,7 @@ Como se pasa Voronoi esferico a GPU?
 Como validamos que la forma coincide con la teoria?
 ```
 
-## 06 - Proxy planeta lejano
+## 07 - Proxy planeta lejano
 
 Documento para render lejano barato.
 
@@ -306,7 +395,7 @@ Como evitamos problemas de Z-buffer?
 Como cacheamos la representacion?
 ```
 
-## 07 - Payload triangulos
+## 08 - Payload triangulos
 
 Documento para presupuesto de geometria.
 

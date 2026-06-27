@@ -119,9 +119,10 @@ Documentos que dependen de este:
 02_ComputeShaderLab
 03_Coordenadas_Y_Receta
 04_Gestion_RAM_VRAM
-05_Forma_Planeta_GPU
-06_Proxy_Planeta_Lejano
-07_Payload_Triangulos
+05_Quest3_Player_Setup
+06_Forma_Planeta_GPU
+07_Proxy_Planeta_Lejano
+08_Payload_Triangulos
 ```
 
 ## Datos de entrada

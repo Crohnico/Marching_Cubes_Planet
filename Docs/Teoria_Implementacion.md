@@ -701,6 +701,61 @@ Con muchos triangulos mejora sin romper memoria ni FPS.
 El sistema degrada en vez de explotar.
 ```
 
+## Paso 4.5 - Setup de player Quest 3
+
+Objetivo:
+
+```text
+Preparar el proyecto para probar PlanetImplementationLab en VR con Quest 3, Quest Link, camara estereo, movimiento basico y UI clicable con rayo.
+```
+
+Documento funcional:
+
+```text
+Docs/05_Quest3_Player_Setup.md
+```
+
+Que se implementa:
+
+```text
+Configuracion XR para Quest 3.
+Play en Editor con Quest Link.
+Configuracion para APK/Player Android.
+Camara/player VR basico.
+Movimiento normal de camara/player en el Lab.
+Interaccion por rayo.
+UI de pruebas para lanzar botones de Labs.
+```
+
+Pruebas desde Lab:
+
+```text
+Validate Quest Player Setup.
+Show XR Status.
+Show Build Target Status.
+Show VR UI References.
+Focus VR Control Panel.
+Reset Player Rig Pose.
+```
+
+Criterio de cierre:
+
+```text
+PlanetImplementationLab se puede usar en Play Mode con Quest Link.
+La camara VR estereo funciona.
+La camara/player se puede mover de forma basica.
+Hay UI de pruebas clicable con rayo.
+Los comandos principales de Lab se pueden lanzar desde esa UI.
+El proyecto queda preparado para generar APK/Player de Quest 3.
+```
+
+Regla:
+
+```text
+Este paso prepara como se prueban los sistemas.
+La validacion completa de memoria, compute, snapshots, release y stress se hace en el deadline ejecutando todas las pruebas definidas.
+```
+
 ## Paso 5 - Estados lejanos del planeta
 
 Objetivo:
@@ -1103,56 +1158,28 @@ La modificacion persiste.
 El planeta base sigue siendo procedural.
 ```
 
-## Deadline del primer bloque
+## Deadline 01-05 - Base para empezar 06
 
-El primer bloque real acaba en el Paso 4.
-
-Este deadline se valida dentro de la misma escena tecnica acumulativa:
+El gate de validacion entre los documentos `01` a `05` y el inicio de `06_Forma_Planeta_GPU` vive en:
 
 ```text
-PlanetImplementationLab
+Docs/Deadline_01_05_Base_Validation.md
 ```
 
-No se cierra como cuatro demos independientes. Se cierra cuando la escena permite ejecutar el flujo completo:
+Ese documento define:
 
 ```text
-Inicializar laboratorio.
-Configurar receta y coordenadas.
-Generar forma exterior en GPU.
-Ver el planeta lejano.
-Cambiar payload de triangulos.
-Capturar metricas.
-Liberar recursos.
-Repetir el ciclo sin fugas evidentes.
+Lista completa de checks.
+Bloqueantes automaticos.
+Evidencias minimas.
+Definition of Done.
+Resultado de ejecucion del deadline.
 ```
 
-Deadline de calendario:
+Regla:
 
 ```text
-TBD
-```
-
-Definition of Done:
-
-```text
-Compute Shader minimo funcionando.
-Coordenadas y escala cerradas.
-Forma exterior evaluada en GPU.
-Planeta lejano visible.
-Payload de triangulos probado.
-Botones de Inspector para machacar pruebas.
-Tests basicos de datos y vida de recursos.
-Metricas iniciales de RAM/VRAM/CPU/GPU.
-```
-
-No se pasa a chunks locales si esto no esta estable.
-
-Validacion de plataforma:
-
-```text
-El primer deadline se valida en PC/Editor.
-Quest 3 no es obligatoria en este primer deadline.
-La validacion en Quest 3 entra en el segundo bloque, cuando haya player y prueba real en dispositivo.
+No se empieza `Docs/06_Forma_Planeta_GPU.md` si `Docs/Deadline_01_05_Base_Validation.md` no esta en verde.
 ```
 
 ## Regla final
