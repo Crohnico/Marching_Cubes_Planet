@@ -8,38 +8,79 @@ namespace MarchingCubesPlanet.Preview
 {
     public static class PlanetSpherePayloadMeshBuilder
     {
-        private static readonly Vector3[] FaceNormals =
+        public const int MinGeodesicFrequency = 1;
+        public const int MaxGeodesicFrequency = 1000;
+        public const int BaseIcosahedronTriangleCount = 20;
+
+        private static readonly int[] IcosahedronTriangleVertexIndices =
         {
-            Vector3.right,
-            Vector3.left,
-            Vector3.up,
-            Vector3.down,
-            Vector3.forward,
-            Vector3.back
+            0, 11, 5,
+            0, 5, 1,
+            0, 1, 7,
+            0, 7, 10,
+            0, 10, 11,
+            1, 5, 9,
+            5, 11, 4,
+            11, 10, 2,
+            10, 7, 6,
+            7, 1, 8,
+            3, 9, 4,
+            3, 4, 2,
+            3, 2, 6,
+            3, 6, 8,
+            3, 8, 9,
+            4, 9, 5,
+            2, 4, 11,
+            6, 2, 10,
+            8, 6, 7,
+            9, 8, 1
         };
 
-        public static int CalculateTriangleCount(int faceResolution)
+        public static int CalculateGeodesicFrequencyForPayload(int requestedTrianglePayload)
         {
-            ValidateFaceResolution(faceResolution);
-            return checked(12 * faceResolution * faceResolution);
+            int requested = Mathf.Max(BaseIcosahedronTriangleCount, requestedTrianglePayload);
+            int frequency = Mathf.RoundToInt(Mathf.Sqrt(requested / (float)BaseIcosahedronTriangleCount));
+            return Mathf.Clamp(frequency, MinGeodesicFrequency, MaxGeodesicFrequency);
         }
 
-        public static int CalculateIndexCount(int faceResolution)
+        public static int CalculateTriangleCount(int geodesicFrequency)
         {
-            return checked(CalculateTriangleCount(faceResolution) * 3);
+            ValidateGeodesicFrequency(geodesicFrequency);
+            return checked(BaseIcosahedronTriangleCount * geodesicFrequency * geodesicFrequency);
         }
 
-        public static int CalculateVertexCount(int faceResolution)
+        public static int CalculateIndexCount(int geodesicFrequency)
         {
-            ValidateFaceResolution(faceResolution);
-            int sideVertexCount = checked(faceResolution + 1);
-            return checked(6 * sideVertexCount * sideVertexCount);
+            return checked(CalculateTriangleCount(geodesicFrequency) * 3);
+        }
+
+        public static int CalculateVertexCount(int geodesicFrequency)
+        {
+            ValidateGeodesicFrequency(geodesicFrequency);
+            int edgeVertexCount = checked(geodesicFrequency + 1);
+            int nextEdgeVertexCount = checked(geodesicFrequency + 2);
+            return checked(10 * edgeVertexCount * nextEdgeVertexCount);
+        }
+
+        public static float CalculateSurfaceRadius(in PlanetRecipe recipe)
+        {
+            float surfaceRadius = recipe.WorldRadius - recipe.IsoLevel;
+
+            if (surfaceRadius <= 0f)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(recipe),
+                    surfaceRadius,
+                    "WorldRadius - IsoLevel must be greater than zero.");
+            }
+
+            return surfaceRadius;
         }
 
         public static PlanetSpherePayloadBuildResult Build(
             Mesh mesh,
             in PlanetRecipe recipe,
-            int faceResolution,
+            int geodesicFrequency,
             bool generateVertexColors)
         {
             if (mesh == null)
@@ -52,23 +93,29 @@ namespace MarchingCubesPlanet.Preview
                 throw new ArgumentException(recipeMessage, nameof(recipe));
             }
 
-            int vertexCount = CalculateVertexCount(faceResolution);
-            int triangleCount = CalculateTriangleCount(faceResolution);
+            int vertexCount = CalculateVertexCount(geodesicFrequency);
+            int triangleCount = CalculateTriangleCount(geodesicFrequency);
             int indexCount = checked(triangleCount * 3);
-            float radius = recipe.WorldRadius;
+            float radius = CalculateSurfaceRadius(in recipe);
 
             List<Vector3> vertices = new List<Vector3>(vertexCount);
             List<Vector3> normals = new List<Vector3>(vertexCount);
             List<Color32> colors = generateVertexColors ? new List<Color32>(vertexCount) : null;
             List<int> indices = new List<int>(indexCount);
 
-            for (int faceIndex = 0; faceIndex < FaceNormals.Length; faceIndex++)
+            Vector3[] baseVertices = CreateIcosahedronVertices();
+
+            for (int faceIndex = 0; faceIndex < IcosahedronTriangleVertexIndices.Length; faceIndex += 3)
             {
-                BuildFace(FaceNormals[faceIndex], faceResolution, radius, generateVertexColors, vertices, normals, colors, indices);
+                Vector3 a = baseVertices[IcosahedronTriangleVertexIndices[faceIndex]];
+                Vector3 b = baseVertices[IcosahedronTriangleVertexIndices[faceIndex + 1]];
+                Vector3 c = baseVertices[IcosahedronTriangleVertexIndices[faceIndex + 2]];
+
+                BuildFace(a, b, c, geodesicFrequency, radius, generateVertexColors, vertices, normals, colors, indices);
             }
 
             mesh.Clear();
-            mesh.name = "PlanetRecipePayloadPreview_Mesh_Runtime";
+            mesh.name = "PlanetRecipePayloadPreview_Icosphere_Runtime";
             mesh.indexFormat = vertexCount > ushort.MaxValue ? IndexFormat.UInt32 : IndexFormat.UInt16;
             mesh.SetVertices(vertices);
             mesh.SetNormals(normals);
@@ -84,8 +131,10 @@ namespace MarchingCubesPlanet.Preview
         }
 
         private static void BuildFace(
-            Vector3 faceNormal,
-            int faceResolution,
+            Vector3 a,
+            Vector3 b,
+            Vector3 c,
+            int geodesicFrequency,
             float radius,
             bool generateVertexColors,
             List<Vector3> vertices,
@@ -93,22 +142,16 @@ namespace MarchingCubesPlanet.Preview
             List<Color32> colors,
             List<int> indices)
         {
-            Vector3 axisA = new Vector3(faceNormal.y, faceNormal.z, faceNormal.x);
-            Vector3 axisB = Vector3.Cross(faceNormal, axisA);
-            int rowVertexCount = faceResolution + 1;
             int vertexStart = vertices.Count;
 
-            for (int y = 0; y <= faceResolution; y++)
+            for (int row = 0; row <= geodesicFrequency; row++)
             {
-                float percentY = y / (float)faceResolution;
-                float coordinateY = percentY * 2f - 1f;
-
-                for (int x = 0; x <= faceResolution; x++)
+                for (int column = 0; column <= geodesicFrequency - row; column++)
                 {
-                    float percentX = x / (float)faceResolution;
-                    float coordinateX = percentX * 2f - 1f;
-                    Vector3 pointOnCube = faceNormal + axisA * coordinateX + axisB * coordinateY;
-                    Vector3 direction = pointOnCube.normalized;
+                    float weightB = row / (float)geodesicFrequency;
+                    float weightC = column / (float)geodesicFrequency;
+                    float weightA = 1f - weightB - weightC;
+                    Vector3 direction = (a * weightA + b * weightB + c * weightC).normalized;
 
                     vertices.Add(direction * radius);
                     normals.Add(direction);
@@ -120,24 +163,71 @@ namespace MarchingCubesPlanet.Preview
                 }
             }
 
-            for (int y = 0; y < faceResolution; y++)
+            for (int row = 0; row < geodesicFrequency; row++)
             {
-                for (int x = 0; x < faceResolution; x++)
+                int rowLength = geodesicFrequency - row + 1;
+
+                for (int column = 0; column < rowLength - 1; column++)
                 {
-                    int i0 = vertexStart + x + y * rowVertexCount;
-                    int i1 = i0 + 1;
-                    int i2 = i0 + rowVertexCount;
-                    int i3 = i2 + 1;
+                    int i0 = vertexStart + TriangularIndex(row, column, geodesicFrequency);
+                    int i1 = vertexStart + TriangularIndex(row + 1, column, geodesicFrequency);
+                    int i2 = vertexStart + TriangularIndex(row, column + 1, geodesicFrequency);
 
-                    indices.Add(i0);
-                    indices.Add(i1);
-                    indices.Add(i2);
+                    AddOutwardTriangle(vertices, indices, i0, i1, i2);
 
-                    indices.Add(i1);
-                    indices.Add(i3);
-                    indices.Add(i2);
+                    if (column < rowLength - 2)
+                    {
+                        int i3 = vertexStart + TriangularIndex(row + 1, column + 1, geodesicFrequency);
+                        AddOutwardTriangle(vertices, indices, i2, i1, i3);
+                    }
                 }
             }
+        }
+
+        private static int TriangularIndex(int row, int column, int geodesicFrequency)
+        {
+            return row * (geodesicFrequency + 1) - row * (row - 1) / 2 + column;
+        }
+
+        private static void AddOutwardTriangle(List<Vector3> vertices, List<int> indices, int i0, int i1, int i2)
+        {
+            Vector3 a = vertices[i0];
+            Vector3 b = vertices[i1];
+            Vector3 c = vertices[i2];
+            Vector3 normal = Vector3.Cross(b - a, c - a);
+
+            if (Vector3.Dot(normal, a) >= 0f)
+            {
+                indices.Add(i0);
+                indices.Add(i1);
+                indices.Add(i2);
+                return;
+            }
+
+            indices.Add(i0);
+            indices.Add(i2);
+            indices.Add(i1);
+        }
+
+        private static Vector3[] CreateIcosahedronVertices()
+        {
+            float t = (1f + Mathf.Sqrt(5f)) * 0.5f;
+
+            return new[]
+            {
+                new Vector3(-1f, t, 0f).normalized,
+                new Vector3(1f, t, 0f).normalized,
+                new Vector3(-1f, -t, 0f).normalized,
+                new Vector3(1f, -t, 0f).normalized,
+                new Vector3(0f, -1f, t).normalized,
+                new Vector3(0f, 1f, t).normalized,
+                new Vector3(0f, -1f, -t).normalized,
+                new Vector3(0f, 1f, -t).normalized,
+                new Vector3(t, 0f, -1f).normalized,
+                new Vector3(t, 0f, 1f).normalized,
+                new Vector3(-t, 0f, -1f).normalized,
+                new Vector3(-t, 0f, 1f).normalized
+            };
         }
 
         private static Color32 EvaluateDebugColor(Vector3 direction)
@@ -163,11 +253,14 @@ namespace MarchingCubesPlanet.Preview
             return color;
         }
 
-        private static void ValidateFaceResolution(int faceResolution)
+        private static void ValidateGeodesicFrequency(int geodesicFrequency)
         {
-            if (faceResolution <= 0)
+            if (geodesicFrequency < MinGeodesicFrequency || geodesicFrequency > MaxGeodesicFrequency)
             {
-                throw new ArgumentOutOfRangeException(nameof(faceResolution), faceResolution, "faceResolution must be greater than zero.");
+                throw new ArgumentOutOfRangeException(
+                    nameof(geodesicFrequency),
+                    geodesicFrequency,
+                    "geodesicFrequency must be between " + MinGeodesicFrequency + " and " + MaxGeodesicFrequency + ".");
             }
         }
     }

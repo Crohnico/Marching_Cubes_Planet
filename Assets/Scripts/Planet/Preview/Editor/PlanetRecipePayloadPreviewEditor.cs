@@ -16,8 +16,11 @@ namespace MarchingCubesPlanet.Preview.Editor
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Derived Payload", EditorStyles.boldLabel);
             EditorGUILayout.LabelField("WorldRadius", preview.DerivedWorldRadius.ToString("0.###"));
+            EditorGUILayout.LabelField("IsoLevel", preview.IsoLevel.ToString("0.###"));
+            EditorGUILayout.LabelField("surface radius", preview.DerivedSurfaceRadius.ToString("0.###"));
             EditorGUILayout.LabelField("PlanetWorldCenter", preview.TransformPlanetWorldCenter.ToString("0.###"));
-            EditorGUILayout.LabelField("faceResolution", preview.FaceResolution.ToString());
+            EditorGUILayout.LabelField("requested triangles", preview.RequestedTrianglePayload.ToString());
+            EditorGUILayout.LabelField("icosphere frequency", preview.DerivedGeodesicFrequency.ToString());
             EditorGUILayout.LabelField("triangles", preview.DerivedTriangleCount.ToString());
             EditorGUILayout.LabelField("vertices", preview.DerivedVertexCount.ToString());
             EditorGUILayout.LabelField("indices", preview.DerivedIndexCount.ToString());
@@ -49,6 +52,19 @@ namespace MarchingCubesPlanet.Preview.Editor
                 if (GUILayout.Button("Apply Payload 1M"))
                 {
                     Apply(preview, p => p.ApplyPayload1M());
+                }
+            }
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("Apply Payload 2M"))
+                {
+                    Apply(preview, p => p.ApplyPayload2M());
+                }
+
+                if (GUILayout.Button("Apply Payload 5M"))
+                {
+                    Apply(preview, p => p.ApplyPayload5M());
                 }
             }
 

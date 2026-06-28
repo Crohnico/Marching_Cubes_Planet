@@ -15,15 +15,17 @@ namespace MarchingCubesPlanet.Preview
         [SerializeField] private PlanetPlacement placement = PlanetPlacement.Default();
 
         [Header("Payload")]
-        [SerializeField] private int faceResolution = 103;
+        [SerializeField] private int requestedTrianglePayload = 126000;
         [SerializeField] private bool generateVertexColors = true;
         [SerializeField] private Material materialOverride;
 
         [Header("Runtime State")]
+        [SerializeField, HideInInspector] private int derivedGeodesicFrequency;
         [SerializeField, HideInInspector] private int derivedTriangleCount;
         [SerializeField, HideInInspector] private int derivedVertexCount;
         [SerializeField, HideInInspector] private int derivedIndexCount;
         [SerializeField, HideInInspector] private float derivedWorldRadius;
+        [SerializeField, HideInInspector] private float derivedSurfaceRadius;
         [SerializeField, HideInInspector] private bool hasLiveMesh;
         [SerializeField, TextArea] private string lastDiagnostic;
 
@@ -34,18 +36,21 @@ namespace MarchingCubesPlanet.Preview
 
         public PlanetRecipe Recipe => recipe;
         public PlanetPlacement Placement => placement;
-        public int FaceResolution => faceResolution;
+        public float IsoLevel => recipe.IsoLevel;
+        public int RequestedTrianglePayload => requestedTrianglePayload;
+        public int DerivedGeodesicFrequency => derivedGeodesicFrequency;
         public int DerivedTriangleCount => derivedTriangleCount;
         public int DerivedVertexCount => derivedVertexCount;
         public int DerivedIndexCount => derivedIndexCount;
         public float DerivedWorldRadius => derivedWorldRadius;
+        public float DerivedSurfaceRadius => derivedSurfaceRadius;
         public Vector3 TransformPlanetWorldCenter => transform.position;
         public bool HasLiveMesh => hasLiveMesh;
         public string LastDiagnostic => lastDiagnostic;
 
         private void OnValidate()
         {
-            faceResolution = Mathf.Max(1, faceResolution);
+            requestedTrianglePayload = Mathf.Max(PlanetSpherePayloadMeshBuilder.BaseIcosahedronTriangleCount, requestedTrianglePayload);
             RefreshDerivedValues();
         }
 
@@ -62,35 +67,45 @@ namespace MarchingCubesPlanet.Preview
 
         public void ApplyPayload126k()
         {
-            SetFaceResolution(103);
+            SetRequestedTrianglePayload(126000);
         }
 
         public void ApplyPayload250k()
         {
-            SetFaceResolution(144);
+            SetRequestedTrianglePayload(250000);
         }
 
         public void ApplyPayload500k()
         {
-            SetFaceResolution(205);
+            SetRequestedTrianglePayload(500000);
         }
 
         public void ApplyPayload1M()
         {
-            SetFaceResolution(289);
+            SetRequestedTrianglePayload(1000000);
+        }
+
+        public void ApplyPayload2M()
+        {
+            SetRequestedTrianglePayload(2000000);
+        }
+
+        public void ApplyPayload5M()
+        {
+            SetRequestedTrianglePayload(5000000);
         }
 
         public void ResetDemoRecipe()
         {
             recipe = PlanetRecipe.Default();
             SyncPlacementFromTransform();
-            SetFaceResolution(103);
+            SetRequestedTrianglePayload(126000);
             lastDiagnostic = "Demo recipe reset. PlanetPlacement was synced from Transform.position.";
         }
 
-        public void SetFaceResolution(int value)
+        public void SetRequestedTrianglePayload(int value)
         {
-            faceResolution = Mathf.Max(1, value);
+            requestedTrianglePayload = Mathf.Max(PlanetSpherePayloadMeshBuilder.BaseIcosahedronTriangleCount, value);
             RefreshDerivedValues();
         }
 
@@ -114,7 +129,7 @@ namespace MarchingCubesPlanet.Preview
                 PlanetSpherePayloadBuildResult result = PlanetSpherePayloadMeshBuilder.Build(
                     runtimeMesh,
                     in recipe,
-                    faceResolution,
+                    derivedGeodesicFrequency,
                     generateVertexColors);
 
                 meshFilter.sharedMesh = runtimeMesh;
@@ -126,10 +141,13 @@ namespace MarchingCubesPlanet.Preview
                 derivedTriangleCount = result.TriangleCount;
                 derivedIndexCount = result.IndexCount;
                 hasLiveMesh = true;
-                lastDiagnostic = "Generated payload sphere: faceResolution=" + faceResolution +
+                lastDiagnostic = "Generated payload isosphere: requestedTriangles=" + requestedTrianglePayload +
+                                 ", geodesicFrequency=" + derivedGeodesicFrequency +
                                  ", triangles=" + derivedTriangleCount +
                                  ", vertices=" + derivedVertexCount +
                                  ", WorldRadius=" + derivedWorldRadius +
+                                 ", SurfaceRadius=" + derivedSurfaceRadius +
+                                 ", IsoLevel=" + recipe.IsoLevel +
                                  ", center=" + placement.PlanetWorldCenter + ".";
             }
             catch (Exception exception)
@@ -172,9 +190,11 @@ namespace MarchingCubesPlanet.Preview
         {
             SyncPlacementFromTransform();
             derivedWorldRadius = recipe.WorldRadius;
-            derivedTriangleCount = PlanetSpherePayloadMeshBuilder.CalculateTriangleCount(faceResolution);
-            derivedVertexCount = PlanetSpherePayloadMeshBuilder.CalculateVertexCount(faceResolution);
-            derivedIndexCount = PlanetSpherePayloadMeshBuilder.CalculateIndexCount(faceResolution);
+            derivedSurfaceRadius = PlanetSpherePayloadMeshBuilder.CalculateSurfaceRadius(in recipe);
+            derivedGeodesicFrequency = PlanetSpherePayloadMeshBuilder.CalculateGeodesicFrequencyForPayload(requestedTrianglePayload);
+            derivedTriangleCount = PlanetSpherePayloadMeshBuilder.CalculateTriangleCount(derivedGeodesicFrequency);
+            derivedVertexCount = PlanetSpherePayloadMeshBuilder.CalculateVertexCount(derivedGeodesicFrequency);
+            derivedIndexCount = PlanetSpherePayloadMeshBuilder.CalculateIndexCount(derivedGeodesicFrequency);
         }
 
         private void SyncPlacementFromTransform()
