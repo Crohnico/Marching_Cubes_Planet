@@ -195,6 +195,22 @@ Usar un rig minimo propio para el Lab en vez de OVRComprehensiveInteractionRig.
 No meter building blocks completos de Meta si anaden objetos o sistemas que no son necesarios para esta fase.
 ```
 
+Decision de limpieza de arranque en Editor:
+
+```text
+MetaXRFeature queda desactivado solo para Standalone/Editor en OpenXRPackageSettings.
+MetaXRFeature Android queda activado para la ruta de APK/Quest.
+```
+
+Motivo:
+
+```text
+El rig minimo del Lab no depende de OVRPlugin ni de building blocks de Meta.
+En Quest Link/Editor, MetaXRFeature Standalone inicializa OVRPlugin y puede emitir warnings de audio output driver y funciones espaciales no soportadas como xrRequestSceneCaptureFB.
+Para este paso se prioriza un Play Mode limpio con Unity OpenXR, HMD, mandos, rayos y UI.
+Si mas adelante se necesita una API especifica de Meta en Standalone, se reactivara esa feature y se documentara el nuevo requisito.
+```
+
 Nota:
 
 ```text

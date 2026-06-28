@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -26,10 +27,15 @@ namespace MarchingCubesPlanet.Lab
         [Header("UI")]
         [SerializeField] private Camera uiEventCamera;
 
+        [Header("Diagnostics")]
+        [SerializeField] private bool logStartupStatus = true;
+
         private readonly HandPointer leftPointer = new HandPointer(XRNode.LeftHand, -101);
         private readonly HandPointer rightPointer = new HandPointer(XRNode.RightHand, -102);
 
         private static readonly List<GraphicRaycaster> Raycasters = new List<GraphicRaycaster>(16);
+        private static readonly List<InputDevice> StartupDevices = new List<InputDevice>(16);
+        private static readonly StringBuilder StartupLogBuilder = new StringBuilder(512);
 
         public Transform Head => head;
         public Transform LeftHandMarker => leftHandMarker;
@@ -37,7 +43,7 @@ namespace MarchingCubesPlanet.Lab
 
         private void Awake()
         {
-            DisableLegacyStandaloneInputModules();
+            int disabledLegacyInputModules = DisableLegacyStandaloneInputModules();
 
             if (uiEventCamera == null)
             {
@@ -46,9 +52,14 @@ namespace MarchingCubesPlanet.Lab
 
             leftPointer.Bind(leftHandMarker, leftRay);
             rightPointer.Bind(rightHandMarker, rightRay);
+
+            if (logStartupStatus)
+            {
+                LogStartupStatus(disabledLegacyInputModules);
+            }
         }
 
-        private static void DisableLegacyStandaloneInputModules()
+        private static int DisableLegacyStandaloneInputModules()
         {
 #if UNITY_2023_1_OR_NEWER
             StandaloneInputModule[] inputModules = FindObjectsByType<StandaloneInputModule>(FindObjectsSortMode.None);
@@ -56,10 +67,52 @@ namespace MarchingCubesPlanet.Lab
             StandaloneInputModule[] inputModules = FindObjectsOfType<StandaloneInputModule>();
 #endif
 
+            int disabledCount = 0;
             for (int i = 0; i < inputModules.Length; i++)
             {
-                inputModules[i].enabled = false;
+                if (inputModules[i].enabled)
+                {
+                    inputModules[i].enabled = false;
+                    disabledCount++;
+                }
             }
+
+            return disabledCount;
+        }
+
+        private void LogStartupStatus(int disabledLegacyInputModules)
+        {
+            StartupDevices.Clear();
+            InputDevices.GetDevices(StartupDevices);
+
+            StartupLogBuilder.Clear();
+            StartupLogBuilder.Append("PlanetMinimalXrRig startup");
+            StartupLogBuilder.Append(" | rig=");
+            StartupLogBuilder.Append(name);
+            StartupLogBuilder.Append(" | camera=");
+            StartupLogBuilder.Append(headCamera != null ? headCamera.name : "null");
+            StartupLogBuilder.Append(" | uiEventCamera=");
+            StartupLogBuilder.Append(uiEventCamera != null ? uiEventCamera.name : "null");
+            StartupLogBuilder.Append(" | eventSystem=");
+            StartupLogBuilder.Append(EventSystem.current != null ? EventSystem.current.name : "null");
+            StartupLogBuilder.Append(" | disabledStandaloneInputModules=");
+            StartupLogBuilder.Append(disabledLegacyInputModules);
+            StartupLogBuilder.Append(" | xrDevices=");
+            StartupLogBuilder.Append(StartupDevices.Count);
+
+            for (int i = 0; i < StartupDevices.Count; i++)
+            {
+                InputDevice device = StartupDevices[i];
+                StartupLogBuilder.Append(" [");
+                StartupLogBuilder.Append(device.name);
+                StartupLogBuilder.Append(", ");
+                StartupLogBuilder.Append(device.characteristics);
+                StartupLogBuilder.Append(", valid=");
+                StartupLogBuilder.Append(device.isValid);
+                StartupLogBuilder.Append(']');
+            }
+
+            Debug.Log(StartupLogBuilder.ToString(), this);
         }
 
         private void Update()
