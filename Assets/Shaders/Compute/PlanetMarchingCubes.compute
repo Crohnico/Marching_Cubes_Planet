@@ -1,0 +1,216 @@
+#pragma kernel CS_ExtractValidationPatch
+
+#include "PlanetShapeDensity.hlsl"
+#include "PlanetMarchingCubesTables.hlsl"
+
+struct PlanetMarchingCubesVertex
+{
+    float4 positionAndCase;
+    float4 normalAndDiagnostic;
+};
+
+struct PlanetMarchingCubesStateGpu
+{
+    uint triangleCountAttempted;
+    uint triangleCountWritten;
+    uint vertexCountWritten;
+    uint overflowFlag;
+    uint invalidCaseFlag;
+    uint processedCubeCount;
+    uint reserved0;
+    uint reserved1;
+};
+
+RWStructuredBuffer<PlanetMarchingCubesVertex> _MarchingCubesVertices;
+RWStructuredBuffer<PlanetMarchingCubesStateGpu> _MarchingCubesState;
+
+uint _MarchingCubesCubeCount;
+int _MarchingCubesGridRadius;
+int _MarchingCubesRadialStartOffset;
+int _MarchingCubesRadialCubeCount;
+int _MarchingCubesTangentHalfExtent;
+int _MarchingCubesTangentCubeCount;
+float _MarchingCubesCubeSizeGrid;
+uint _MarchingCubesMaxTriangleCount;
+
+float3 PlanetMcCornerPosition(float3 basePosition, int cornerIndex)
+{
+    return basePosition + (float3)PlanetMcCornerOffsets[cornerIndex] * _MarchingCubesCubeSizeGrid;
+}
+
+float3 PlanetMcInterpolate(float3 a, float3 b, float densityA, float densityB)
+{
+    float denominator = densityA - densityB;
+    float t = abs(denominator) <= 0.000001 ? 0.5 : saturate(densityA / denominator);
+    return lerp(a, b, t);
+}
+
+uint PlanetMcTriangleCount(uint caseIndex)
+{
+    uint count = 0u;
+    int rowOffset = (int)caseIndex * 16;
+
+    [unroll]
+    for (int i = 0; i < 15; i += 3)
+    {
+        if (PlanetMcTriTable[rowOffset + i] < 0)
+        {
+            break;
+        }
+
+        count++;
+    }
+
+    return count;
+}
+
+void PlanetMcWriteVertex(uint vertexIndex, float3 position, float3 normal, uint caseIndex, uint cubeIndex)
+{
+    PlanetMarchingCubesVertex vertex;
+    vertex.positionAndCase = float4(position, (float)caseIndex);
+    vertex.normalAndDiagnostic = float4(normal, (float)cubeIndex);
+    _MarchingCubesVertices[vertexIndex] = vertex;
+}
+
+[numthreads(64, 1, 1)]
+void CS_ExtractValidationPatch(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint cubeIndex = dispatchThreadId.x;
+    if (cubeIndex >= _MarchingCubesCubeCount)
+    {
+        return;
+    }
+
+    uint previousProcessed;
+    InterlockedAdd(_MarchingCubesState[0].processedCubeCount, 1u, previousProcessed);
+
+    uint radialCubeCount = (uint)_MarchingCubesRadialCubeCount;
+    uint tangentCubeCount = (uint)_MarchingCubesTangentCubeCount;
+    uint radialIndex = cubeIndex % radialCubeCount;
+    uint tangentIndex = cubeIndex / radialCubeCount;
+    uint tangentUIndex = tangentIndex % tangentCubeCount;
+    uint tangentVIndex = tangentIndex / tangentCubeCount;
+
+    float radial = (float)(_MarchingCubesGridRadius + _MarchingCubesRadialStartOffset) +
+        (float)radialIndex * _MarchingCubesCubeSizeGrid;
+    float tangentU = (float)(-_MarchingCubesTangentHalfExtent) +
+        (float)tangentUIndex * _MarchingCubesCubeSizeGrid;
+    float tangentV = (float)(-_MarchingCubesTangentHalfExtent) +
+        (float)tangentVIndex * _MarchingCubesCubeSizeGrid;
+    float3 basePosition = float3(radial, tangentU, tangentV);
+
+    float3 cornerPositions[8];
+    float cornerDensities[8];
+    uint caseIndex = 0u;
+
+    [unroll]
+    for (int corner = 0; corner < 8; corner++)
+    {
+        float surfaceOffset;
+        float effectiveRadius;
+        float continentFlag;
+        float3 cornerPosition = PlanetMcCornerPosition(basePosition, corner);
+        float density = PlanetShapeEvaluateDensity(cornerPosition, surfaceOffset, effectiveRadius, continentFlag);
+
+        cornerPositions[corner] = cornerPosition;
+        cornerDensities[corner] = density;
+
+        if (density > 0.0)
+        {
+            caseIndex |= 1u << corner;
+        }
+    }
+
+    if (caseIndex > 255u)
+    {
+        uint previousInvalid;
+        InterlockedExchange(_MarchingCubesState[0].invalidCaseFlag, 1u, previousInvalid);
+        return;
+    }
+
+    uint edgeMask = PlanetMcEdgeTable[caseIndex];
+    if (edgeMask == 0u)
+    {
+        return;
+    }
+
+    float3 edgeVertices[12];
+
+    [unroll]
+    for (int edge = 0; edge < 12; edge++)
+    {
+        if ((edgeMask & (1u << edge)) == 0u)
+        {
+            continue;
+        }
+
+        int2 corners = PlanetMcEdgeCorners[edge];
+        edgeVertices[edge] = PlanetMcInterpolate(
+            cornerPositions[corners.x],
+            cornerPositions[corners.y],
+            cornerDensities[corners.x],
+            cornerDensities[corners.y]);
+    }
+
+    uint triangleCount = PlanetMcTriangleCount(caseIndex);
+    if (triangleCount == 0u)
+    {
+        return;
+    }
+
+    uint attemptedStart;
+    InterlockedAdd(_MarchingCubesState[0].triangleCountAttempted, triangleCount, attemptedStart);
+
+    uint triangleStart;
+    InterlockedAdd(_MarchingCubesState[0].reserved0, triangleCount, triangleStart);
+
+    uint maxTriangleCount = _MarchingCubesMaxTriangleCount;
+    if (triangleStart + triangleCount > maxTriangleCount)
+    {
+        uint previousOverflow;
+        InterlockedExchange(_MarchingCubesState[0].overflowFlag, 1u, previousOverflow);
+        return;
+    }
+
+    uint vertexStart = triangleStart * 3u;
+    uint vertexCountToAdd = triangleCount * 3u;
+    uint previousTriangleCount;
+    InterlockedAdd(_MarchingCubesState[0].triangleCountWritten, triangleCount, previousTriangleCount);
+
+    uint previousVertexCount;
+    InterlockedAdd(_MarchingCubesState[0].vertexCountWritten, vertexCountToAdd, previousVertexCount);
+
+    int rowOffset = (int)caseIndex * 16;
+
+    [unroll]
+    for (int triIndex = 0; triIndex < 5; triIndex++)
+    {
+        int tableOffset = rowOffset + triIndex * 3;
+        int edgeA = PlanetMcTriTable[tableOffset];
+        if (edgeA < 0)
+        {
+            break;
+        }
+
+        int edgeB = PlanetMcTriTable[tableOffset + 1u];
+        int edgeC = PlanetMcTriTable[tableOffset + 2u];
+        float3 a = edgeVertices[edgeA];
+        float3 b = edgeVertices[edgeB];
+        float3 c = edgeVertices[edgeC];
+        float3 normal = normalize(cross(b - a, c - a));
+        float3 center = (a + b + c) * 0.33333334;
+
+        if (dot(normal, center) < 0.0)
+        {
+            float3 swap = b;
+            b = c;
+            c = swap;
+            normal = -normal;
+        }
+
+        uint outputVertex = vertexStart + (uint)(triIndex * 3);
+        PlanetMcWriteVertex(outputVertex, a, normal, caseIndex, cubeIndex);
+        PlanetMcWriteVertex(outputVertex + 1u, b, normal, caseIndex, cubeIndex);
+        PlanetMcWriteVertex(outputVertex + 2u, c, normal, caseIndex, cubeIndex);
+    }
+}

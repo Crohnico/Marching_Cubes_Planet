@@ -4,6 +4,7 @@
     "references": [
         "MarchingCubesPlanet.Coordinates",
         "MarchingCubesPlanet.Compute",
+        "MarchingCubesPlanet.MarchingCubes",
         "MarchingCubesPlanet.Shape",
         "MarchingCubesPlanet.Lab"
     ],

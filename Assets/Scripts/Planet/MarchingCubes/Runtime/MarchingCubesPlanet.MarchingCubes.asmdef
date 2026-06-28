@@ -1,12 +1,10 @@
 {
-    "name": "MarchingCubesPlanet.Lab",
-    "rootNamespace": "MarchingCubesPlanet.Lab",
+    "name": "MarchingCubesPlanet.MarchingCubes",
+    "rootNamespace": "MarchingCubesPlanet.MarchingCubes",
     "references": [
         "MarchingCubesPlanet.Compute",
         "MarchingCubesPlanet.Coordinates",
-        "MarchingCubesPlanet.MarchingCubes",
-        "MarchingCubesPlanet.Shape",
-        "Unity.ugui"
+        "MarchingCubesPlanet.Shape"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

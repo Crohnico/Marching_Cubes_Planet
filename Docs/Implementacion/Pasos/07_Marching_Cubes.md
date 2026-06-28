@@ -389,17 +389,16 @@ Mascara:
 
 ```text
 cornerMask = 0
-si density(cornerN) > isoLevel:
+si density(cornerN) > 0:
     cornerMask |= 1 << N
 ```
 
 Con:
 
 ```text
-isoLevel = PlanetRecipe.IsoLevel
-valor inicial = 0
-density > isoLevel  -> solido
-density <= isoLevel -> aire
+PlanetShapeEvaluateDensity ya devuelve el campo firmado con PlanetRecipe.IsoLevel aplicado.
+density > 0  -> solido
+density <= 0 -> aire
 ```
 
 Casos triviales:
@@ -436,10 +435,10 @@ El orden de esquinas, aristas, edgeTable y triTable debe coincidir exactamente.
 
 ## Interpolacion de vertices
 
-Cuando una arista cruza el isoLevel:
+Cuando una arista cruza el cero del campo firmado:
 
 ```text
-t = (isoLevel - valueA) / (valueB - valueA)
+t = valueA / (valueA - valueB)
 t = saturate(t)
 vertex = lerp(positionA, positionB, t)
 ```

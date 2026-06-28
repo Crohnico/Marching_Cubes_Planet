@@ -57,6 +57,8 @@ namespace MarchingCubesPlanet.Lab
         public int LastSampleCount => lastSampleCount;
         public float LastMinDensity => lastMinDensity;
         public float LastMaxDensity => lastMaxDensity;
+        public PlanetGpuShapeEvaluator ShapeEvaluator => evaluator;
+        public bool IsShapeGpuInitialized => evaluator.IsInitialized;
 
         public override bool ValidateModule()
         {

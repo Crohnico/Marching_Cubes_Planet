@@ -3459,6 +3459,99 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1146611497}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1000400000
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1000400002}
+  - component: {fileID: 1000400001}
+  m_Layer: 0
+  m_Name: PlanetMarchingCubesLab
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1000400001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1000400000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 776abe256c7f417aada86d4ff7555898, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: MarchingCubesPlanet.Lab::MarchingCubesPlanet.Lab.PlanetMarchingCubesLab
+  marchingCubesComputeShader: {fileID: 7200000, guid: 8893c071dfff4ea797701cf6e0bd85cf, type: 3}
+  shapeLab: {fileID: 1000350001}
+  resourceRegistry: {fileID: 1146611496}
+  bufferMode: 0
+  settings:
+    range:
+      radialStartOffset: -512
+      radialCubeCount: 1024
+      tangentHalfExtent: 8
+      tangentCubeCount: 16
+      cubeSizeGrid: 1
+    maxValidationTriangles: 65536
+  supportsComputeShaders: 0
+  lastProcessedCubeCount: 0
+  lastTriangleCountAttempted: 0
+  lastTriangleCountWritten: 0
+  lastVertexCountWritten: 0
+  lastOverflow: 0
+  lastInvalidCase: 0
+  lastAction:
+  lastSnapshot:
+    operationName:
+    frame: 0
+    realtimeSinceStartup: 0
+    frameDeltaMs: 0
+    fpsApprox: 0
+    managedHeapBytes: 0
+    ownedCpuEstimatedBytes: 0
+    ownedGpuEstimatedBytes: 0
+    liveGraphicsBuffers: 0
+    liveComputeBuffers: 0
+    liveRenderTextures: 0
+    liveRuntimeMeshes: 0
+    liveRuntimeTextures: 0
+    liveRuntimeMaterials: 0
+    liveResourceCount: 0
+    operationMs: 0
+    diagnostic:
+      severity: 0
+      title:
+      probableCause:
+      recommendedAction:
+      relatedMetrics:
+  lastDiagnostic:
+    severity: 0
+    title:
+    probableCause:
+    recommendedAction:
+    relatedMetrics:
+--- !u!4 &1000400002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1000400000}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1146611497}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1024029530
 GameObject:
   m_ObjectHideFlags: 0
@@ -3848,6 +3941,7 @@ MonoBehaviour:
   - {fileID: 1000250001}
   - {fileID: 1000300001}
   - {fileID: 1000350001}
+  - {fileID: 1000400001}
   stressLow:
     presetName: Stress Low
     whatItTests: Runs the current Lab modules repeatedly.
@@ -3954,6 +4048,7 @@ Transform:
   - {fileID: 1000250002}
   - {fileID: 1000300002}
   - {fileID: 1000350002}
+  - {fileID: 1000400002}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1148262470
