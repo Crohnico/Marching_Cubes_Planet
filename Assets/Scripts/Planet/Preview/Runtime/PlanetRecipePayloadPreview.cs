@@ -1,5 +1,6 @@
 using System;
 using MarchingCubesPlanet.Coordinates;
+using MarchingCubesPlanet.Lab;
 using UnityEngine;
 
 namespace MarchingCubesPlanet.Preview
@@ -19,6 +20,15 @@ namespace MarchingCubesPlanet.Preview
         [SerializeField] private bool generateVertexColors = true;
         [SerializeField] private Material materialOverride;
 
+        [Header("Memory Diagnostics")]
+        [SerializeField] private PlanetLabResourceRegistry resourceRegistry;
+        [SerializeField] private PlanetMemoryLab memoryLab;
+        [SerializeField] private PlanetMemoryBudget memoryBudget = PlanetMemoryBudget.CreateDefault();
+        [SerializeField] private PlanetMemorySnapshot beforeSnapshot;
+        [SerializeField] private PlanetMemorySnapshot afterSnapshot;
+        [SerializeField] private PlanetMemorySnapshotComparison snapshotComparison;
+        [SerializeField, TextArea] private string snapshotComparisonSummary;
+
         [Header("Runtime State")]
         [SerializeField, HideInInspector] private int derivedGeodesicFrequency;
         [SerializeField, HideInInspector] private int derivedTriangleCount;
@@ -33,6 +43,8 @@ namespace MarchingCubesPlanet.Preview
         private Material runtimeMaterial;
         private MeshFilter meshFilter;
         private MeshRenderer meshRenderer;
+        private int meshResourceId;
+        private int materialResourceId;
 
         public PlanetRecipe Recipe => recipe;
         public PlanetPlacement Placement => placement;
@@ -48,6 +60,12 @@ namespace MarchingCubesPlanet.Preview
         public Quaternion TransformPlanetRotation => transform.rotation;
         public bool HasLiveMesh => hasLiveMesh;
         public string LastDiagnostic => lastDiagnostic;
+        public PlanetMemorySnapshot BeforeSnapshot => beforeSnapshot;
+        public PlanetMemorySnapshot AfterSnapshot => afterSnapshot;
+        public PlanetMemorySnapshotComparison SnapshotComparison => snapshotComparison;
+        public PlanetMemoryBudget MemoryBudget => ResolveMemoryBudget();
+        public string SnapshotComparisonSummary => snapshotComparisonSummary;
+        public bool HasResourceRegistry => ResolveResourceRegistry(false) != null;
 
         private void OnValidate()
         {
@@ -142,6 +160,7 @@ namespace MarchingCubesPlanet.Preview
                 derivedTriangleCount = result.TriangleCount;
                 derivedIndexCount = result.IndexCount;
                 hasLiveMesh = true;
+                RegisterRuntimeResources();
                 lastDiagnostic = "Generated payload isosphere: requestedTriangles=" + requestedTrianglePayload +
                                  ", geodesicFrequency=" + derivedGeodesicFrequency +
                                  ", triangles=" + derivedTriangleCount +
@@ -160,6 +179,24 @@ namespace MarchingCubesPlanet.Preview
             }
         }
 
+        public void CaptureBeforeSnapshot()
+        {
+            beforeSnapshot = CaptureMemorySnapshot("PayloadPreview Before Snapshot");
+            snapshotComparisonSummary = "Before snapshot captured. Generate or Release, then capture After Snapshot.";
+        }
+
+        public void CaptureAfterSnapshot()
+        {
+            afterSnapshot = CaptureMemorySnapshot("PayloadPreview After Snapshot");
+            snapshotComparison = PlanetMemorySnapshotComparison.Compare(
+                "PayloadPreview Before vs After",
+                beforeSnapshot,
+                afterSnapshot,
+                ResolveMemoryBudget(),
+                false);
+            snapshotComparisonSummary = BuildComparisonSummary(snapshotComparison, ResolveMemoryBudget());
+        }
+
         public void Release()
         {
             CacheRendererComponents();
@@ -171,6 +208,7 @@ namespace MarchingCubesPlanet.Preview
 
             DestroyRuntimeObject(runtimeMesh);
             runtimeMesh = null;
+            MarkReleased(ref meshResourceId);
 
             if (runtimeMaterial != null)
             {
@@ -181,6 +219,7 @@ namespace MarchingCubesPlanet.Preview
 
                 DestroyRuntimeObject(runtimeMaterial);
                 runtimeMaterial = null;
+                MarkReleased(ref materialResourceId);
             }
 
             hasLiveMesh = false;
@@ -234,6 +273,164 @@ namespace MarchingCubesPlanet.Preview
             }
 
             return runtimeMaterial;
+        }
+
+        private void RegisterRuntimeResources()
+        {
+            PlanetLabResourceRegistry registry = ResolveResourceRegistry(true);
+            if (registry == null)
+            {
+                return;
+            }
+
+            if (runtimeMesh != null)
+            {
+                meshResourceId = registry.RegisterResource(
+                    "PlanetRecipePayloadPreview Mesh",
+                    PlanetLabResourceType.Mesh,
+                    "PlanetRecipePayloadPreview",
+                    EstimateMeshBytes(),
+                    derivedVertexCount,
+                    0);
+            }
+
+            if (runtimeMaterial != null)
+            {
+                materialResourceId = registry.RegisterResource(
+                    "PlanetRecipePayloadPreview Material",
+                    PlanetLabResourceType.RuntimeMaterial,
+                    "PlanetRecipePayloadPreview",
+                    1,
+                    1,
+                    0);
+            }
+        }
+
+        private long EstimateMeshBytes()
+        {
+            long vertexBytes = derivedVertexCount * 24L;
+            if (generateVertexColors)
+            {
+                vertexBytes += derivedVertexCount * 4L;
+            }
+
+            int indexStride = derivedVertexCount > ushort.MaxValue ? 4 : 2;
+            long indexBytes = derivedIndexCount * (long)indexStride;
+            return vertexBytes + indexBytes;
+        }
+
+        private PlanetMemorySnapshot CaptureMemorySnapshot(string operationName)
+        {
+            return PlanetMemorySnapshot.Capture(
+                operationName,
+                ResolveResourceRegistry(true),
+                ResolveMemoryBudget(),
+                null,
+                0,
+                false);
+        }
+
+        private PlanetMemoryBudget ResolveMemoryBudget()
+        {
+            ResolveMemoryLab();
+            if (memoryLab != null && memoryLab.RuntimeBudget != null)
+            {
+                return memoryLab.RuntimeBudget;
+            }
+
+            if (memoryBudget == null)
+            {
+                memoryBudget = PlanetMemoryBudget.CreateDefault();
+            }
+
+            return memoryBudget;
+        }
+
+        private PlanetLabResourceRegistry ResolveResourceRegistry(bool updateDiagnostic)
+        {
+            if (resourceRegistry != null)
+            {
+                return resourceRegistry;
+            }
+
+            ResolveMemoryLab();
+            if (memoryLab != null)
+            {
+                resourceRegistry = memoryLab.GetComponentInParent<PlanetLabResourceRegistry>();
+            }
+
+            if (resourceRegistry == null)
+            {
+                resourceRegistry = FindFirstObjectByType<PlanetLabResourceRegistry>();
+            }
+
+            if (resourceRegistry == null && updateDiagnostic)
+            {
+                lastDiagnostic = "Memory snapshot cannot see PayloadPreview resources: PlanetLabResourceRegistry was not found in the scene.";
+            }
+
+            return resourceRegistry;
+        }
+
+        private void ResolveMemoryLab()
+        {
+            if (memoryLab == null)
+            {
+                memoryLab = FindFirstObjectByType<PlanetMemoryLab>();
+            }
+        }
+
+        private void MarkReleased(ref int resourceId)
+        {
+            PlanetLabResourceRegistry registry = ResolveResourceRegistry(false);
+            if (registry != null && resourceId != 0)
+            {
+                registry.MarkReleased(resourceId);
+            }
+
+            resourceId = 0;
+        }
+
+        private static string BuildComparisonSummary(PlanetMemorySnapshotComparison comparison, PlanetMemoryBudget budget)
+        {
+            PlanetMemorySnapshot after = comparison.after;
+            PlanetLabDiagnostic diagnostic = comparison.diagnostic;
+
+            return "Status: " + diagnostic.severity +
+                   "\nIssue: " + diagnostic.title +
+                   "\nCPU delta: " + FormatBytes(comparison.ownedCpuDeltaBytes) +
+                   "\nGPU delta: " + FormatBytes(comparison.ownedGpuDeltaBytes) +
+                   "\nCombined delta: " + FormatBytes(comparison.ownedCombinedDeltaBytes) +
+                   "\nLive resource delta: " + comparison.liveResourceDelta +
+                   "\nAfter owned CPU: " + FormatBytes(after.ownedCpuEstimatedBytes) +
+                   "\nAfter owned GPU: " + FormatBytes(after.ownedGpuEstimatedBytes) +
+                   "\nGPU soft budget used: " + FormatBudgetPercent(after.ownedGpuEstimatedBytes, budget.OwnedGpuSoftBytes) +
+                   "\nGPU hard budget used: " + FormatBudgetPercent(after.ownedGpuEstimatedBytes, budget.OwnedGpuHardBytes) +
+                   "\nCombined soft budget used: " + FormatBudgetPercent(after.ownedCombinedEstimatedBytes, budget.OwnedCombinedSoftBytes) +
+                   "\nCombined hard budget used: " + FormatBudgetPercent(after.ownedCombinedEstimatedBytes, budget.OwnedCombinedHardBytes) +
+                   "\nAfter live resources: " + after.liveResourceCount +
+                   "\nAfter runtime meshes: " + after.liveRuntimeMeshes +
+                   "\nLargest resource: " + after.largestSingleResourceName +
+                   "\nLargest resource bytes: " + FormatBytes(after.largestSingleResourceBytes) +
+                   "\nMeaning: " + diagnostic.probableCause +
+                   "\nAction: " + diagnostic.recommendedAction;
+        }
+
+        private static string FormatBudgetPercent(long bytes, long budgetBytes)
+        {
+            if (budgetBytes <= 0)
+            {
+                return "unavailable";
+            }
+
+            double percent = bytes * 100.0 / budgetBytes;
+            return percent.ToString("0.0") + "% of " + FormatBytes(budgetBytes);
+        }
+
+        private static string FormatBytes(long bytes)
+        {
+            double mib = bytes / (1024.0 * 1024.0);
+            return bytes + " bytes (" + mib.ToString("0.00") + " MiB)";
         }
 
         private void EnsureRendererComponents()

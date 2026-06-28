@@ -9,6 +9,10 @@ namespace MarchingCubesPlanet.Lab
         RenderTexture,
         RuntimeTexture,
         RuntimeMaterial,
+        NativeArray,
+        NativeList,
+        ManagedArray,
+        ManagedList,
         Other
     }
 }

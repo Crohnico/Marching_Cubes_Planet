@@ -2,7 +2,8 @@
     "name": "MarchingCubesPlanet.Preview",
     "rootNamespace": "MarchingCubesPlanet.Preview",
     "references": [
-        "MarchingCubesPlanet.Coordinates"
+        "MarchingCubesPlanet.Coordinates",
+        "MarchingCubesPlanet.Lab"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

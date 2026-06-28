@@ -1,6 +1,7 @@
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using MarchingCubesPlanet.Lab;
 
 namespace MarchingCubesPlanet.Preview.Editor
 {
@@ -88,8 +89,71 @@ namespace MarchingCubesPlanet.Preview.Editor
             }
 
             EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Memory Snapshot", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Registry found", preview.HasResourceRegistry ? "yes" : "no");
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("Before Snapshot"))
+                {
+                    Apply(preview, p => p.CaptureBeforeSnapshot());
+                }
+
+                if (GUILayout.Button("After Snapshot"))
+                {
+                    Apply(preview, p => p.CaptureAfterSnapshot());
+                }
+            }
+
+            DrawMemoryComparison(preview);
+
+            EditorGUILayout.Space();
             EditorGUILayout.LabelField("Last Diagnostic", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(preview.LastDiagnostic ?? string.Empty, MessageType.Info);
+        }
+
+        private static void DrawMemoryComparison(PlanetRecipePayloadPreview preview)
+        {
+            PlanetMemorySnapshot before = preview.BeforeSnapshot;
+            PlanetMemorySnapshot after = preview.AfterSnapshot;
+            PlanetMemorySnapshotComparison comparison = preview.SnapshotComparison;
+            PlanetMemoryBudget budget = preview.MemoryBudget;
+
+            EditorGUILayout.LabelField("Before owned GPU bytes", before.ownedGpuEstimatedBytes.ToString());
+            EditorGUILayout.LabelField("After owned GPU bytes", after.ownedGpuEstimatedBytes.ToString());
+            EditorGUILayout.LabelField("GPU delta bytes", comparison.ownedGpuDeltaBytes.ToString());
+            EditorGUILayout.LabelField("After GPU soft budget", FormatBudgetPercent(after.ownedGpuEstimatedBytes, budget.OwnedGpuSoftBytes));
+            EditorGUILayout.LabelField("After GPU hard budget", FormatBudgetPercent(after.ownedGpuEstimatedBytes, budget.OwnedGpuHardBytes));
+            EditorGUILayout.LabelField("After combined soft budget", FormatBudgetPercent(after.ownedCombinedEstimatedBytes, budget.OwnedCombinedSoftBytes));
+            EditorGUILayout.LabelField("After combined hard budget", FormatBudgetPercent(after.ownedCombinedEstimatedBytes, budget.OwnedCombinedHardBytes));
+            EditorGUILayout.LabelField("After runtime meshes", after.liveRuntimeMeshes.ToString());
+            EditorGUILayout.LabelField("After live resources", after.liveResourceCount.ToString());
+            EditorGUILayout.LabelField("Largest resource", string.IsNullOrEmpty(after.largestSingleResourceName) ? "-" : after.largestSingleResourceName);
+            EditorGUILayout.LabelField("Largest resource bytes", after.largestSingleResourceBytes.ToString());
+
+            string summary = preview.SnapshotComparisonSummary;
+            if (!string.IsNullOrWhiteSpace(summary))
+            {
+                MessageType messageType = comparison.diagnostic.severity == PlanetLabDiagnosticSeverity.Critical
+                    ? MessageType.Error
+                    : comparison.diagnostic.severity == PlanetLabDiagnosticSeverity.Warning
+                        ? MessageType.Warning
+                        : MessageType.Info;
+                EditorGUILayout.HelpBox(summary, messageType);
+            }
+        }
+
+        private static string FormatBudgetPercent(long bytes, long budgetBytes)
+        {
+            if (budgetBytes <= 0)
+            {
+                return "unavailable";
+            }
+
+            double percent = bytes * 100.0 / budgetBytes;
+            double mib = bytes / (1024.0 * 1024.0);
+            double budgetMib = budgetBytes / (1024.0 * 1024.0);
+            return percent.ToString("0.0") + "% (" + mib.ToString("0.00") + " / " + budgetMib.ToString("0.00") + " MiB)";
         }
 
         private static void Apply(PlanetRecipePayloadPreview preview, System.Action<PlanetRecipePayloadPreview> action)

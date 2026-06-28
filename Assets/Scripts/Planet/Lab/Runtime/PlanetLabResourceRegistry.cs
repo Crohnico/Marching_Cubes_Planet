@@ -56,6 +56,60 @@ namespace MarchingCubesPlanet.Lab
             return record.resourceId;
         }
 
+        public bool TransferOwnership(int resourceId, string newOwnerModule)
+        {
+            for (int i = 0; i < records.Count; i++)
+            {
+                PlanetLabResourceRecord record = records[i];
+                if (record.resourceId != resourceId)
+                {
+                    continue;
+                }
+
+                record.ownerModule = string.IsNullOrWhiteSpace(newOwnerModule) ? "Unknown Owner" : newOwnerModule;
+                RecalculateLiveTotals();
+                return true;
+            }
+
+            return false;
+        }
+
+        public bool TryGetResource(int resourceId, out PlanetLabResourceRecord record)
+        {
+            for (int i = 0; i < records.Count; i++)
+            {
+                if (records[i].resourceId == resourceId)
+                {
+                    record = records[i];
+                    return true;
+                }
+            }
+
+            record = null;
+            return false;
+        }
+
+        public int CopyLiveRecords(PlanetLabResourceRecord[] buffer)
+        {
+            if (buffer == null || buffer.Length == 0)
+            {
+                return 0;
+            }
+
+            int count = 0;
+            for (int i = 0; i < records.Count && count < buffer.Length; i++)
+            {
+                if (!records[i].isAlive)
+                {
+                    continue;
+                }
+
+                buffer[count++] = records[i];
+            }
+
+            return count;
+        }
+
         public bool MarkReleased(int resourceId)
         {
             for (int i = 0; i < records.Count; i++)

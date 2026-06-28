@@ -55,5 +55,29 @@ namespace MarchingCubesPlanet.Lab.Tests
             Assert.AreEqual(0, registry.OwnedGpuEstimatedBytes);
             Assert.AreEqual(0, registry.LiveResourceCount);
         }
+
+        [Test]
+        public void TransferOwnershipChangesOwner()
+        {
+            int resourceId = registry.RegisterResource("GPU", PlanetLabResourceType.GraphicsBuffer, "Old", 128);
+
+            Assert.IsTrue(registry.TransferOwnership(resourceId, "New"));
+            Assert.IsTrue(registry.TryGetResource(resourceId, out PlanetLabResourceRecord record));
+            Assert.AreEqual("New", record.ownerModule);
+        }
+
+        [Test]
+        public void CopyLiveRecordsWritesOnlyAliveRecords()
+        {
+            int releasedId = registry.RegisterResource("Released", PlanetLabResourceType.CpuBuffer, "Test", 64);
+            registry.RegisterResource("Alive", PlanetLabResourceType.ManagedArray, "Test", 128);
+            registry.MarkReleased(releasedId);
+
+            PlanetLabResourceRecord[] buffer = new PlanetLabResourceRecord[4];
+            int count = registry.CopyLiveRecords(buffer);
+
+            Assert.AreEqual(1, count);
+            Assert.AreEqual("Alive", buffer[0].resourceName);
+        }
     }
 }

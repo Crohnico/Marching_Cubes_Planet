@@ -679,6 +679,8 @@ Ubicacion:
 ```text
 La ruta concreta debe resolverse con Application.persistentDataPath o un wrapper propio equivalente.
 En Quest/Android esto debe apuntar a la carpeta persistente de la aplicacion, asociada al package debug actual `com.Perodry.debug`.
+En Editor, el wrapper debe apuntar a una carpeta dentro del proyecto y fuera de Assets para que sea inspeccionable por Codex sin ensuciar imports de Unity:
+Temp/PlanetLabMemory/planet-memory-budget.override.json.
 El Lab debe mostrar la ruta exacta en Inspector para poder copiar/editar el archivo desde fuera.
 ```
 
@@ -965,6 +967,8 @@ Regla:
 
 ```text
 La exportacion propia vive en Lab/Editor/dev diagnostics.
+En Editor, la exportacion propia se guarda fuera de Assets y dentro del proyecto:
+Temp/PlanetLabMemory/Reports/.
 No forma parte del runtime oficial.
 No se escribe por frame.
 No debe ejecutarse automaticamente en builds finales salvo modo diagnostico explicito.

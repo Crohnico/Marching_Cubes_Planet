@@ -21,6 +21,7 @@ namespace MarchingCubesPlanet.Lab.Editor
             PlanetLabResourceRegistry registry = root.AddComponent<PlanetLabResourceRegistry>();
             PlanetImplementationLabController controller = root.AddComponent<PlanetImplementationLabController>();
             CreateComputeShaderLab(root.transform, registry);
+            CreateMemoryLab(root.transform, registry, controller);
             CreateRecipeLab(root.transform, registry);
             CreateRecipePayloadPreview();
 
@@ -66,6 +67,25 @@ namespace MarchingCubesPlanet.Lab.Editor
             serializedComputeLab.ApplyModifiedPropertiesWithoutUndo();
 
             return computeLab;
+        }
+
+        private static PlanetMemoryLab CreateMemoryLab(
+            Transform parent,
+            PlanetLabResourceRegistry registry,
+            PlanetImplementationLabController controller)
+        {
+            GameObject memoryObject = new GameObject("PlanetMemoryLab");
+            memoryObject.transform.SetParent(parent, false);
+            memoryObject.transform.localPosition = new Vector3(0f, 0f, 0f);
+
+            PlanetMemoryLab memoryLab = memoryObject.AddComponent<PlanetMemoryLab>();
+
+            SerializedObject serializedMemoryLab = new SerializedObject(memoryLab);
+            serializedMemoryLab.FindProperty("resourceRegistry").objectReferenceValue = registry;
+            serializedMemoryLab.FindProperty("labController").objectReferenceValue = controller;
+            serializedMemoryLab.ApplyModifiedPropertiesWithoutUndo();
+
+            return memoryLab;
         }
 
         private static PlanetRecipeLab CreateRecipeLab(Transform parent, PlanetLabResourceRegistry registry)

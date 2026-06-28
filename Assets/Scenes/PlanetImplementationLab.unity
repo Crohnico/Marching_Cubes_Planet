@@ -439,8 +439,164 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1000200002}
+  - {fileID: 1000250002}
   - {fileID: 1000300002}
   m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1000250000
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1000250002}
+  - component: {fileID: 1000250001}
+  m_Layer: 0
+  m_Name: PlanetMemoryLab
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1000250001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1000250000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f09565304a8544d3a953e62fed0c776f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MarchingCubesPlanet.Lab::MarchingCubesPlanet.Lab.PlanetMemoryLab
+  resourceRegistry: {fileID: 1146611496}
+  labController: {fileID: 1146611495}
+  budgetDefaults:
+    profileName: Quest 3 Lab Defaults
+    targetPlatform: Quest3
+    ownedCpuSoftMiB: 384
+    ownedCpuHardMiB: 512
+    ownedGpuSoftMiB: 384
+    ownedGpuHardMiB: 512
+    ownedCombinedSoftMiB: 768
+    ownedCombinedHardMiB: 1024
+    singleResourceSoftMiB: 128
+    singleResourceHardMiB: 256
+    liveGraphicsBuffersHard: 128
+    liveComputeBuffersHard: 64
+    liveRenderTexturesHard: 16
+    liveRuntimeMeshesHard: 128
+    liveRuntimeTexturesHard: 16
+    liveRuntimeMaterialsHard: 32
+  runtimeBudget:
+    profileName: Quest 3 Lab Defaults
+    targetPlatform: Quest3
+    ownedCpuSoftMiB: 384
+    ownedCpuHardMiB: 512
+    ownedGpuSoftMiB: 384
+    ownedGpuHardMiB: 512
+    ownedCombinedSoftMiB: 768
+    ownedCombinedHardMiB: 1024
+    singleResourceSoftMiB: 128
+    singleResourceHardMiB: 256
+    liveGraphicsBuffersHard: 128
+    liveComputeBuffersHard: 64
+    liveRenderTexturesHard: 16
+    liveRuntimeMeshesHard: 128
+    liveRuntimeTexturesHard: 16
+    liveRuntimeMaterialsHard: 32
+  useExternalTestOverride: 1
+  overrideFilePath: 
+  lastBudgetLoadMessage: 
+  beforeSnapshot:
+    operationName: 
+    frame: 0
+    realtimeSinceStartup: 0
+    ownedCpuEstimatedBytes: 0
+    ownedGpuEstimatedBytes: 0
+    ownedCombinedEstimatedBytes: 0
+    liveResourceCount: 0
+    liveGraphicsBuffers: 0
+    liveComputeBuffers: 0
+    liveRenderTextures: 0
+    liveRuntimeMeshes: 0
+    liveRuntimeTextures: 0
+    liveRuntimeMaterials: 0
+    largestSingleResourceBytes: 0
+    largestSingleResourceName: 
+    largestSingleResourceOwner: 
+    operationMs: 0
+  afterSnapshot:
+    operationName: 
+    frame: 0
+    realtimeSinceStartup: 0
+    ownedCpuEstimatedBytes: 0
+    ownedGpuEstimatedBytes: 0
+    ownedCombinedEstimatedBytes: 0
+    liveResourceCount: 0
+    liveGraphicsBuffers: 0
+    liveComputeBuffers: 0
+    liveRenderTextures: 0
+    liveRuntimeMeshes: 0
+    liveRuntimeTextures: 0
+    liveRuntimeMaterials: 0
+    largestSingleResourceBytes: 0
+    largestSingleResourceName: 
+    largestSingleResourceOwner: 
+    operationMs: 0
+  lastSnapshot:
+    operationName: 
+    frame: 0
+    realtimeSinceStartup: 0
+    ownedCpuEstimatedBytes: 0
+    ownedGpuEstimatedBytes: 0
+    ownedCombinedEstimatedBytes: 0
+    liveResourceCount: 0
+    liveGraphicsBuffers: 0
+    liveComputeBuffers: 0
+    liveRenderTextures: 0
+    liveRuntimeMeshes: 0
+    liveRuntimeTextures: 0
+    liveRuntimeMaterials: 0
+    largestSingleResourceBytes: 0
+    largestSingleResourceName: 
+    largestSingleResourceOwner: 
+    operationMs: 0
+  lastComparison:
+    comparisonName: 
+    ownedCpuDeltaBytes: 0
+    ownedGpuDeltaBytes: 0
+    ownedCombinedDeltaBytes: 0
+    liveResourceDelta: 0
+  lastUnityMemoryCapture:
+    isAvailable: 0
+    snapshotPath: 
+    operationMs: 0
+  lastDiagnostic:
+    severity: 0
+    title: 
+    probableCause: 
+    recommendedAction: 
+    relatedMetrics: 
+  lastAction: 
+  lastOwnSnapshotExportPath: 
+--- !u!4 &1000250002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1000250000}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1146611497}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1795443600
 GameObject:
