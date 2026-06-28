@@ -44,6 +44,53 @@ namespace MarchingCubesPlanet.Lab.Tests
         }
 
         [Test]
+        public void GridToWorldAppliesPlanetRotation()
+        {
+            PlanetRecipe recipe = PlanetRecipe.Default();
+            recipe.WorldScale = 4f;
+            PlanetPlacement placement = new PlanetPlacement(
+                UniversePosition.Zero,
+                UniversePosition.Zero,
+                Quaternion.Euler(0f, 90f, 0f));
+            Vector3 gridPosition = new Vector3(1f, 0f, 0f);
+
+            Vector3 worldPosition = PlanetCoordinateConverter.GridToWorld(gridPosition, in recipe, in placement);
+            Vector3 expectedWorldPosition = placement.PlanetRotation * new Vector3(4f, 0f, 0f);
+            Vector3 roundTrip = PlanetCoordinateConverter.WorldToGrid(worldPosition, in recipe, in placement);
+
+            AssertVectorApproximately(expectedWorldPosition, worldPosition);
+            AssertVectorApproximately(gridPosition, roundTrip);
+        }
+
+        [Test]
+        public void ActiveOriginChangesWorldPositionButNotGridIdentity()
+        {
+            PlanetRecipe recipe = PlanetRecipe.Default();
+            Vector3 gridPosition = new Vector3(1f, 2f, 3f);
+            UniversePosition planetCenter = new UniversePosition(10000d, 20000d, 30000d);
+            PlanetPlacement firstFrame = new PlanetPlacement(
+                planetCenter,
+                new UniversePosition(9000d, 19000d, 29000d),
+                Quaternion.Euler(0f, 45f, 0f));
+            PlanetPlacement secondFrame = new PlanetPlacement(
+                planetCenter,
+                new UniversePosition(9500d, 19500d, 29500d),
+                Quaternion.Euler(0f, 45f, 0f));
+
+            UniversePosition firstStellar = PlanetCoordinateConverter.GridToStellar(gridPosition, in recipe, in firstFrame);
+            UniversePosition secondStellar = PlanetCoordinateConverter.GridToStellar(gridPosition, in recipe, in secondFrame);
+            Vector3 firstWorld = PlanetCoordinateConverter.GridToWorld(gridPosition, in recipe, in firstFrame);
+            Vector3 secondWorld = PlanetCoordinateConverter.GridToWorld(gridPosition, in recipe, in secondFrame);
+            Vector3 firstRoundTrip = PlanetCoordinateConverter.WorldToGrid(firstWorld, in recipe, in firstFrame);
+            Vector3 secondRoundTrip = PlanetCoordinateConverter.WorldToGrid(secondWorld, in recipe, in secondFrame);
+
+            Assert.AreEqual(firstStellar, secondStellar);
+            Assert.AreNotEqual(firstWorld, secondWorld);
+            AssertVectorApproximately(gridPosition, firstRoundTrip);
+            AssertVectorApproximately(gridPosition, secondRoundTrip);
+        }
+
+        [Test]
         public void DistanceConversionsUseWorldScale()
         {
             PlanetRecipe recipe = PlanetRecipe.Default();

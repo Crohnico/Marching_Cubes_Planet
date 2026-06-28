@@ -34,6 +34,21 @@ WorldRadius no se guarda como verdad independiente.
 WorldRadius = GridRadius * WorldScale.
 ```
 
+Decision revisitada:
+
+```text
+GridCoordinates identifica datos locales estables del planeta.
+El cuerpo del planeta puede orbitar y rotar en StellarSpace.
+WorldSpaceCoordinates es solo la proyeccion local de Unity despues de aplicar activeOrigin.
+```
+
+Por tanto:
+
+```text
+GridCellCoordinates no se reescribe cuando el planeta orbita, rota o cambia el origen activo.
+La posicion global/visual de una cell se deriva desde un snapshot de coordenadas.
+```
+
 ## Alcance de esta fase
 
 Entra:
@@ -41,12 +56,13 @@ Entra:
 ```text
 PlanetRecipe minima.
 PlanetPlacement separado de PlanetRecipe.
+Coordinate frame minimo con centro estelar, origen activo y rotacion.
 GridCoordinates.
 WorldSpaceCoordinates.
 WorldScale.
 GridRadius.
 WorldRadius derivado.
-Conversiones Grid <-> World.
+Conversiones Grid <-> Stellar <-> World.
 Validaciones de Inspector.
 Tests de conversion.
 Tests de determinismo de datos base.
@@ -153,9 +169,12 @@ El sistema debe producir:
 ```text
 Receta valida.
 Placement valido.
+Coordinate frame valido.
 WorldRadius derivado.
 Conversion Grid -> World.
 Conversion World -> Grid.
+Conversion Grid -> Stellar.
+Conversion Stellar -> Grid.
 Conversion GridCell -> World bounds.
 Valores de debug legibles en Inspector.
 Errores de validacion claros.
@@ -279,7 +298,9 @@ Con:
 
 ```text
 WorldScale = 4
-planetWorldCenter = 0,0,0
+planetStellarCenter = 0,0,0
+activeOrigin = 0,0,0
+planetRotation = identidad
 ```
 
 se deriva:
@@ -346,7 +367,9 @@ Posicion continua en Unity/mundo.
 No se almacena como dato base si se puede derivar.
 
 ```text
-worldPosition = planetWorldCenter + gridPosition * WorldScale
+worldPosition =
+    (planetStellarCenter + planetRotation * (gridPosition * WorldScale))
+    - activeOrigin
 ```
 
 Ejemplo:
@@ -354,7 +377,9 @@ Ejemplo:
 ```text
 GridCellCoordinates = 10,33,65
 WorldScale = 4
-planetWorldCenter = 0,0,0
+planetStellarCenter = 0,0,0
+activeOrigin = 0,0,0
+planetRotation = identidad
 
 WorldSpacePosition minima de la celda = 40,132,260
 WorldSpacePosition centro de la celda = 42,134,262
@@ -369,13 +394,21 @@ Son coordenadas locales al origen activo de Unity. No representan por si solas l
 La conversion base:
 
 ```text
-worldPosition = planetWorldCenter + gridPosition * WorldScale
+stellarPosition =
+    planetStellarCenter + planetRotation * (gridPosition * WorldScale)
+
+worldPosition =
+    stellarPosition - activeOrigin
 ```
 
 La conversion inversa:
 
 ```text
-gridPosition = (worldPosition - planetWorldCenter) / WorldScale
+stellarPosition =
+    activeOrigin + worldPosition
+
+gridPosition =
+    inverse(planetRotation) * (stellarPosition - planetStellarCenter) / WorldScale
 ```
 
 Decision cerrada para el primer bloque:
@@ -437,6 +470,65 @@ WorldSpaceCoordinates es mundo local Unity.
 StellarSpaceCoordinates es espacio global del sistema estelar.
 ```
 
+### CoordinateFrameSnapshot
+
+Snapshot minimo de conversion para un cuerpo planetario en un tiempo concreto.
+
+Responsabilidad:
+
+```text
+Agrupar los datos necesarios para que todos los sistemas conviertan con el mismo marco.
+Evitar que render, queries, streaming o herramientas vean poses distintas del planeta.
+```
+
+Datos conceptuales:
+
+```text
+simulationTime
+activeOrigin
+planetStellarCenter
+planetRotation
+WorldScale desde PlanetRecipe
+```
+
+Regla:
+
+```text
+El snapshot se usa para derivar posiciones, no para guardar identidad de cells.
+```
+
+En la primera implementacion el dato real se representa dentro de `PlanetPlacement`:
+
+```text
+planetStellarCenter
+activeOrigin
+planetRotation
+```
+
+`simulationTime`, orbitas reales, velocidades y recentrado completo quedan para documento futuro de Sistema Estelar / FloatingOriginSystem.
+
+### PlanetBodyPose
+
+Pose logica del planeta como cuerpo movil.
+
+Conceptualmente:
+
+```text
+PlanetBodyPose(t):
+- centerStellarPosition
+- rotation
+- orbitalVelocity si hace falta
+- angularVelocity si hace falta
+```
+
+Regla:
+
+```text
+La pose del cuerpo no pertenece a PlanetRecipe.
+La receta define como es el planeta.
+La pose define donde esta y como esta orientado en un tiempo dado.
+```
+
 ### FloatingOriginOffset
 
 Desplazamiento entre el espacio global del sistema estelar y el mundo local de Unity.
@@ -461,7 +553,7 @@ public static class UniversePositionConverter
 
     public static Vector3 UniverseToLocalPosition(UniversePosition universePosition)
     {
-        return (Vector3)(universePosition - CurrentOriginOffset);
+        return universePosition - CurrentOriginOffset;
     }
 
     public static void SetOrigin(UniversePosition newOrigin)
@@ -520,14 +612,22 @@ Para un planeta:
 
 ```text
 planetWorldCenter = planetStellarPosition - activeOrigin
-worldPosition = stellarPosition - activeOrigin
-gridPosition = (worldPosition - planetWorldCenter) / WorldScale
+
+stellarPosition =
+    planetStellarPosition + planetRotation * (gridPosition * WorldScale)
+
+worldPosition =
+    stellarPosition - activeOrigin
+
+gridPosition =
+    inverse(planetRotation) * (stellarPosition - planetStellarPosition) / WorldScale
 ```
 
 Conceptualmente el `activeOrigin` se cancela:
 
 ```text
-gridPosition = (stellarPosition - planetStellarPosition) / WorldScale
+gridPosition =
+    inverse(planetRotation) * (stellarPosition - planetStellarPosition) / WorldScale
 ```
 
 Por tanto:
@@ -664,10 +764,35 @@ Define donde esta colocado el planeta en el sistema o escena.
 Responsabilidad:
 
 ```text
-planetWorldCenter.
-rotacion si aplica.
+planetStellarCenter.
+activeOrigin.
+planetRotation.
 escala adicional no permitida por defecto.
 estado de montaje en escena.
+```
+
+Regla:
+
+```text
+PlanetPlacement no guarda WorldRadius.
+PlanetPlacement no modifica PlanetRecipe.
+PlanetPlacement representa un frame/snapshot de conversion, no los datos persistentes del planeta.
+```
+
+`planetWorldCenter` pasa a ser derivado:
+
+```text
+planetWorldCenter = planetStellarCenter - activeOrigin
+```
+
+La rotacion forma parte de la conversion:
+
+```text
+Grid -> Stellar:
+stellarPosition = planetStellarCenter + planetRotation * (gridPosition * WorldScale)
+
+Stellar -> Grid:
+gridPosition = inverse(planetRotation) * (stellarPosition - planetStellarCenter) / WorldScale
 ```
 
 Regla:
@@ -717,7 +842,9 @@ Dato real del motor para colocar una receta.
 Responsabilidad:
 
 ```text
-Guardar centro en WorldSpaceCoordinates.
+Guardar centro en StellarSpaceCoordinates.
+Guardar origen activo usado para proyectar a WorldSpaceCoordinates.
+Guardar rotacion del planeta.
 Convertir puntos usando PlanetRecipe.
 No modificar la receta.
 ```
@@ -731,6 +858,10 @@ Responsabilidad:
 ```text
 GridToWorld.
 WorldToGrid.
+GridToStellar.
+StellarToGrid.
+StellarToWorld.
+WorldToStellar.
 GridCellToWorldBounds.
 GridCellToGridCenter.
 GridCellToWorldCenter.
@@ -748,9 +879,22 @@ WorldSpacePosition local usa float / Vector3.
 StellarSpacePosition global usa double / double3.
 ```
 
-`PlanetCoordinateConverter` del primer bloque no necesita resolver `StellarSpacePosition`. Esa conversion quedara para el sistema de floating origin.
+`PlanetCoordinateConverter` del primer bloque resuelve el frame minimo:
+
+```text
+Grid <-> Stellar <-> World
+```
+
+No resuelve orbitas reales, velocidades ni politica de recenter. Eso queda para el sistema de floating origin / sistema estelar.
 
 Cuando exista `FloatingOriginOffset`, cualquier conversion que parta de `WorldSpacePosition` debe saber si esa posicion ya esta desplazada a mundo local. No se debe mezclar una posicion global con una posicion local sin pasar por el convertidor correspondiente.
+
+Regla:
+
+```text
+Toda conversion WorldSpacePosition -> GridPosition debe pasar por activeOrigin + PlanetPlacement.
+No existe conversion World -> Grid independiente del frame.
+```
 
 ### GridCellQuery
 
@@ -1006,7 +1150,10 @@ GridDiameter derivado
 WorldDiameter derivado
 Seed
 IsoLevel
-planetWorldCenter
+planetStellarCenter
+activeOrigin
+planetWorldCenter derivado
+planetRotation
 ultimo resultado de conversion
 ultimo resultado de query espacial
 ultimo diagnostico
@@ -1032,6 +1179,9 @@ GridRadius 1000 y WorldScale 4 producen WorldRadius 4000.
 GridPosition zero se convierte al centro del planeta.
 GridPosition (1000,0,0) se convierte a center + (4000,0,0).
 WorldPosition vuelve a GridPosition dentro de tolerancia.
+GridPosition -> StellarPosition -> GridPosition vuelve dentro de tolerancia.
+Cambiar activeOrigin cambia WorldSpacePosition pero no cambia GridCellCoordinates.
+Rotar PlanetPlacement rota la posicion global/visual pero no cambia la identidad local de la cell.
 GridRadius invalido se detecta.
 WorldScale invalido se detecta.
 IsoLevel demo es 0.
@@ -1058,6 +1208,7 @@ Con FloatingOriginOffset = 0, WorldSpacePosition coincide con StellarSpacePositi
 Con FloatingOriginOffset != 0, WorldSpacePosition cambia pero GridPosition relativa al planeta se mantiene.
 Cambiar activeOrigin no cambia GridCellCoordinates del jugador respecto al planeta.
 Recenter no reescribe receta, patches ni datos persistentes.
+Rotacion del planeta no reescribe receta, patches ni datos persistentes.
 ```
 
 Pruebas de query espacial:
@@ -1078,6 +1229,9 @@ Tests EditMode esperados:
 WorldRadius = GridRadius * WorldScale.
 WorldDiameter = GridRadius * 2 * WorldScale.
 GridToWorld y WorldToGrid son inversas dentro de tolerancia.
+GridToStellar y StellarToGrid son inversas dentro de tolerancia.
+GridToWorld aplica la rotacion de PlanetPlacement.
+Cambiar activeOrigin cambia WorldSpacePosition pero no cambia StellarPosition ni GridCellCoordinates.
 GridDistanceToWorldDistance multiplica por WorldScale.
 WorldDistanceToGridDistance divide por WorldScale.
 GridRadius <= 0 invalida receta.
@@ -1110,7 +1264,8 @@ Tiempo de validacion.
 Numero de errores de validacion.
 Resultado de conversion.
 Tiempo de conversion Grid <-> World.
-Tiempo de conversion Stellar -> World cuando exista.
+Tiempo de conversion Grid <-> Stellar.
+Tiempo de conversion Stellar <-> World.
 Tiempo de query espacial.
 Numero de celdas devueltas por query.
 Overflow de buffers de query.
@@ -1137,6 +1292,8 @@ Usar Transform.localScale como fuente de verdad.
 Mezclar receta procedural con placement.
 Usar coordenadas float para todo y bloquear floating origin futuro.
 Meter persistencia antes de cerrar los datos base.
+Guardar posicion global o WorldSpacePosition dentro de datos persistentes de cell.
+Evaluar densidad, sustancias o patches en WorldSpacePosition y provocar que el terreno nade al orbitar o rotar.
 Usar CenterInside donde hace falta Intersects y perder celdas cercanas.
 Crear listas nuevas para consultas espaciales frecuentes.
 Que el cambio de origen activo cambie coordenadas logicas por error.
@@ -1150,6 +1307,7 @@ Mitigaciones:
 ```text
 WorldRadius siempre derivado.
 PlanetRecipe separado de PlanetPlacement.
+PlanetPlacement como frame de conversion con centro estelar, origen activo y rotacion.
 Conversiones centralizadas.
 Consultas espaciales centralizadas.
 Salida de queries con buffer preasignado + count.
@@ -1175,6 +1333,8 @@ Decisiones movidas a documentos futuros:
 FloatingOriginSystem / Sistema Estelar:
 - formato final de floating origin.
 - cuando entra StellarSpacePosition en runtime real.
+- como se evalua PlanetBodyPose(t) desde orbitas reales.
+- como se sincroniza un CoordinateFrameSnapshot por frame.
 - como se oculta o suaviza el recenter en VR.
 - como se sincroniza floating origin con multijugador.
 
@@ -1197,6 +1357,9 @@ GridPosition continua usa float para GPU y pruebas iniciales.
 GridPosition a GridCellCoordinates usa floor matematico tambien en negativos.
 WorldSpaceCoordinates en Unity usan Vector3/float durante el primer bloque.
 StellarSpaceCoordinates usara double/double3 cuando entre el sistema estelar real.
+UniversePosition se introduce como struct serializable double para el frame minimo.
+PlanetPlacement guarda planetStellarCenter, activeOrigin y planetRotation.
+planetWorldCenter es derivado, no fuente de verdad.
 WorldRadius siempre derivado.
 PlanetRecipe empieza como dato puro serializable, no ScriptableObject.
 PlanetRecipeLab solo prueba y visualiza.
@@ -1213,6 +1376,7 @@ WorldRadius es derivado.
 GridCellCoordinates tiene convencion clara de min/center/max.
 PlanetRecipe no contiene placement.
 PlanetPlacement no modifica receta.
+PlanetPlacement permite rotacion y activeOrigin sin cambiar identidad de cells.
 Las conversiones son testeables.
 Las consultas espaciales basicas son testeables y sin allocations.
 El Lab solo prueba el sistema real.

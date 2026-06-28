@@ -15,7 +15,7 @@ Este documento describe la teoria de como se calcula la forma del planeta. No de
 El planeta no se guarda como una esfera modelada a mano. Se define como un campo escalar determinista:
 
 ```text
-density(worldPosition) = radioDelPlaneta + desplazamientoDeSuperficie - distanciaAlCentro
+density(planetLocalPosition) = radioDelPlaneta + desplazamientoDeSuperficie - distanciaAlCentro
 ```
 
 Luego se muestrea ese campo en una rejilla voxel y se extrae la superficie con Marching Cubes.
@@ -36,6 +36,19 @@ radioDelPlaneta + desplazamientoDeSuperficie == distanciaAlCentro
 ```
 
 El aspecto que gusta sale principalmente de `desplazamientoDeSuperficie`: continentes por Voronoi esferico, oceanos hundidos, ruido fino de relieve y una clasificacion por altura/capa.
+
+Regla de coordenadas:
+
+```text
+El campo se evalua en coordenadas locales/grid del planeta.
+Una posicion global o WorldSpacePosition debe convertirse primero al frame local del planeta.
+```
+
+Motivo:
+
+```text
+Si la densidad, sustancias o patches se evaluan directamente en WorldSpacePosition, el terreno nadaria al orbitar, rotar o recentrar el universo.
+```
 
 ## Campo escalar
 

@@ -26,6 +26,7 @@ El deadline cubre:
 03_Coordenadas_Y_Receta
 04_Gestion_RAM_VRAM
 05_Quest3_Player_Setup
+Flujo VR de payload preview con generacion manual de esfera y liberacion previa obligatoria.
 ```
 
 No valida todavia:
@@ -33,7 +34,7 @@ No valida todavia:
 ```text
 Forma procedural real del planeta.
 Proxy lejano final.
-Payload final de triangulos.
+Payload final de triangulos del documento 08 mas alla del preview de esfera.
 Estados lejanos del planeta.
 Chunks locales.
 Gameplay.
@@ -153,10 +154,13 @@ No oculta una fuga, allocation caliente o recurso sin owner.
 [ ] `GridRadius = 1000` y `WorldScale = 4` producen `WorldRadius = 4000`.
 [ ] `Grid -> World -> Grid` conserva valores dentro de tolerancia.
 [ ] `GridPosition -> GridCellCoordinates` usa floor matematico, tambien en negativos.
+[ ] `PlanetPlacement` incluye centro estelar, origen activo y rotacion sin modificar `PlanetRecipe`.
+[ ] Cambiar `activeOrigin` cambia la proyeccion WorldSpace pero no cambia la identidad Grid de una cell.
+[ ] Rotar el planeta cambia la posicion global/visual derivada pero no cambia los datos persistentes de cell.
 [ ] Las consultas espaciales escriben en buffer preasignado y devuelven count.
 [ ] Un overflow de buffer de query se diagnostica sin crear memoria nueva.
 [ ] Las pruebas de receta no crean recursos GPU ni recursos pesados artificiales.
-[ ] Queda apuntado revisitar `03_Coordenadas_Y_Receta` para incorporar orbitas planetarias y su efecto sobre placement, conversiones y calculos derivados.
+[ ] `03_Coordenadas_Y_Receta` incorpora el frame minimo para planetas moviles; orbitas reales y `PlanetBodyPose(t)` quedan para Sistema Estelar / FloatingOriginSystem.
 ```
 
 ### 6. RAM, memoria GPU estimada y GC
@@ -208,7 +212,38 @@ No oculta una fuga, allocation caliente o recurso sin owner.
 [ ] `Release All` se puede ejecutar desde UI VR.
 ```
 
-### 9. APK / Player Quest 3
+### 9. Flujo de usuario payload en VR
+
+```text
+[ ] La UI VR tiene un Canvas fisico con panel izquierdo de botones y panel derecho de informacion.
+[ ] La zona central queda libre para ver la esfera generada delante del player.
+[ ] El panel izquierdo contiene botones visibles y pulsables con rayo:
+    Generate 30k
+    Generate 130k
+    Generate 500k
+    Generate 750k
+    Generate 1M
+    Generate 2M
+    Generate 5M
+[ ] Cada boton Generate libera primero RAM/VRAM propia de la prueba anterior si existia.
+[ ] Cada boton Generate borra la esfera/prueba actual antes de crear la nueva.
+[ ] Cada boton Generate aplica su payload y genera una esfera nueva delante del player.
+[ ] Cambiar de Generate 30k a Generate 5M no deja meshes, materiales, buffers, handles ni registros vivos de la esfera anterior.
+[ ] `Generate 5M` solo se ejecuta por accion manual explicita y deja diagnostico si supera presupuesto o plataforma.
+[ ] El panel derecho muestra informacion importante que no aparece de forma directa en la grafica de Quest 3.
+[ ] El panel derecho muestra como minimo requested triangles, triangles reales, vertices, indices, frecuencia geodesica, GridRadius, WorldScale, WorldRadius, surfaceRadius, IsoLevel, mesh vivo si/no y ultimo diagnostico.
+[ ] Si existen metricas de memoria/tiempo conectadas al registry, el panel derecho muestra ownedCpuEstimatedBytes, ownedGpuEstimatedBytes y ultimo operationMs.
+[ ] La informacion del panel derecho se actualiza despues de cada Generate y despues de Release.
+```
+
+Regla:
+
+```text
+Los botones Generate del panel izquierdo son acciones completas.
+No son botones que solo cambian el preset para que otro boton genere despues.
+```
+
+### 10. APK / Player Quest 3
 
 ```text
 [ ] El proyecto esta preparado para generar APK/Player Android.
@@ -218,7 +253,7 @@ No oculta una fuga, allocation caliente o recurso sin owner.
 [ ] La build de dispositivo no ejecuta snapshots, stress ni polling automaticamente al arrancar.
 ```
 
-### 10. Tests automatizados
+### 11. Tests automatizados
 
 ```text
 [ ] Pasan los EditMode tests de datos puros disponibles.
@@ -230,7 +265,7 @@ No oculta una fuga, allocation caliente o recurso sin owner.
 [ ] Los tests condicionados por soporte de plataforma no fallan falsamente si el soporte no existe.
 ```
 
-### 11. Evidencias minimas
+### 12. Evidencias minimas
 
 ```text
 [ ] Ultimo resultado de Validate Scene.
@@ -240,6 +275,10 @@ No oculta una fuga, allocation caliente o recurso sin owner.
 [ ] Resultado de stress Low y al menos un stress pesado elegido manualmente.
 [ ] Resultado de prueba Quest Link.
 [ ] Resultado de click con rayo en UI VR.
+[ ] Captura o registro manual de Generate 30k desde UI VR.
+[ ] Captura o registro manual de Generate 130k desde UI VR.
+[ ] Captura o registro manual de un Generate pesado elegido manualmente entre 750k, 1M, 2M o 5M.
+[ ] Captura o registro manual del panel derecho despues de generar y despues de liberar.
 [ ] Estado de generacion APK/Player.
 ```
 
@@ -258,7 +297,10 @@ Un recurso grande se crea sin estimatedBytes.
 Hay crecimiento de memoria propio no explicado tras Release.
 Hay GC recurrente en un camino que deberia ser caliente.
 Una prueba supera hard budget sin confirmacion manual y diagnostico.
-La UI VR ejecuta comandos distintos a los del Inspector.
+La UI VR ejecuta logica distinta a los sistemas/Inspector sin estar documentada como accion compuesta.
+Un boton Generate de payload no libera la prueba anterior antes de generar.
+Un boton Generate de payload deja la esfera anterior o recursos propios vivos sin diagnostico.
+El panel derecho no muestra los datos minimos de payload y diagnostico.
 El player rig impide probar el Lab.
 Quest Link no permite validar camara/player/UI y no hay diagnostico claro.
 El proyecto no puede preparar APK/Player Android y no hay diagnostico claro.
@@ -274,6 +316,8 @@ Todos los checks obligatorios estan OK.
 Los Warning aceptados tienen diagnostico y accion futura escrita.
 No queda ningun bloqueante automatico.
 Release All queda probado desde Inspector y UI VR.
+Los botones Generate 30k, Generate 130k, Generate 500k, Generate 750k, Generate 1M, Generate 2M y Generate 5M quedan probados desde UI VR como acciones completas de release, borrado y generacion.
+El panel derecho de la UI VR muestra la informacion tecnica minima de payload, memoria/tiempo si existe y diagnostico.
 Los snapshots propios y oficiales quedan disponibles o con diagnostico claro.
 Quest Link permite usar el Lab con gafas, movimiento y rayo.
 El proyecto queda listo para empezar `Docs/Implementacion/Pasos/06_Forma_Planeta_GPU.md`.
@@ -304,5 +348,5 @@ Notas:
 ```text
 Fecha del deadline.
 Formato final del registro historico de resultados si queremos conservar varias ejecuciones.
-Revisitar `03_Coordenadas_Y_Receta` para modelar que los planetas orbitan: el centro del planeta no sera siempre estatico y eso afecta a PlanetPlacement, conversiones Grid/World/Stellar, floating origin y calculos dependientes del tiempo.
+Cerrar documento futuro de Sistema Estelar / FloatingOriginSystem para definir orbitas reales, `PlanetBodyPose(t)`, sincronizacion de snapshots por frame y politica final de recenter.
 ```

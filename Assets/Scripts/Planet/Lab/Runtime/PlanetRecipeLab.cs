@@ -163,6 +163,8 @@ namespace MarchingCubesPlanet.Lab
             }
 
             Vector3 worldCenter = PlanetCoordinateConverter.GridToWorld(Vector3.zero, in recipe, in placement);
+            Vector3 expectedSurfaceWorld = placement.PlanetWorldCenter +
+                                           placement.PlanetRotation * new Vector3(recipe.WorldRadius, 0f, 0f);
             Vector3 surfaceWorld = PlanetCoordinateConverter.GridToWorld(
                 new Vector3(recipe.GridRadius, 0f, 0f),
                 in recipe,
@@ -170,7 +172,7 @@ namespace MarchingCubesPlanet.Lab
             Vector3 roundTripGrid = PlanetCoordinateConverter.WorldToGrid(surfaceWorld, in recipe, in placement);
 
             bool passed = Approximately(worldCenter, placement.PlanetWorldCenter) &&
-                          Approximately(surfaceWorld, placement.PlanetWorldCenter + new Vector3(recipe.WorldRadius, 0f, 0f)) &&
+                          Approximately(surfaceWorld, expectedSurfaceWorld) &&
                           Approximately(roundTripGrid, new Vector3(recipe.GridRadius, 0f, 0f)) &&
                           Mathf.Approximately(recipe.WorldRadius, recipe.GridRadius * recipe.WorldScale);
 
@@ -383,7 +385,10 @@ namespace MarchingCubesPlanet.Lab
                    "\nWorldDiameter=" + recipe.WorldDiameter +
                    "\nSeed=" + recipe.Seed +
                    "\nIsoLevel=" + recipe.IsoLevel +
-                   "\nPlanetWorldCenter=" + placement.PlanetWorldCenter;
+                   "\nPlanetStellarCenter=" + placement.PlanetStellarCenter +
+                   "\nActiveOrigin=" + placement.ActiveOrigin +
+                   "\nPlanetWorldCenter=" + placement.PlanetWorldCenter +
+                   "\nPlanetRotation=" + placement.PlanetRotation.eulerAngles;
         }
 
         private static string BuildQueryMetrics(GridCellQueryResult result)

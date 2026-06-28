@@ -252,22 +252,28 @@ Debe colocarse de forma que no interfiera con las pruebas visuales ni tape el ob
 Estructura:
 
 ```text
-Botonera superior:
-- cambia entre ventanas/modulos del Lab.
+Panel izquierdo:
+- botones grandes de accion directa para pruebas manuales.
+- para el deadline de payload, contiene los botones Generate 30k, Generate 130k, Generate 500k, Generate 750k, Generate 1M, Generate 2M y Generate 5M.
 
-Pantalla central:
-- muestra exactamente los mismos botones que el Inspector del modulo seleccionado.
+Zona central:
+- queda libre para ver el objeto/sistema bajo test.
+- la esfera generada debe aparecer delante del player, sin quedar tapada por el Canvas.
 
-Panel lateral:
-- muestra la misma informacion/diagnostico que se imprime en el Inspector del modulo seleccionado.
+Panel derecho:
+- muestra informacion tecnica importante que no se puede leer directamente en la grafica de Quest 3.
+- para el deadline de payload, muestra requested triangles, triangles reales, vertices, indices, frecuencia geodesica, GridRadius, WorldScale, WorldRadius, surfaceRadius, IsoLevel, estado de mesh vivo, ultimo operationMs si existe, bytes CPU/GPU estimados si existen y ultimo diagnostico.
 ```
 
 Regla:
 
 ```text
-La UI VR no inventa comandos distintos.
+La UI VR no inventa logica distinta.
+Puede agrupar comandos existentes en una accion compuesta cuando el deadline lo documenta de forma explicita.
 Cada pantalla replica la intencion del CustomEditor correspondiente.
 Si un boton existe en Inspector para una prueba importante, debe poder existir tambien en la pantalla VR de ese modulo.
+Los botones Generate de payload en VR son acciones directas: liberan la prueba previa, borran la esfera anterior si existe, aplican el payload pedido y generan una esfera nueva delante del player.
+Estos botones no se limitan a cambiar el preset.
 ```
 
 ### PlanetQuestPlayerSetupLab
@@ -420,12 +426,25 @@ Release
 Release All
 ```
 
+Botones esperados para el panel de payload del deadline:
+
+```text
+Generate 30k
+Generate 130k
+Generate 500k
+Generate 750k
+Generate 1M
+Generate 2M
+Generate 5M
+```
+
 Regla:
 
 ```text
-La UI VR debe exponer los mismos comandos que el Inspector del modulo.
+La UI VR debe exponer los mismos comandos o acciones compuestas documentadas desde el Inspector/sistema del modulo.
 No debe explicar el sistema con texto largo.
 Los diagnosticos e informacion lateral si pueden mostrarse como resumen corto.
+Cada Generate de payload ejecuta Release de la prueba activa antes de crear la nueva esfera.
 ```
 
 ## Pruebas manuales
@@ -442,6 +461,10 @@ El rayo apunta a la UI.
 El rayo pulsa botones de la UI.
 Un boton Validate de algun Lab responde.
 Un boton Release All responde.
+Los botones Generate 30k, Generate 130k, Generate 500k, Generate 750k, Generate 1M, Generate 2M y Generate 5M son visibles en el panel izquierdo del modo payload.
+Pulsar un Generate de payload libera la esfera anterior antes de crear la nueva.
+La esfera generada aparece delante del player y no queda tapada por el Canvas.
+El panel derecho actualiza requested triangles, triangles reales, vertices/indices, memoria estimada si existe y ultimo diagnostico.
 La UI muestra un diagnostico corto.
 El proyecto queda preparado para generar APK/Player.
 El package id debug temporal queda configurado.

@@ -45,6 +45,7 @@ namespace MarchingCubesPlanet.Preview
         public float DerivedWorldRadius => derivedWorldRadius;
         public float DerivedSurfaceRadius => derivedSurfaceRadius;
         public Vector3 TransformPlanetWorldCenter => transform.position;
+        public Quaternion TransformPlanetRotation => transform.rotation;
         public bool HasLiveMesh => hasLiveMesh;
         public string LastDiagnostic => lastDiagnostic;
 
@@ -148,7 +149,8 @@ namespace MarchingCubesPlanet.Preview
                                  ", WorldRadius=" + derivedWorldRadius +
                                  ", SurfaceRadius=" + derivedSurfaceRadius +
                                  ", IsoLevel=" + recipe.IsoLevel +
-                                 ", center=" + placement.PlanetWorldCenter + ".";
+                                 ", center=" + placement.PlanetWorldCenter +
+                                 ", rotation=" + placement.PlanetRotation.eulerAngles + ".";
             }
             catch (Exception exception)
             {
@@ -200,6 +202,7 @@ namespace MarchingCubesPlanet.Preview
         private void SyncPlacementFromTransform()
         {
             placement.PlanetWorldCenter = transform.position;
+            placement.PlanetRotation = transform.rotation;
         }
 
         private Material ResolveMaterial()

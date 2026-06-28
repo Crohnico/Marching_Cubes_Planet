@@ -19,6 +19,7 @@ namespace MarchingCubesPlanet.Preview.Editor
             EditorGUILayout.LabelField("IsoLevel", preview.IsoLevel.ToString("0.###"));
             EditorGUILayout.LabelField("surface radius", preview.DerivedSurfaceRadius.ToString("0.###"));
             EditorGUILayout.LabelField("PlanetWorldCenter", preview.TransformPlanetWorldCenter.ToString("0.###"));
+            EditorGUILayout.LabelField("PlanetRotation", preview.TransformPlanetRotation.eulerAngles.ToString("0.###"));
             EditorGUILayout.LabelField("requested triangles", preview.RequestedTrianglePayload.ToString());
             EditorGUILayout.LabelField("icosphere frequency", preview.DerivedGeodesicFrequency.ToString());
             EditorGUILayout.LabelField("triangles", preview.DerivedTriangleCount.ToString());

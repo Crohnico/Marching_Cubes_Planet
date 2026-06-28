@@ -6,12 +6,36 @@ namespace MarchingCubesPlanet.Coordinates
     {
         public static Vector3 GridToWorld(Vector3 gridPosition, in PlanetRecipe recipe, in PlanetPlacement placement)
         {
-            return placement.PlanetWorldCenter + gridPosition * recipe.WorldScale;
+            UniversePosition stellarPosition = GridToStellar(gridPosition, in recipe, in placement);
+            return StellarToWorld(stellarPosition, in placement);
         }
 
         public static Vector3 WorldToGrid(Vector3 worldPosition, in PlanetRecipe recipe, in PlanetPlacement placement)
         {
-            return (worldPosition - placement.PlanetWorldCenter) / recipe.WorldScale;
+            UniversePosition stellarPosition = WorldToStellar(worldPosition, in placement);
+            return StellarToGrid(stellarPosition, in recipe, in placement);
+        }
+
+        public static UniversePosition GridToStellar(Vector3 gridPosition, in PlanetRecipe recipe, in PlanetPlacement placement)
+        {
+            Vector3 planetLocal = placement.PlanetRotation * (gridPosition * recipe.WorldScale);
+            return placement.PlanetStellarCenter + planetLocal;
+        }
+
+        public static Vector3 StellarToGrid(UniversePosition stellarPosition, in PlanetRecipe recipe, in PlanetPlacement placement)
+        {
+            Vector3 planetLocal = stellarPosition - placement.PlanetStellarCenter;
+            return Quaternion.Inverse(placement.PlanetRotation) * planetLocal / recipe.WorldScale;
+        }
+
+        public static Vector3 StellarToWorld(UniversePosition stellarPosition, in PlanetPlacement placement)
+        {
+            return stellarPosition - placement.ActiveOrigin;
+        }
+
+        public static UniversePosition WorldToStellar(Vector3 worldPosition, in PlanetPlacement placement)
+        {
+            return placement.ActiveOrigin + worldPosition;
         }
 
         public static Bounds GridCellToWorldBounds(
@@ -19,10 +43,17 @@ namespace MarchingCubesPlanet.Coordinates
             in PlanetRecipe recipe,
             in PlanetPlacement placement)
         {
-            Vector3 worldMin = GridToWorld(cell.Min, recipe, placement);
-            Vector3 worldMax = GridToWorld(cell.Max, recipe, placement);
-            Bounds bounds = new Bounds();
-            bounds.SetMinMax(worldMin, worldMax);
+            Vector3 min = cell.Min;
+            Vector3 max = cell.Max;
+            Vector3 firstCorner = GridToWorld(new Vector3(min.x, min.y, min.z), in recipe, in placement);
+            Bounds bounds = new Bounds(firstCorner, Vector3.zero);
+            bounds.Encapsulate(GridToWorld(new Vector3(max.x, min.y, min.z), in recipe, in placement));
+            bounds.Encapsulate(GridToWorld(new Vector3(min.x, max.y, min.z), in recipe, in placement));
+            bounds.Encapsulate(GridToWorld(new Vector3(max.x, max.y, min.z), in recipe, in placement));
+            bounds.Encapsulate(GridToWorld(new Vector3(min.x, min.y, max.z), in recipe, in placement));
+            bounds.Encapsulate(GridToWorld(new Vector3(max.x, min.y, max.z), in recipe, in placement));
+            bounds.Encapsulate(GridToWorld(new Vector3(min.x, max.y, max.z), in recipe, in placement));
+            bounds.Encapsulate(GridToWorld(new Vector3(max.x, max.y, max.z), in recipe, in placement));
             return bounds;
         }
 
