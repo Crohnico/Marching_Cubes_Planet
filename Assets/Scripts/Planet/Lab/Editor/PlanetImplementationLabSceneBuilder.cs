@@ -23,6 +23,7 @@ namespace MarchingCubesPlanet.Lab.Editor
             CreateComputeShaderLab(root.transform, registry);
             CreateMemoryLab(root.transform, registry, controller);
             CreateRecipeLab(root.transform, registry);
+            CreateGpuShapeLab(root.transform, registry);
             PlanetRecipePayloadPreview payloadPreview = CreateRecipePayloadPreview();
 
             SerializedObject serializedController = new SerializedObject(controller);
@@ -96,6 +97,24 @@ namespace MarchingCubesPlanet.Lab.Editor
             serializedRecipeLab.ApplyModifiedPropertiesWithoutUndo();
 
             return recipeLab;
+        }
+
+        private static PlanetGpuShapeLab CreateGpuShapeLab(Transform parent, PlanetLabResourceRegistry registry)
+        {
+            GameObject shapeObject = new GameObject("PlanetGpuShapeLab");
+            shapeObject.transform.SetParent(parent, false);
+            shapeObject.transform.localPosition = new Vector3(0f, 0f, 0f);
+
+            PlanetGpuShapeLab shapeLab = shapeObject.AddComponent<PlanetGpuShapeLab>();
+            ComputeShader shapeComputeShader = AssetDatabase.LoadAssetAtPath<ComputeShader>(
+                "Assets/Shaders/Compute/PlanetShapeDensity.compute");
+
+            SerializedObject serializedShapeLab = new SerializedObject(shapeLab);
+            serializedShapeLab.FindProperty("resourceRegistry").objectReferenceValue = registry;
+            serializedShapeLab.FindProperty("shapeComputeShader").objectReferenceValue = shapeComputeShader;
+            serializedShapeLab.ApplyModifiedPropertiesWithoutUndo();
+
+            return shapeLab;
         }
 
         private static PlanetRecipePayloadPreview CreateRecipePayloadPreview()

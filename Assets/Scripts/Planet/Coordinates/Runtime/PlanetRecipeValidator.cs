@@ -22,6 +22,66 @@ namespace MarchingCubesPlanet.Coordinates
                 return false;
             }
 
+            if (recipe.VoronoiDivision <= 0)
+            {
+                message = "VoronoiDivision must be greater than zero.";
+                return false;
+            }
+
+            if (recipe.ContinentCells < 0)
+            {
+                message = "ContinentCells must be greater than or equal to zero.";
+                return false;
+            }
+
+            if (recipe.ContinentCells > recipe.VoronoiDivision)
+            {
+                message = "ContinentCells must be lower than or equal to VoronoiDivision.";
+                return false;
+            }
+
+            if (recipe.ContinentEdgeBlend <= 0f)
+            {
+                message = "ContinentEdgeBlend must be greater than zero.";
+                return false;
+            }
+
+            if (recipe.MinLandElevation < 0f || recipe.MaxLandElevation < recipe.MinLandElevation)
+            {
+                message = "Land elevation range is invalid.";
+                return false;
+            }
+
+            if (recipe.MinHeightModifier <= 0f || recipe.MaxHeightModifier < recipe.MinHeightModifier)
+            {
+                message = "Height modifier range is invalid.";
+                return false;
+            }
+
+            if (recipe.OceanDepth < 0f || recipe.MinimumOceanDepth < 0f)
+            {
+                message = "Ocean depth values must be greater than or equal to zero.";
+                return false;
+            }
+
+            if (recipe.SurfaceNoiseAmplitude < 0f)
+            {
+                message = "SurfaceNoiseAmplitude must be greater than or equal to zero.";
+                return false;
+            }
+
+            if (recipe.SurfaceNoiseFrequency <= 0f)
+            {
+                message = "SurfaceNoiseFrequency must be greater than zero.";
+                return false;
+            }
+
+            if (recipe.MinRoughness <= 0f || recipe.MaxRoughness < recipe.MinRoughness)
+            {
+                message = "Roughness range is invalid.";
+                return false;
+            }
+
             message = "PlanetRecipe is valid.";
             return true;
         }

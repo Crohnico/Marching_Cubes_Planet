@@ -385,6 +385,16 @@ namespace MarchingCubesPlanet.Lab
                    "\nWorldDiameter=" + recipe.WorldDiameter +
                    "\nSeed=" + recipe.Seed +
                    "\nIsoLevel=" + recipe.IsoLevel +
+                   "\nVoronoiDivision=" + recipe.VoronoiDivision +
+                   "\nContinentCells=" + recipe.ContinentCells +
+                   "\nContinentEdgeBlend=" + recipe.ContinentEdgeBlend +
+                   "\nLandElevation=" + recipe.MinLandElevation + ".." + recipe.MaxLandElevation +
+                   "\nHeightModifier=" + recipe.MinHeightModifier + ".." + recipe.MaxHeightModifier +
+                   "\nOceanDepth=" + recipe.OceanDepth +
+                   "\nMinimumOceanDepth=" + recipe.MinimumOceanDepth +
+                   "\nSurfaceNoiseAmplitude=" + recipe.SurfaceNoiseAmplitude +
+                   "\nSurfaceNoiseFrequency=" + recipe.SurfaceNoiseFrequency +
+                   "\nRoughness=" + recipe.MinRoughness + ".." + recipe.MaxRoughness +
                    "\nPlanetStellarCenter=" + placement.PlanetStellarCenter +
                    "\nActiveOrigin=" + placement.ActiveOrigin +
                    "\nPlanetWorldCenter=" + placement.PlanetWorldCenter +

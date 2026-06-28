@@ -166,7 +166,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 5f7201a12d95ffc409449d95f23cf332, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Text
   m_Material: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
@@ -397,7 +397,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 306cc8c2b49d7114eaa3623786fc2126, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.LayoutElement
   m_IgnoreLayout: 0
   m_MinWidth: -1
@@ -2658,10 +2658,10 @@ MonoBehaviour:
   supportsComputeShaders: 0
   supportsInstancing: 0
   kernelThreadGroupSizeX: 0
-  lastAction: 
+  lastAction:
   lastManualStressEvidencePath: 
   lastSnapshot:
-    operationName: 
+    operationName:
     frame: 0
     realtimeSinceStartup: 0
     frameDeltaMs: 0
@@ -2679,16 +2679,16 @@ MonoBehaviour:
     operationMs: 0
     diagnostic:
       severity: 0
-      title: 
-      probableCause: 
-      recommendedAction: 
-      relatedMetrics: 
+      title:
+      probableCause:
+      recommendedAction:
+      relatedMetrics:
   lastDiagnostic:
     severity: 0
-    title: 
-    probableCause: 
-    recommendedAction: 
-    relatedMetrics: 
+    title:
+    probableCause:
+    recommendedAction:
+    relatedMetrics:
 --- !u!4 &1000200002
 Transform:
   m_ObjectHideFlags: 0
@@ -3269,7 +3269,20 @@ MonoBehaviour:
     worldScale: 4
     seed: 12345
     isoLevel: 0
-    recipeVersion: 1
+    voronoiDivision: 100
+    continentCells: 84
+    continentEdgeBlend: 0.16
+    minLandElevation: 0.015
+    maxLandElevation: 0.127
+    minHeightModifier: 0.3
+    maxHeightModifier: 1.5
+    oceanDepth: 0.16
+    minimumOceanDepth: 0.03
+    surfaceNoiseAmplitude: 0.308
+    surfaceNoiseFrequency: 7
+    minRoughness: 0.6
+    maxRoughness: 0.8
+    recipeVersion: 2
   placement:
     planetStellarCenter:
       x: 0
@@ -3291,9 +3304,9 @@ MonoBehaviour:
   lastQueryWrittenCount: 0
   lastQueryMatchedCount: 0
   lastQueryOverflow: 0
-  lastAction: 
+  lastAction:
   lastSnapshot:
-    operationName: 
+    operationName:
     frame: 0
     realtimeSinceStartup: 0
     frameDeltaMs: 0
@@ -3311,16 +3324,16 @@ MonoBehaviour:
     operationMs: 0
     diagnostic:
       severity: 0
-      title: 
-      probableCause: 
-      recommendedAction: 
-      relatedMetrics: 
+      title:
+      probableCause:
+      recommendedAction:
+      relatedMetrics:
   lastDiagnostic:
     severity: 0
-    title: 
-    probableCause: 
-    recommendedAction: 
-    relatedMetrics: 
+    title:
+    probableCause:
+    recommendedAction:
+    relatedMetrics:
 --- !u!4 &1000300002
 Transform:
   m_ObjectHideFlags: 0
@@ -3328,6 +3341,116 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1000300000}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1146611497}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1000350000
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1000350002}
+  - component: {fileID: 1000350001}
+  m_Layer: 0
+  m_Name: PlanetGpuShapeLab
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1000350001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1000350000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: df4e687add5740089f741906ed9f79dd, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: MarchingCubesPlanet.Lab::MarchingCubesPlanet.Lab.PlanetGpuShapeLab
+  shapeComputeShader: {fileID: 7200000, guid: d5c87931a3dd47a3945d4c479f3cbe4f, type: 3}
+  resourceRegistry: {fileID: 1146611496}
+  recipe:
+    gridRadius: 1000
+    worldScale: 4
+    seed: 12345
+    isoLevel: 0
+    voronoiDivision: 100
+    continentCells: 84
+    continentEdgeBlend: 0.16
+    minLandElevation: 0.015
+    maxLandElevation: 0.127
+    minHeightModifier: 0.3
+    maxHeightModifier: 1.5
+    oceanDepth: 0.16
+    minimumOceanDepth: 0.03
+    surfaceNoiseAmplitude: 0.308
+    surfaceNoiseFrequency: 7
+    minRoughness: 0.6
+    maxRoughness: 0.8
+    recipeVersion: 2
+  bufferMode: 0
+  debugSampleCount: 32
+  supportsComputeShaders: 0
+  lastBuildSummary:
+    cellCount: 0
+    continentCellCount: 0
+    oceanCellCount: 0
+    minBaseOffset: 0
+    maxBaseOffset: 0
+    minRoughness: 0
+    maxRoughness: 0
+    estimatedBytes: 0
+  lastSampleCount: 0
+  lastMinDensity: 0
+  lastMaxDensity: 0
+  lastAction:
+  lastSnapshot:
+    operationName:
+    frame: 0
+    realtimeSinceStartup: 0
+    frameDeltaMs: 0
+    fpsApprox: 0
+    managedHeapBytes: 0
+    ownedCpuEstimatedBytes: 0
+    ownedGpuEstimatedBytes: 0
+    liveGraphicsBuffers: 0
+    liveComputeBuffers: 0
+    liveRenderTextures: 0
+    liveRuntimeMeshes: 0
+    liveRuntimeTextures: 0
+    liveRuntimeMaterials: 0
+    liveResourceCount: 0
+    operationMs: 0
+    diagnostic:
+      severity: 0
+      title:
+      probableCause:
+      recommendedAction:
+      relatedMetrics:
+  lastDiagnostic:
+    severity: 0
+    title:
+    probableCause:
+    recommendedAction:
+    relatedMetrics:
+--- !u!4 &1000350002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1000350000}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -3724,6 +3847,7 @@ MonoBehaviour:
   - {fileID: 1000200001}
   - {fileID: 1000250001}
   - {fileID: 1000300001}
+  - {fileID: 1000350001}
   stressLow:
     presetName: Stress Low
     whatItTests: Runs the current Lab modules repeatedly.
@@ -3829,6 +3953,7 @@ Transform:
   - {fileID: 1000200002}
   - {fileID: 1000250002}
   - {fileID: 1000300002}
+  - {fileID: 1000350002}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1148262470
@@ -6178,7 +6303,20 @@ MonoBehaviour:
     worldScale: 4
     seed: 12345
     isoLevel: 0
-    recipeVersion: 1
+    voronoiDivision: 100
+    continentCells: 84
+    continentEdgeBlend: 0.16
+    minLandElevation: 0.015
+    maxLandElevation: 0.127
+    minHeightModifier: 0.3
+    maxHeightModifier: 1.5
+    oceanDepth: 0.16
+    minimumOceanDepth: 0.03
+    surfaceNoiseAmplitude: 0.308
+    surfaceNoiseFrequency: 7
+    minRoughness: 0.6
+    maxRoughness: 0.8
+    recipeVersion: 2
   placement:
     planetStellarCenter:
       x: 0

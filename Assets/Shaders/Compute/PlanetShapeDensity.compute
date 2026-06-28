@@ -1,0 +1,24 @@
+#pragma kernel CS_EvaluateDensitySamples
+
+#include "Assets/Shaders/Compute/PlanetShapeDensity.hlsl"
+
+StructuredBuffer<float4> _ShapeSamplePositions;
+RWStructuredBuffer<float4> _DensitySamples;
+int _ShapeSampleCount;
+
+[numthreads(64, 1, 1)]
+void CS_EvaluateDensitySamples(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = dispatchThreadId.x;
+    if (index >= (uint)max(_ShapeSampleCount, 0))
+    {
+        return;
+    }
+
+    float3 position = _ShapeSamplePositions[index].xyz;
+    float surfaceOffset;
+    float effectiveRadius;
+    float continentFlag;
+    float density = PlanetShapeEvaluateDensity(position, surfaceOffset, effectiveRadius, continentFlag);
+    _DensitySamples[index] = float4(density, surfaceOffset, effectiveRadius, continentFlag);
+}

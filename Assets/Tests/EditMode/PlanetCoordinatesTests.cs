@@ -111,6 +111,14 @@ namespace MarchingCubesPlanet.Lab.Tests
             recipe = PlanetRecipe.Default();
             recipe.WorldScale = 0f;
             Assert.IsFalse(PlanetRecipeValidator.Validate(in recipe, out _));
+
+            recipe = PlanetRecipe.Default();
+            recipe.VoronoiDivision = 0;
+            Assert.IsFalse(PlanetRecipeValidator.Validate(in recipe, out _));
+
+            recipe = PlanetRecipe.Default();
+            recipe.ContinentCells = recipe.VoronoiDivision + 1;
+            Assert.IsFalse(PlanetRecipeValidator.Validate(in recipe, out _));
         }
 
         [Test]
