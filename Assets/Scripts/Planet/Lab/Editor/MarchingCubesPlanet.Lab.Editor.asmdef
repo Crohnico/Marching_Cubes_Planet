@@ -3,7 +3,8 @@
     "rootNamespace": "MarchingCubesPlanet.Lab.Editor",
     "references": [
         "MarchingCubesPlanet.Lab",
-        "MarchingCubesPlanet.Preview"
+        "MarchingCubesPlanet.Preview",
+        "Unity.ugui"
     ],
     "includePlatforms": [
         "Editor"

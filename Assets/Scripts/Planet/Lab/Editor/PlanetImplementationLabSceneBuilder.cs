@@ -29,14 +29,9 @@ namespace MarchingCubesPlanet.Lab.Editor
             serializedController.FindProperty("resourceRegistry").objectReferenceValue = registry;
             serializedController.ApplyModifiedPropertiesWithoutUndo();
 
-            GameObject cameraObject = new GameObject("PlanetLabCameraRig");
-            cameraObject.transform.position = new Vector3(0f, 2f, -8f);
-            cameraObject.transform.rotation = Quaternion.Euler(12f, 0f, 0f);
-            Camera camera = cameraObject.AddComponent<Camera>();
-            camera.clearFlags = CameraClearFlags.Skybox;
-            camera.nearClipPlane = 0.05f;
-            camera.farClipPlane = 10000f;
-            cameraObject.AddComponent<AudioListener>();
+            PlanetMinimalXrRig minimalXrRig = PlanetMinimalXrRigSceneUtility.CreateMinimalRig(Vector3.zero, Quaternion.identity);
+            PlanetMinimalXrRigSceneUtility.EnsureEventSystem();
+            PlanetMinimalXrRigSceneUtility.EnsureTestCanvas(minimalXrRig.Head);
 
             GameObject lightObject = new GameObject("PlanetLabDirectionalLight");
             lightObject.transform.rotation = Quaternion.Euler(50f, -30f, 0f);

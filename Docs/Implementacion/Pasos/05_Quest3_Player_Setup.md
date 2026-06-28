@@ -158,7 +158,7 @@ Sistemas de planeta.
 
 ## Componentes/scripts previstos
 
-### PlanetQuestPlayerRig
+### PlanetMinimalXrRig
 
 Rig basico de VR para el Lab.
 
@@ -166,9 +166,12 @@ Responsabilidad:
 
 ```text
 Contener camara XR.
-Permitir movimiento basico de prueba.
 Permitir orientacion normal con el HMD.
-Usar el sistema de rig/player recomendado por el stack Meta/OpenXR elegido.
+Actualizar posicion/rotacion de camara desde CenterEye.
+Actualizar posicion/rotacion de marcadores de mano desde LeftHand y RightHand.
+Mostrar una esfera primitiva por mano.
+Mostrar un rayo por mano.
+Permitir hover y click sobre UI de Unity con el gatillo.
 No ser controlador final de gameplay.
 No contener logica de planeta.
 ```
@@ -187,8 +190,9 @@ Usar Unity OpenXR Plugin como base XR.
 Version inicial instalada en el proyecto: com.unity.xr.openxr 1.17.1.
 Unity 6000.3.11f1 permite esta version porque el paquete declara compatibilidad minima Unity 2022.3.
 No usar prerelease de OpenXR salvo decision explicita.
-Usar los componentes/building blocks del SDK de Meta cuando aporten rapidez y compatibilidad.
 Mantener OpenXR como direccion base para no cerrar la puerta a paquetes OpenXR futuros.
+Usar un rig minimo propio para el Lab en vez de OVRComprehensiveInteractionRig.
+No meter building blocks completos de Meta si anaden objetos o sistemas que no son necesarios para esta fase.
 ```
 
 Nota:
@@ -198,26 +202,27 @@ El nombre exacto del paquete puede variar por version de Unity/Meta.
 Al implementar se debe usar el paquete oficial vigente de Meta para Quest/OpenXR y documentar el nombre exacto instalado.
 ```
 
-### PlanetLabRayInteractor
+### PlanetMinimalXrRig Ray UI
 
 Interaccion por rayo para pulsar UI de pruebas.
 
 Responsabilidad:
 
 ```text
-Emitir rayo desde mando, mano o fallback definido.
+Emitir rayo desde cada mando/mano trackeada.
+Detener el rayo visual en la UI apuntada.
 Interactuar con botones UI del Lab.
-Mostrar estado basico de hover/click si hace falta.
-Usar el interactor de rayo del SDK Meta/OpenXR si esta disponible.
+Ejecutar pointer enter/exit para hover.
+Ejecutar pointer down/up/click con gatillo.
 No contener logica de los tests.
 ```
 
 Decision inicial:
 
 ```text
-El mecanismo principal sera un ray interactor del stack Meta/OpenXR.
-Si el SDK ofrece building blocks para crear el player y añadir ray interaction, se usaran esos building blocks.
-No se implementa un sistema propio de input/rayo salvo que el SDK no cubra el caso minimo.
+El mecanismo principal sera propio y minimo sobre UnityEngine.XR, GraphicRaycaster y EventSystem.
+No se usara OVRComprehensiveInteractionRig para esta validacion.
+Si mas adelante se necesita interaccion avanzada de manos/controladores, se documentara como cambio de alcance.
 ```
 
 ### PlanetLabVRControlPanel
@@ -557,7 +562,7 @@ Decision inicial no bloqueante:
 Priorizar Quest Link + Play Mode para iterar rapido.
 Preparar APK/Player pero no convertir este documento en validacion completa de memoria.
 Usar Meta XR / OpenXR como stack base.
-Usar building blocks del SDK Meta para player/ray interactor si estan disponibles.
+Usar un rig minimo propio para player/ray interactor de Lab.
 Usar un Canvas fisico delante del player.
 Replicar en cada pantalla VR los botones e informacion del Inspector correspondiente.
 Instalar APK con SideQuest por ahora.

@@ -119,6 +119,585 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!1001 &118692809
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 1220055466}
+    m_Modifications:
+    - target: {fileID: 435407831072319256, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+      propertyPath: _centerEyeCamera
+      value: 
+      objectReference: {fileID: 750819449}
+    - target: {fileID: 2336446269904782542, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+      propertyPath: _centerEyeCamera
+      value: 
+      objectReference: {fileID: 750819449}
+    - target: {fileID: 4148778239110795873, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+      propertyPath: m_Name
+      value: '[BuildingBlock] OVRComprehensiveInteractionRig'
+      objectReference: {fileID: 0}
+    - target: {fileID: 4397664628265918113, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4397664628265918113, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4397664628265918113, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4397664628265918113, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 4397664628265918113, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4397664628265918113, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4397664628265918113, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4397664628265918113, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4397664628265918113, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4397664628265918113, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5801245061754409418, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+      propertyPath: _playerEyes
+      value: 
+      objectReference: {fileID: 750819451}
+    - target: {fileID: 5801245061754409418, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+      propertyPath: _playerOrigin
+      value: 
+      objectReference: {fileID: 1220055466}
+    - target: {fileID: 6147449420076126351, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 6267690530596161800, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+      propertyPath: _ovrCameraRig
+      value: 
+      objectReference: {fileID: 1220055464}
+    - target: {fileID: 9170937211371257168, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 4148778239110795873, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+      insertIndex: 1
+      addedObject: {fileID: 118692812}
+  m_SourcePrefab: {fileID: 100100000, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+--- !u!4 &118692810 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 4397664628265918113, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+  m_PrefabInstance: {fileID: 118692809}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &118692811 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 4148778239110795873, guid: 0a7d2469f24041c4284c66706f84c45e, type: 3}
+  m_PrefabInstance: {fileID: 118692809}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &118692812
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 118692811}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5b023183069df224080314a560e6e1ff, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Meta.XR.BuildingBlocks::Meta.XR.BuildingBlocks.BuildingBlock
+  blockId: 81f55626-5fad-45e9-a1df-184f330da7ba
+  instanceId: dd41d2bc-383d-4a48-b08e-4c2f3d9216c2
+  version: 1
+  installationRoutineCheckpoint:
+    _installationRoutineId: 2063f481-1b63-4eda-9ee8-a00df98536bc
+    _installationVariants: []
+--- !u!1 &125568021
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 125568022}
+  m_Layer: 0
+  m_Name: TrackerAnchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &125568022
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 125568021}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 891917277}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &345470106
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 345470107}
+  m_Layer: 0
+  m_Name: LeftHandOnControllerAnchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &345470107
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 345470106}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1350801150}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &433356671
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 433356672}
+  - component: {fileID: 433356673}
+  - component: {fileID: 433356674}
+  m_Layer: 0
+  m_Name: LeftEyeAnchor
+  m_TagString: MainCamera
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &433356672
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 433356671}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 891917277}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!20 &433356673
+Camera:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 433356671}
+  m_Enabled: 0
+  serializedVersion: 2
+  m_ClearFlags: 1
+  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
+  m_projectionMatrixMode: 1
+  m_GateFitMode: 2
+  m_FOVAxisMode: 0
+  m_Iso: 200
+  m_ShutterSpeed: 0.005
+  m_Aperture: 16
+  m_FocusDistance: 10
+  m_FocalLength: 50
+  m_BladeCount: 5
+  m_Curvature: {x: 2, y: 11}
+  m_BarrelClipping: 0.25
+  m_Anamorphism: 0
+  m_SensorSize: {x: 36, y: 24}
+  m_LensShift: {x: 0, y: 0}
+  m_NormalizedViewPortRect:
+    serializedVersion: 2
+    x: 0
+    y: 0
+    width: 1
+    height: 1
+  near clip plane: 0.3
+  far clip plane: 1000
+  field of view: 60
+  orthographic: 0
+  orthographic size: 5
+  m_Depth: 0
+  m_CullingMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_RenderingPath: -1
+  m_TargetTexture: {fileID: 0}
+  m_TargetDisplay: 0
+  m_TargetEye: 1
+  m_HDR: 0
+  m_AllowMSAA: 1
+  m_AllowDynamicResolution: 0
+  m_ForceIntoRT: 0
+  m_OcclusionCulling: 1
+  m_StereoConvergence: 10
+  m_StereoSeparation: 0.022
+--- !u!114 &433356674
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 433356671}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalCameraData
+  m_RenderShadows: 1
+  m_RequiresDepthTextureOption: 2
+  m_RequiresOpaqueTextureOption: 2
+  m_CameraType: 0
+  m_Cameras: []
+  m_RendererIndex: -1
+  m_VolumeLayerMask:
+    serializedVersion: 2
+    m_Bits: 1
+  m_VolumeTrigger: {fileID: 0}
+  m_VolumeFrameworkUpdateModeOption: 2
+  m_RenderPostProcessing: 0
+  m_Antialiasing: 0
+  m_AntialiasingQuality: 2
+  m_StopNaN: 0
+  m_Dithering: 0
+  m_ClearDepth: 1
+  m_AllowXRRendering: 1
+  m_AllowHDROutput: 1
+  m_UseScreenCoordOverride: 0
+  m_ScreenSizeOverride: {x: 0, y: 0, z: 0, w: 0}
+  m_ScreenCoordScaleBias: {x: 0, y: 0, z: 0, w: 0}
+  m_RequiresDepthTexture: 0
+  m_RequiresColorTexture: 0
+  m_TaaSettings:
+    m_Quality: 3
+    m_FrameInfluence: 0.1
+    m_JitterScale: 1
+    m_MipBias: 0
+    m_VarianceClampScale: 0.9
+    m_ContrastAdaptiveSharpening: 0
+  m_Version: 2
+--- !u!1 &554745624
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 554745625}
+  m_Layer: 0
+  m_Name: RightHandAnchorDetached
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &554745625
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 554745624}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 891917277}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &576439035
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 576439036}
+  m_Layer: 0
+  m_Name: RightHandAnchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &576439036
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 576439035}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 1423577505}
+  - {fileID: 1888913622}
+  m_Father: {fileID: 891917277}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &677414439
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 677414440}
+  m_Layer: 0
+  m_Name: LeftHandAnchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &677414440
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 677414439}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 1422973533}
+  - {fileID: 1350801150}
+  m_Father: {fileID: 891917277}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &750819448
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 750819451}
+  - component: {fileID: 750819450}
+  - component: {fileID: 750819449}
+  - component: {fileID: 750819452}
+  m_Layer: 0
+  m_Name: CenterEyeAnchor
+  m_TagString: MainCamera
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!20 &750819449
+Camera:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 750819448}
+  m_Enabled: 1
+  serializedVersion: 2
+  m_ClearFlags: 1
+  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0.019607844}
+  m_projectionMatrixMode: 1
+  m_GateFitMode: 2
+  m_FOVAxisMode: 0
+  m_Iso: 200
+  m_ShutterSpeed: 0.005
+  m_Aperture: 16
+  m_FocusDistance: 10
+  m_FocalLength: 50
+  m_BladeCount: 5
+  m_Curvature: {x: 2, y: 11}
+  m_BarrelClipping: 0.25
+  m_Anamorphism: 0
+  m_SensorSize: {x: 36, y: 24}
+  m_LensShift: {x: 0, y: 0}
+  m_NormalizedViewPortRect:
+    serializedVersion: 2
+    x: 0
+    y: 0
+    width: 1
+    height: 1
+  near clip plane: 0.1
+  far clip plane: 20000
+  field of view: 90
+  orthographic: 0
+  orthographic size: 5
+  m_Depth: 0
+  m_CullingMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_RenderingPath: -1
+  m_TargetTexture: {fileID: 0}
+  m_TargetDisplay: 0
+  m_TargetEye: 3
+  m_HDR: 0
+  m_AllowMSAA: 1
+  m_AllowDynamicResolution: 0
+  m_ForceIntoRT: 0
+  m_OcclusionCulling: 1
+  m_StereoConvergence: 10
+  m_StereoSeparation: 0.022
+--- !u!81 &750819450
+AudioListener:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 750819448}
+  m_Enabled: 1
+--- !u!4 &750819451
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 750819448}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 891917277}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &750819452
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 750819448}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalCameraData
+  m_RenderShadows: 1
+  m_RequiresDepthTextureOption: 2
+  m_RequiresOpaqueTextureOption: 2
+  m_CameraType: 0
+  m_Cameras: []
+  m_RendererIndex: -1
+  m_VolumeLayerMask:
+    serializedVersion: 2
+    m_Bits: 1
+  m_VolumeTrigger: {fileID: 0}
+  m_VolumeFrameworkUpdateModeOption: 2
+  m_RenderPostProcessing: 0
+  m_Antialiasing: 0
+  m_AntialiasingQuality: 2
+  m_StopNaN: 0
+  m_Dithering: 0
+  m_ClearDepth: 1
+  m_AllowXRRendering: 1
+  m_AllowHDROutput: 1
+  m_UseScreenCoordOverride: 0
+  m_ScreenSizeOverride: {x: 0, y: 0, z: 0, w: 0}
+  m_ScreenCoordScaleBias: {x: 0, y: 0, z: 0, w: 0}
+  m_RequiresDepthTexture: 0
+  m_RequiresColorTexture: 0
+  m_TaaSettings:
+    m_Quality: 3
+    m_FrameInfluence: 0.1
+    m_JitterScale: 1
+    m_MipBias: 0
+    m_VarianceClampScale: 0.9
+    m_ContrastAdaptiveSharpening: 0
+  m_Version: 2
+--- !u!1 &891917276
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 891917277}
+  m_Layer: 0
+  m_Name: TrackingSpace
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &891917277
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 891917276}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 433356672}
+  - {fileID: 750819451}
+  - {fileID: 1258577530}
+  - {fileID: 125568022}
+  - {fileID: 677414440}
+  - {fileID: 576439036}
+  - {fileID: 1409568383}
+  - {fileID: 554745625}
+  m_Father: {fileID: 1220055466}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1000200000
 GameObject:
   m_ObjectHideFlags: 0
@@ -212,6 +791,536 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1146611497}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1000250000
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1000250002}
+  - component: {fileID: 1000250001}
+  m_Layer: 0
+  m_Name: PlanetMemoryLab
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1000250001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1000250000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f09565304a8544d3a953e62fed0c776f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MarchingCubesPlanet.Lab::MarchingCubesPlanet.Lab.PlanetMemoryLab
+  resourceRegistry: {fileID: 1146611496}
+  labController: {fileID: 1146611495}
+  budgetDefaults:
+    profileName: Quest 3 Lab Defaults
+    targetPlatform: Quest3
+    ownedCpuSoftMiB: 384
+    ownedCpuHardMiB: 512
+    ownedGpuSoftMiB: 384
+    ownedGpuHardMiB: 512
+    ownedCombinedSoftMiB: 768
+    ownedCombinedHardMiB: 1024
+    singleResourceSoftMiB: 128
+    singleResourceHardMiB: 256
+    liveGraphicsBuffersHard: 128
+    liveComputeBuffersHard: 64
+    liveRenderTexturesHard: 16
+    liveRuntimeMeshesHard: 128
+    liveRuntimeTexturesHard: 16
+    liveRuntimeMaterialsHard: 32
+  runtimeBudget:
+    profileName: Quest 3 Lab Defaults
+    targetPlatform: Quest3
+    ownedCpuSoftMiB: 384
+    ownedCpuHardMiB: 512
+    ownedGpuSoftMiB: 384
+    ownedGpuHardMiB: 512
+    ownedCombinedSoftMiB: 768
+    ownedCombinedHardMiB: 1024
+    singleResourceSoftMiB: 128
+    singleResourceHardMiB: 256
+    liveGraphicsBuffersHard: 128
+    liveComputeBuffersHard: 64
+    liveRenderTexturesHard: 16
+    liveRuntimeMeshesHard: 128
+    liveRuntimeTexturesHard: 16
+    liveRuntimeMaterialsHard: 32
+  useExternalTestOverride: 1
+  overrideFilePath: C:\Users\Darck\Documents\Marching Cubes Planet\Temp/PlanetLabMemory\planet-memory-budget.override.json
+  lastBudgetLoadMessage: No external override found. Using serialized defaults.
+  beforeSnapshot:
+    operationName: 
+    frame: 0
+    realtimeSinceStartup: 0
+    ownedCpuEstimatedBytes: 0
+    ownedGpuEstimatedBytes: 0
+    ownedCombinedEstimatedBytes: 0
+    liveResourceCount: 0
+    liveGraphicsBuffers: 0
+    liveComputeBuffers: 0
+    liveRenderTextures: 0
+    liveRuntimeMeshes: 0
+    liveRuntimeTextures: 0
+    liveRuntimeMaterials: 0
+    largestSingleResourceBytes: 0
+    largestSingleResourceName: 
+    largestSingleResourceOwner: 
+    unityTotalUsedMemoryBytes: 0
+    unityTotalReservedMemoryBytes: 0
+    unityAppResidentMemoryBytes: 0
+    unityAppCommittedMemoryBytes: 0
+    unitySystemUsedMemoryBytes: 0
+    unitySystemTotalUsedMemoryBytes: 0
+    unityGcUsedBytes: 0
+    unityGcReservedBytes: 0
+    unityGcAllocFrameBytes: 0
+    unityGcAllocFrameCount: 0
+    unityGraphicsDriverBytes: 0
+    unityGfxReservedBytes: 0
+    unityRenderUsedBuffersBytes: 0
+    unityRenderUsedBuffersCount: 0
+    unityRenderTextureBytes: 0
+    unityRenderTextureCount: 0
+    unityUsedTextureBytes: 0
+    unityUsedTextureCount: 0
+    unityTextureMemoryBytes: 0
+    unityMeshMemoryBytes: 0
+    unityDrawCalls: 0
+    unitySetPassCalls: 0
+    unityTriangles: 0
+    unityVertices: 0
+    unityVertexBufferUploadFrameBytes: 0
+    unityIndexBufferUploadFrameBytes: 0
+    operationMs: 0
+    profilerCounters: []
+    diagnostic:
+      severity: 0
+      title: 
+      probableCause: 
+      recommendedAction: 
+      relatedMetrics: 
+  afterSnapshot:
+    operationName: 
+    frame: 0
+    realtimeSinceStartup: 0
+    ownedCpuEstimatedBytes: 0
+    ownedGpuEstimatedBytes: 0
+    ownedCombinedEstimatedBytes: 0
+    liveResourceCount: 0
+    liveGraphicsBuffers: 0
+    liveComputeBuffers: 0
+    liveRenderTextures: 0
+    liveRuntimeMeshes: 0
+    liveRuntimeTextures: 0
+    liveRuntimeMaterials: 0
+    largestSingleResourceBytes: 0
+    largestSingleResourceName: 
+    largestSingleResourceOwner: 
+    unityTotalUsedMemoryBytes: 0
+    unityTotalReservedMemoryBytes: 0
+    unityAppResidentMemoryBytes: 0
+    unityAppCommittedMemoryBytes: 0
+    unitySystemUsedMemoryBytes: 0
+    unitySystemTotalUsedMemoryBytes: 0
+    unityGcUsedBytes: 0
+    unityGcReservedBytes: 0
+    unityGcAllocFrameBytes: 0
+    unityGcAllocFrameCount: 0
+    unityGraphicsDriverBytes: 0
+    unityGfxReservedBytes: 0
+    unityRenderUsedBuffersBytes: 0
+    unityRenderUsedBuffersCount: 0
+    unityRenderTextureBytes: 0
+    unityRenderTextureCount: 0
+    unityUsedTextureBytes: 0
+    unityUsedTextureCount: 0
+    unityTextureMemoryBytes: 0
+    unityMeshMemoryBytes: 0
+    unityDrawCalls: 0
+    unitySetPassCalls: 0
+    unityTriangles: 0
+    unityVertices: 0
+    unityVertexBufferUploadFrameBytes: 0
+    unityIndexBufferUploadFrameBytes: 0
+    operationMs: 0
+    profilerCounters: []
+    diagnostic:
+      severity: 0
+      title: 
+      probableCause: 
+      recommendedAction: 
+      relatedMetrics: 
+  lastSnapshot:
+    operationName: Capture Snapshot
+    frame: 533
+    realtimeSinceStartup: 511.0171
+    ownedCpuEstimatedBytes: 0
+    ownedGpuEstimatedBytes: 0
+    ownedCombinedEstimatedBytes: 0
+    liveResourceCount: 0
+    liveGraphicsBuffers: 0
+    liveComputeBuffers: 0
+    liveRenderTextures: 0
+    liveRuntimeMeshes: 0
+    liveRuntimeTextures: 0
+    liveRuntimeMaterials: 0
+    largestSingleResourceBytes: 0
+    largestSingleResourceName: 
+    largestSingleResourceOwner: 
+    unityTotalUsedMemoryBytes: 5179906366
+    unityTotalReservedMemoryBytes: 6393699836
+    unityAppResidentMemoryBytes: 1874624512
+    unityAppCommittedMemoryBytes: 7754207232
+    unitySystemUsedMemoryBytes: 1874624512
+    unitySystemTotalUsedMemoryBytes: 13584302080
+    unityGcUsedBytes: 827281408
+    unityGcReservedBytes: 1309474816
+    unityGcAllocFrameBytes: 248
+    unityGcAllocFrameCount: 6
+    unityGraphicsDriverBytes: 1137528316
+    unityGfxReservedBytes: 1137528316
+    unityRenderUsedBuffersBytes: 2338504
+    unityRenderUsedBuffersCount: 215
+    unityRenderTextureBytes: 923893460
+    unityRenderTextureCount: 222
+    unityUsedTextureBytes: 0
+    unityUsedTextureCount: 0
+    unityTextureMemoryBytes: 1007500636
+    unityMeshMemoryBytes: 483500
+    unityDrawCalls: 0
+    unitySetPassCalls: 0
+    unityTriangles: 0
+    unityVertices: 0
+    unityVertexBufferUploadFrameBytes: 0
+    unityIndexBufferUploadFrameBytes: 0
+    operationMs: 0
+    profilerCounters:
+    - category: 0
+      counterName: App Resident Memory
+      isAvailable: 1
+      lastValue: 1874624512
+    - category: 0
+      counterName: App Committed Memory
+      isAvailable: 1
+      lastValue: 7754207232
+    - category: 0
+      counterName: Total Used Memory
+      isAvailable: 1
+      lastValue: 5179906366
+    - category: 0
+      counterName: Total Reserved Memory
+      isAvailable: 1
+      lastValue: 6393699836
+    - category: 0
+      counterName: System Used Memory
+      isAvailable: 1
+      lastValue: 1874624512
+    - category: 0
+      counterName: System Total Used Memory
+      isAvailable: 1
+      lastValue: 13584302080
+    - category: 0
+      counterName: GC Used Memory
+      isAvailable: 1
+      lastValue: 827281408
+    - category: 0
+      counterName: GC Reserved Memory
+      isAvailable: 1
+      lastValue: 1309474816
+    - category: 0
+      counterName: GC Allocated In Frame
+      isAvailable: 1
+      lastValue: 248
+    - category: 0
+      counterName: GC Allocation In Frame Count
+      isAvailable: 1
+      lastValue: 6
+    - category: 1
+      counterName: Used Buffers Bytes
+      isAvailable: 1
+      lastValue: 2338504
+    - category: 1
+      counterName: Used Buffers Count
+      isAvailable: 1
+      lastValue: 215
+    - category: 1
+      counterName: Render Textures Bytes
+      isAvailable: 1
+      lastValue: 923893460
+    - category: 1
+      counterName: Render Textures Count
+      isAvailable: 1
+      lastValue: 222
+    - category: 1
+      counterName: Used Textures Bytes
+      isAvailable: 1
+      lastValue: 0
+    - category: 1
+      counterName: Used Textures Count
+      isAvailable: 1
+      lastValue: 0
+    - category: 0
+      counterName: Gfx Used Memory
+      isAvailable: 1
+      lastValue: 1137528316
+    - category: 0
+      counterName: Gfx Reserved Memory
+      isAvailable: 1
+      lastValue: 1137528316
+    - category: 0
+      counterName: Texture Memory
+      isAvailable: 1
+      lastValue: 1007500636
+    - category: 0
+      counterName: Mesh Memory
+      isAvailable: 1
+      lastValue: 483500
+    - category: 1
+      counterName: Draw Calls Count
+      isAvailable: 1
+      lastValue: 0
+    - category: 1
+      counterName: SetPass Calls Count
+      isAvailable: 1
+      lastValue: 0
+    - category: 1
+      counterName: Triangles Count
+      isAvailable: 1
+      lastValue: 0
+    - category: 1
+      counterName: Vertices Count
+      isAvailable: 1
+      lastValue: 0
+    - category: 1
+      counterName: Vertex Buffer Upload In Frame Bytes
+      isAvailable: 1
+      lastValue: 0
+    - category: 1
+      counterName: Index Buffer Upload In Frame Bytes
+      isAvailable: 1
+      lastValue: 0
+    - category: 1
+      counterName: Vertex Buffer Upload In Frame Count
+      isAvailable: 1
+      lastValue: 0
+    - category: 1
+      counterName: Index Buffer Upload In Frame Count
+      isAvailable: 1
+      lastValue: 0
+    - category: 0
+      counterName: Profiler Used Memory
+      isAvailable: 1
+      lastValue: 1799850024
+    - category: 0
+      counterName: Profiler Reserved Memory
+      isAvailable: 1
+      lastValue: 1952980992
+    - category: 0
+      counterName: Object Count
+      isAvailable: 1
+      lastValue: 9496
+    - category: 0
+      counterName: Asset Count
+      isAvailable: 1
+      lastValue: 8635
+    - category: 0
+      counterName: GameObject Count
+      isAvailable: 0
+      lastValue: 0
+    - category: 0
+      counterName: Scene Object Count
+      isAvailable: 1
+      lastValue: 861
+    - category: 0
+      counterName: Material Count
+      isAvailable: 1
+      lastValue: 143
+    - category: 0
+      counterName: Mesh Count
+      isAvailable: 1
+      lastValue: 16
+    - category: 0
+      counterName: Texture Count
+      isAvailable: 1
+      lastValue: 1174
+    diagnostic:
+      severity: 2
+      title: GC allocation detected
+      probableCause: Unity reported managed allocations in the captured frame.
+      recommendedAction: Check whether the allocation happened in a hot path or only
+        in this manual diagnostic action.
+      relatedMetrics: "Operation: Capture Snapshot\nOwned CPU bytes: 0\nOwned GPU
+        bytes: 0\nOwned combined bytes: 0\nLive resources: 0\nLargest resource bytes:
+        0\nLargest resource: \nLargest owner: \nGraphics buffers: 0\nCompute buffers:
+        0\nRender textures: 0\nRuntime meshes: 0\nRuntime textures: 0\nRuntime materials:
+        0\nGC allocated frame bytes: 248\nGC allocation frame count: 6\nBudget profile:
+        Quest 3 Lab Defaults\nCPU soft/hard bytes: 402653184/536870912\nGPU soft/hard
+        bytes: 402653184/536870912\nCombined soft/hard bytes: 805306368/1073741824"
+  lastComparison:
+    comparisonName: 
+    before:
+      operationName: 
+      frame: 0
+      realtimeSinceStartup: 0
+      ownedCpuEstimatedBytes: 0
+      ownedGpuEstimatedBytes: 0
+      ownedCombinedEstimatedBytes: 0
+      liveResourceCount: 0
+      liveGraphicsBuffers: 0
+      liveComputeBuffers: 0
+      liveRenderTextures: 0
+      liveRuntimeMeshes: 0
+      liveRuntimeTextures: 0
+      liveRuntimeMaterials: 0
+      largestSingleResourceBytes: 0
+      largestSingleResourceName: 
+      largestSingleResourceOwner: 
+      unityTotalUsedMemoryBytes: 0
+      unityTotalReservedMemoryBytes: 0
+      unityAppResidentMemoryBytes: 0
+      unityAppCommittedMemoryBytes: 0
+      unitySystemUsedMemoryBytes: 0
+      unitySystemTotalUsedMemoryBytes: 0
+      unityGcUsedBytes: 0
+      unityGcReservedBytes: 0
+      unityGcAllocFrameBytes: 0
+      unityGcAllocFrameCount: 0
+      unityGraphicsDriverBytes: 0
+      unityGfxReservedBytes: 0
+      unityRenderUsedBuffersBytes: 0
+      unityRenderUsedBuffersCount: 0
+      unityRenderTextureBytes: 0
+      unityRenderTextureCount: 0
+      unityUsedTextureBytes: 0
+      unityUsedTextureCount: 0
+      unityTextureMemoryBytes: 0
+      unityMeshMemoryBytes: 0
+      unityDrawCalls: 0
+      unitySetPassCalls: 0
+      unityTriangles: 0
+      unityVertices: 0
+      unityVertexBufferUploadFrameBytes: 0
+      unityIndexBufferUploadFrameBytes: 0
+      operationMs: 0
+      profilerCounters: []
+      diagnostic:
+        severity: 0
+        title: 
+        probableCause: 
+        recommendedAction: 
+        relatedMetrics: 
+    after:
+      operationName: 
+      frame: 0
+      realtimeSinceStartup: 0
+      ownedCpuEstimatedBytes: 0
+      ownedGpuEstimatedBytes: 0
+      ownedCombinedEstimatedBytes: 0
+      liveResourceCount: 0
+      liveGraphicsBuffers: 0
+      liveComputeBuffers: 0
+      liveRenderTextures: 0
+      liveRuntimeMeshes: 0
+      liveRuntimeTextures: 0
+      liveRuntimeMaterials: 0
+      largestSingleResourceBytes: 0
+      largestSingleResourceName: 
+      largestSingleResourceOwner: 
+      unityTotalUsedMemoryBytes: 0
+      unityTotalReservedMemoryBytes: 0
+      unityAppResidentMemoryBytes: 0
+      unityAppCommittedMemoryBytes: 0
+      unitySystemUsedMemoryBytes: 0
+      unitySystemTotalUsedMemoryBytes: 0
+      unityGcUsedBytes: 0
+      unityGcReservedBytes: 0
+      unityGcAllocFrameBytes: 0
+      unityGcAllocFrameCount: 0
+      unityGraphicsDriverBytes: 0
+      unityGfxReservedBytes: 0
+      unityRenderUsedBuffersBytes: 0
+      unityRenderUsedBuffersCount: 0
+      unityRenderTextureBytes: 0
+      unityRenderTextureCount: 0
+      unityUsedTextureBytes: 0
+      unityUsedTextureCount: 0
+      unityTextureMemoryBytes: 0
+      unityMeshMemoryBytes: 0
+      unityDrawCalls: 0
+      unitySetPassCalls: 0
+      unityTriangles: 0
+      unityVertices: 0
+      unityVertexBufferUploadFrameBytes: 0
+      unityIndexBufferUploadFrameBytes: 0
+      operationMs: 0
+      profilerCounters: []
+      diagnostic:
+        severity: 0
+        title: 
+        probableCause: 
+        recommendedAction: 
+        relatedMetrics: 
+    ownedCpuDeltaBytes: 0
+    ownedGpuDeltaBytes: 0
+    ownedCombinedDeltaBytes: 0
+    liveResourceDelta: 0
+    diagnostic:
+      severity: 0
+      title: 
+      probableCause: 
+      recommendedAction: 
+      relatedMetrics: 
+  lastUnityMemoryCapture:
+    isAvailable: 0
+    snapshotPath: 
+    operationMs: 0
+    diagnostic:
+      severity: 0
+      title: 
+      probableCause: 
+      recommendedAction: 
+      relatedMetrics: 
+  lastDiagnostic:
+    severity: 2
+    title: GC allocation detected
+    probableCause: Unity reported managed allocations in the captured frame.
+    recommendedAction: Check whether the allocation happened in a hot path or only
+      in this manual diagnostic action.
+    relatedMetrics: "Operation: Capture Snapshot\nOwned CPU bytes: 0\nOwned GPU bytes:
+      0\nOwned combined bytes: 0\nLive resources: 0\nLargest resource bytes: 0\nLargest
+      resource: \nLargest owner: \nGraphics buffers: 0\nCompute buffers: 0\nRender
+      textures: 0\nRuntime meshes: 0\nRuntime textures: 0\nRuntime materials: 0\nGC
+      allocated frame bytes: 248\nGC allocation frame count: 6\nBudget profile: Quest
+      3 Lab Defaults\nCPU soft/hard bytes: 402653184/536870912\nGPU soft/hard bytes:
+      402653184/536870912\nCombined soft/hard bytes: 805306368/1073741824"
+  lastAction: Capture Snapshot captured.
+  lastOwnSnapshotExportPath: 
+--- !u!4 &1000250002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1000250000}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1146611497}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1000300000
 GameObject:
   m_ObjectHideFlags: 0
@@ -249,7 +1358,15 @@ MonoBehaviour:
     isoLevel: 0
     recipeVersion: 1
   placement:
-    planetWorldCenter: {x: 0, y: 0, z: 0}
+    planetStellarCenter:
+      x: 0
+      y: 0
+      z: 0
+    activeOrigin:
+      x: 0
+      y: 0
+      z: 0
+    planetRotation: {x: 0, y: 0, z: 0, w: 1}
   gridPositionInput: {x: 1000, y: 0, z: 0}
   worldPositionInput: {x: 4000, y: 0, z: 0}
   queryCenter: {x: 0, y: 0, z: 0}
@@ -337,7 +1454,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: MarchingCubesPlanet.Lab::MarchingCubesPlanet.Lab.PlanetImplementationLabController
   resourceRegistry: {fileID: 1146611496}
-  modules: []
+  modules:
+  - {fileID: 1000200001}
+  - {fileID: 1000250001}
+  - {fileID: 1000300001}
   stressLow:
     presetName: Stress Low
     whatItTests: Runs the current Lab modules repeatedly.
@@ -407,11 +1527,13 @@ MonoBehaviour:
       relatedMetrics: 
   lastDiagnostic:
     severity: 0
-    title: 
-    probableCause: 
-    recommendedAction: 
-    relatedMetrics: 
-  lastAction: 
+    title: PlanetImplementationLab scene is valid
+    probableCause: No issue detected.
+    recommendedAction: Continue with the next validation step.
+    relatedMetrics: 'Modules: 3
+
+      Registry resources: 0'
+  lastAction: Validate Scene OK.
 --- !u!114 &1146611496
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -443,7 +1565,7 @@ Transform:
   - {fileID: 1000300002}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1000250000
+--- !u!1 &1220055461
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -451,152 +1573,465 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 1000250002}
-  - component: {fileID: 1000250001}
+  - component: {fileID: 1220055466}
+  - component: {fileID: 1220055465}
+  - component: {fileID: 1220055464}
+  - component: {fileID: 1220055463}
+  - component: {fileID: 1220055462}
   m_Layer: 0
-  m_Name: PlanetMemoryLab
+  m_Name: VRCamera
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1000250001
+--- !u!114 &1220055462
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1000250000}
+  m_GameObject: {fileID: 1220055461}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f09565304a8544d3a953e62fed0c776f, type: 3}
+  m_Script: {fileID: 11500000, guid: 5178bc8574ce2bf4388e787a2e2af326, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: MarchingCubesPlanet.Lab::MarchingCubesPlanet.Lab.PlanetMemoryLab
-  resourceRegistry: {fileID: 1146611496}
-  labController: {fileID: 1146611495}
-  budgetDefaults:
-    profileName: Quest 3 Lab Defaults
-    targetPlatform: Quest3
-    ownedCpuSoftMiB: 384
-    ownedCpuHardMiB: 512
-    ownedGpuSoftMiB: 384
-    ownedGpuHardMiB: 512
-    ownedCombinedSoftMiB: 768
-    ownedCombinedHardMiB: 1024
-    singleResourceSoftMiB: 128
-    singleResourceHardMiB: 256
-    liveGraphicsBuffersHard: 128
-    liveComputeBuffersHard: 64
-    liveRenderTexturesHard: 16
-    liveRuntimeMeshesHard: 128
-    liveRuntimeTexturesHard: 16
-    liveRuntimeMaterialsHard: 32
-  runtimeBudget:
-    profileName: Quest 3 Lab Defaults
-    targetPlatform: Quest3
-    ownedCpuSoftMiB: 384
-    ownedCpuHardMiB: 512
-    ownedGpuSoftMiB: 384
-    ownedGpuHardMiB: 512
-    ownedCombinedSoftMiB: 768
-    ownedCombinedHardMiB: 1024
-    singleResourceSoftMiB: 128
-    singleResourceHardMiB: 256
-    liveGraphicsBuffersHard: 128
-    liveComputeBuffersHard: 64
-    liveRenderTexturesHard: 16
-    liveRuntimeMeshesHard: 128
-    liveRuntimeTexturesHard: 16
-    liveRuntimeMaterialsHard: 32
-  useExternalTestOverride: 1
-  overrideFilePath: 
-  lastBudgetLoadMessage: 
-  beforeSnapshot:
-    operationName: 
-    frame: 0
-    realtimeSinceStartup: 0
-    ownedCpuEstimatedBytes: 0
-    ownedGpuEstimatedBytes: 0
-    ownedCombinedEstimatedBytes: 0
-    liveResourceCount: 0
-    liveGraphicsBuffers: 0
-    liveComputeBuffers: 0
-    liveRenderTextures: 0
-    liveRuntimeMeshes: 0
-    liveRuntimeTextures: 0
-    liveRuntimeMaterials: 0
-    largestSingleResourceBytes: 0
-    largestSingleResourceName: 
-    largestSingleResourceOwner: 
-    operationMs: 0
-  afterSnapshot:
-    operationName: 
-    frame: 0
-    realtimeSinceStartup: 0
-    ownedCpuEstimatedBytes: 0
-    ownedGpuEstimatedBytes: 0
-    ownedCombinedEstimatedBytes: 0
-    liveResourceCount: 0
-    liveGraphicsBuffers: 0
-    liveComputeBuffers: 0
-    liveRenderTextures: 0
-    liveRuntimeMeshes: 0
-    liveRuntimeTextures: 0
-    liveRuntimeMaterials: 0
-    largestSingleResourceBytes: 0
-    largestSingleResourceName: 
-    largestSingleResourceOwner: 
-    operationMs: 0
-  lastSnapshot:
-    operationName: 
-    frame: 0
-    realtimeSinceStartup: 0
-    ownedCpuEstimatedBytes: 0
-    ownedGpuEstimatedBytes: 0
-    ownedCombinedEstimatedBytes: 0
-    liveResourceCount: 0
-    liveGraphicsBuffers: 0
-    liveComputeBuffers: 0
-    liveRenderTextures: 0
-    liveRuntimeMeshes: 0
-    liveRuntimeTextures: 0
-    liveRuntimeMaterials: 0
-    largestSingleResourceBytes: 0
-    largestSingleResourceName: 
-    largestSingleResourceOwner: 
-    operationMs: 0
-  lastComparison:
-    comparisonName: 
-    ownedCpuDeltaBytes: 0
-    ownedGpuDeltaBytes: 0
-    ownedCombinedDeltaBytes: 0
-    liveResourceDelta: 0
-  lastUnityMemoryCapture:
-    isAvailable: 0
-    snapshotPath: 
-    operationMs: 0
-  lastDiagnostic:
-    severity: 0
-    title: 
-    probableCause: 
-    recommendedAction: 
-    relatedMetrics: 
-  lastAction: 
-  lastOwnSnapshotExportPath: 
---- !u!4 &1000250002
+  m_EditorClassIdentifier: 
+  opMode: 1
+  resetHmdPoseOnRelease: 1
+  resetHmdPoseByMiddleMouseButton: 1
+  activateKeys: 3201000031010000
+  activateKeyBindings:
+  - <Keyboard>/leftCtrl
+  - <Keyboard>/rightCtrl
+  - <Keyboard>/f1
+  pitchKeys: 3401000033010000
+  pitchKeyBindings:
+  - <Keyboard>/leftAlt
+  - <Keyboard>/rightAlt
+  - <Keyboard>/f2
+--- !u!114 &1220055463
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1220055461}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7e933e81d3c20c74ea6fdc708a67e3a5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _monoscopic: 0
+  _sharpenType: 0
+  _disableRecording: 0
+  _enableDynamicResolution: 1
+  minDynamicResolutionScale: 1
+  maxDynamicResolutionScale: 1
+  quest2MinDynamicResolutionScale: 0.7
+  quest2MaxDynamicResolutionScale: 1.3
+  quest3MinDynamicResolutionScale: 0.7
+  quest3MaxDynamicResolutionScale: 1.6
+  minRenderScale: 0.7
+  maxRenderScale: 1
+  _headPoseRelativeOffsetRotation: {x: 0, y: 0, z: 0}
+  _headPoseRelativeOffsetTranslation: {x: 0, y: 0, z: 0}
+  enableCoreMetricsRelease: 0
+  enableCoreMetricsDevelopment: 1
+  coreMetricVisibility:
+    visibleMemoryMetricStats: 0
+    visibleMemoryMetricGraphs: 0
+    visibleRenderMetricStats: 0
+    visibleRenderMetricGraphs: 0
+  enableMixedReality: 0
+  compositionMethod: 0
+  extraHiddenLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  extraVisibleLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  dynamicCullingMask: 1
+  externalCompositionBackdropColorRift: {r: 0, g: 1, b: 0, a: 1}
+  externalCompositionBackdropColorQuest: {r: 0, g: 0, b: 0, a: 0}
+  capturingCameraDevice: 0
+  flipCameraFrameHorizontally: 0
+  flipCameraFrameVertically: 0
+  handPoseStateLatency: 0
+  sandwichCompositionRenderLatency: 0
+  sandwichCompositionBufferedFrames: 8
+  chromaKeyColor: {r: 0, g: 1, b: 0, a: 1}
+  chromaKeySimilarity: 0.6
+  chromaKeySmoothRange: 0.03
+  chromaKeySpillRange: 0.06
+  useDynamicLighting: 0
+  depthQuality: 1
+  dynamicLightingSmoothFactor: 8
+  dynamicLightingDepthVariationClampingValue: 0.001
+  virtualGreenScreenType: 0
+  virtualGreenScreenTopY: 10
+  virtualGreenScreenBottomY: -10
+  virtualGreenScreenApplyDepthCulling: 0
+  virtualGreenScreenDepthTolerance: 0.2
+  mrcActivationMode: 0
+  launchSimultaneousHandsControllersOnStartup: 0
+  isInsightPassthroughEnabled: 0
+  shouldBoundaryVisibilityBeSuppressed: 0
+  requestBodyTrackingPermissionOnStartup: 0
+  requestFaceTrackingPermissionOnStartup: 0
+  requestEyeTrackingPermissionOnStartup: 0
+  requestScenePermissionOnStartup: 1
+  requestRecordAudioPermissionOnStartup: 0
+  requestPassthroughCameraAccessPermissionOnStartup: 0
+  _localDimming: 1
+  _trackingOriginType: 1
+  usePositionTracking: 1
+  useRotationTracking: 1
+  useIPDInPositionTracking: 1
+  resetTrackerOnLoad: 0
+  AllowRecenter: 1
+  LateControllerUpdate: 1
+  LateLatching: 0
+  controllerDrivenHandPosesType: 0
+  SimultaneousHandsAndControllersEnabled: 0
+  _readOnlyWideMotionModeHandPosesEnabled: 0
+  wideMotionModeHandPosesEnabled: 0
+  _readOnlyFastMotionModeHandPosesEnabled: 0
+  fastMotionModeHandPosesEnabled: 0
+  dynamicResolutionVersion: 1
+--- !u!114 &1220055464
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1220055461}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: df9f338034892c44ebb62d97894772f1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  usePerEyeCameras: 0
+  useFixedUpdateForTracking: 0
+  disableEyeAnchorCameras: 0
+--- !u!114 &1220055465
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1220055461}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5b023183069df224080314a560e6e1ff, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Meta.XR.BuildingBlocks::Meta.XR.BuildingBlocks.BuildingBlock
+  blockId: e47682b9-c270-40b1-b16d-90b627a5ce1b
+  instanceId: e3f3ba05-8334-450a-b354-e07450108b18
+  version: 1
+  installationRoutineCheckpoint:
+    _installationRoutineId: 
+    _installationVariants: []
+--- !u!4 &1220055466
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1000250000}
+  m_GameObject: {fileID: 1220055461}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 891917277}
+  - {fileID: 118692810}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1258577529
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1258577530}
+  - component: {fileID: 1258577531}
+  - component: {fileID: 1258577532}
+  m_Layer: 0
+  m_Name: RightEyeAnchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1258577530
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1258577529}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 1146611497}
+  m_Father: {fileID: 891917277}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!20 &1258577531
+Camera:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1258577529}
+  m_Enabled: 0
+  serializedVersion: 2
+  m_ClearFlags: 1
+  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
+  m_projectionMatrixMode: 1
+  m_GateFitMode: 2
+  m_FOVAxisMode: 0
+  m_Iso: 200
+  m_ShutterSpeed: 0.005
+  m_Aperture: 16
+  m_FocusDistance: 10
+  m_FocalLength: 50
+  m_BladeCount: 5
+  m_Curvature: {x: 2, y: 11}
+  m_BarrelClipping: 0.25
+  m_Anamorphism: 0
+  m_SensorSize: {x: 36, y: 24}
+  m_LensShift: {x: 0, y: 0}
+  m_NormalizedViewPortRect:
+    serializedVersion: 2
+    x: 0
+    y: 0
+    width: 1
+    height: 1
+  near clip plane: 0.3
+  far clip plane: 1000
+  field of view: 60
+  orthographic: 0
+  orthographic size: 5
+  m_Depth: 0
+  m_CullingMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_RenderingPath: -1
+  m_TargetTexture: {fileID: 0}
+  m_TargetDisplay: 0
+  m_TargetEye: 2
+  m_HDR: 0
+  m_AllowMSAA: 1
+  m_AllowDynamicResolution: 0
+  m_ForceIntoRT: 0
+  m_OcclusionCulling: 1
+  m_StereoConvergence: 10
+  m_StereoSeparation: 0.022
+--- !u!114 &1258577532
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1258577529}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalCameraData
+  m_RenderShadows: 1
+  m_RequiresDepthTextureOption: 2
+  m_RequiresOpaqueTextureOption: 2
+  m_CameraType: 0
+  m_Cameras: []
+  m_RendererIndex: -1
+  m_VolumeLayerMask:
+    serializedVersion: 2
+    m_Bits: 1
+  m_VolumeTrigger: {fileID: 0}
+  m_VolumeFrameworkUpdateModeOption: 2
+  m_RenderPostProcessing: 0
+  m_Antialiasing: 0
+  m_AntialiasingQuality: 2
+  m_StopNaN: 0
+  m_Dithering: 0
+  m_ClearDepth: 1
+  m_AllowXRRendering: 1
+  m_AllowHDROutput: 1
+  m_UseScreenCoordOverride: 0
+  m_ScreenSizeOverride: {x: 0, y: 0, z: 0, w: 0}
+  m_ScreenCoordScaleBias: {x: 0, y: 0, z: 0, w: 0}
+  m_RequiresDepthTexture: 0
+  m_RequiresColorTexture: 0
+  m_TaaSettings:
+    m_Quality: 3
+    m_FrameInfluence: 0.1
+    m_JitterScale: 1
+    m_MipBias: 0
+    m_VarianceClampScale: 0.9
+    m_ContrastAdaptiveSharpening: 0
+  m_Version: 2
+--- !u!1 &1350801149
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1350801150}
+  m_Layer: 0
+  m_Name: LeftControllerInHandAnchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1350801150
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1350801149}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 345470107}
+  m_Father: {fileID: 677414440}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1409568382
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1409568383}
+  m_Layer: 0
+  m_Name: LeftHandAnchorDetached
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1409568383
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1409568382}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 891917277}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1422973532
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1422973533}
+  m_Layer: 0
+  m_Name: LeftControllerAnchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1422973533
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1422973532}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 677414440}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1423577504
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1423577505}
+  m_Layer: 0
+  m_Name: RightControllerAnchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1423577505
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1423577504}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 576439036}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1488836834
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1488836835}
+  m_Layer: 0
+  m_Name: RightHandOnControllerAnchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1488836835
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1488836834}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1888913622}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1795443600
 GameObject:
@@ -725,7 +2160,7 @@ MonoBehaviour:
   m_ShadowLayerMask: 1
   m_RenderingLayers: 1
   m_ShadowRenderingLayers: 1
---- !u!1 &1956837499
+--- !u!1 &1888913621
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -733,153 +2168,30 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 1956837502}
-  - component: {fileID: 1956837501}
-  - component: {fileID: 1956837500}
-  - component: {fileID: 1956837503}
-  - component: {fileID: 1956837504}
+  - component: {fileID: 1888913622}
   m_Layer: 0
-  m_Name: PlanetLabCameraRig
-  m_TagString: MainCamera
+  m_Name: RightControllerInHandAnchor
+  m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!81 &1956837500
-AudioListener:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1956837499}
-  m_Enabled: 1
---- !u!20 &1956837501
-Camera:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1956837499}
-  m_Enabled: 1
-  serializedVersion: 2
-  m_ClearFlags: 2
-  m_BackGroundColor: {r: 0, g: 0, b: 0, a: 0}
-  m_projectionMatrixMode: 1
-  m_GateFitMode: 2
-  m_FOVAxisMode: 0
-  m_Iso: 200
-  m_ShutterSpeed: 0.005
-  m_Aperture: 16
-  m_FocusDistance: 10
-  m_FocalLength: 50
-  m_BladeCount: 5
-  m_Curvature: {x: 2, y: 11}
-  m_BarrelClipping: 0.25
-  m_Anamorphism: 0
-  m_SensorSize: {x: 36, y: 24}
-  m_LensShift: {x: 0, y: 0}
-  m_NormalizedViewPortRect:
-    serializedVersion: 2
-    x: 0
-    y: 0
-    width: 1
-    height: 1
-  near clip plane: 0.01
-  far clip plane: 20000
-  field of view: 60
-  orthographic: 0
-  orthographic size: 5
-  m_Depth: -1
-  m_CullingMask:
-    serializedVersion: 2
-    m_Bits: 4294967295
-  m_RenderingPath: -1
-  m_TargetTexture: {fileID: 0}
-  m_TargetDisplay: 0
-  m_TargetEye: 3
-  m_HDR: 1
-  m_AllowMSAA: 1
-  m_AllowDynamicResolution: 0
-  m_ForceIntoRT: 0
-  m_OcclusionCulling: 1
-  m_StereoConvergence: 10
-  m_StereoSeparation: 0.022
---- !u!4 &1956837502
+--- !u!4 &1888913622
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1956837499}
+  m_GameObject: {fileID: 1888913621}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.104528464, y: 0, z: 0, w: 0.9945219}
-  m_LocalPosition: {x: 0, y: 2, z: -8}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
+  m_Children:
+  - {fileID: 1488836835}
+  m_Father: {fileID: 576439036}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1956837503
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1956837499}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalCameraData
-  m_RenderShadows: 1
-  m_RequiresDepthTextureOption: 2
-  m_RequiresOpaqueTextureOption: 2
-  m_CameraType: 0
-  m_Cameras: []
-  m_RendererIndex: -1
-  m_VolumeLayerMask:
-    serializedVersion: 2
-    m_Bits: 1
-  m_VolumeTrigger: {fileID: 0}
-  m_VolumeFrameworkUpdateModeOption: 2
-  m_RenderPostProcessing: 1
-  m_Antialiasing: 0
-  m_AntialiasingQuality: 2
-  m_StopNaN: 0
-  m_Dithering: 0
-  m_ClearDepth: 1
-  m_AllowXRRendering: 1
-  m_AllowHDROutput: 1
-  m_UseScreenCoordOverride: 0
-  m_ScreenSizeOverride: {x: 0, y: 0, z: 0, w: 0}
-  m_ScreenCoordScaleBias: {x: 0, y: 0, z: 0, w: 0}
-  m_RequiresDepthTexture: 0
-  m_RequiresColorTexture: 0
-  m_TaaSettings:
-    m_Quality: 3
-    m_FrameInfluence: 0.1
-    m_JitterScale: 1
-    m_MipBias: 0
-    m_VarianceClampScale: 0.9
-    m_ContrastAdaptiveSharpening: 0
-  m_Version: 2
---- !u!114 &1956837504
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1956837499}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e899f070a76fa4749a32289d7fa88fdb, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: MarchingCubesPlanet.Lab::MarchingCubesPlanet.Lab.PlayerDebug
-  mouseSensitivity: 0.12
-  requireRightMouseButton: 1
-  lockCursorWhileRotating: 1
-  minPitch: -85
-  maxPitch: 85
 --- !u!1 &2000400000
 GameObject:
   m_ObjectHideFlags: 0
@@ -931,10 +2243,254 @@ MonoBehaviour:
     isoLevel: 0
     recipeVersion: 1
   placement:
-    planetWorldCenter: {x: 0, y: 0, z: 8000}
+    planetStellarCenter:
+      x: 0
+      y: 0
+      z: 8000
+    activeOrigin:
+      x: 0
+      y: 0
+      z: 0
+    planetRotation: {x: 0, y: 0, z: 0, w: 1}
   requestedTrianglePayload: 126000
   generateVertexColors: 1
   materialOverride: {fileID: 0}
+  resourceRegistry: {fileID: 1146611496}
+  memoryLab: {fileID: 1000250001}
+  memoryBudget:
+    profileName: Quest 3 Lab Defaults
+    targetPlatform: Quest3
+    ownedCpuSoftMiB: 384
+    ownedCpuHardMiB: 512
+    ownedGpuSoftMiB: 384
+    ownedGpuHardMiB: 512
+    ownedCombinedSoftMiB: 768
+    ownedCombinedHardMiB: 1024
+    singleResourceSoftMiB: 128
+    singleResourceHardMiB: 256
+    liveGraphicsBuffersHard: 128
+    liveComputeBuffersHard: 64
+    liveRenderTexturesHard: 16
+    liveRuntimeMeshesHard: 128
+    liveRuntimeTexturesHard: 16
+    liveRuntimeMaterialsHard: 32
+  beforeSnapshot:
+    operationName: 
+    frame: 0
+    realtimeSinceStartup: 0
+    ownedCpuEstimatedBytes: 0
+    ownedGpuEstimatedBytes: 0
+    ownedCombinedEstimatedBytes: 0
+    liveResourceCount: 0
+    liveGraphicsBuffers: 0
+    liveComputeBuffers: 0
+    liveRenderTextures: 0
+    liveRuntimeMeshes: 0
+    liveRuntimeTextures: 0
+    liveRuntimeMaterials: 0
+    largestSingleResourceBytes: 0
+    largestSingleResourceName: 
+    largestSingleResourceOwner: 
+    unityTotalUsedMemoryBytes: 0
+    unityTotalReservedMemoryBytes: 0
+    unityAppResidentMemoryBytes: 0
+    unityAppCommittedMemoryBytes: 0
+    unitySystemUsedMemoryBytes: 0
+    unitySystemTotalUsedMemoryBytes: 0
+    unityGcUsedBytes: 0
+    unityGcReservedBytes: 0
+    unityGcAllocFrameBytes: 0
+    unityGcAllocFrameCount: 0
+    unityGraphicsDriverBytes: 0
+    unityGfxReservedBytes: 0
+    unityRenderUsedBuffersBytes: 0
+    unityRenderUsedBuffersCount: 0
+    unityRenderTextureBytes: 0
+    unityRenderTextureCount: 0
+    unityUsedTextureBytes: 0
+    unityUsedTextureCount: 0
+    unityTextureMemoryBytes: 0
+    unityMeshMemoryBytes: 0
+    unityDrawCalls: 0
+    unitySetPassCalls: 0
+    unityTriangles: 0
+    unityVertices: 0
+    unityVertexBufferUploadFrameBytes: 0
+    unityIndexBufferUploadFrameBytes: 0
+    operationMs: 0
+    profilerCounters: []
+    diagnostic:
+      severity: 0
+      title: 
+      probableCause: 
+      recommendedAction: 
+      relatedMetrics: 
+  afterSnapshot:
+    operationName: 
+    frame: 0
+    realtimeSinceStartup: 0
+    ownedCpuEstimatedBytes: 0
+    ownedGpuEstimatedBytes: 0
+    ownedCombinedEstimatedBytes: 0
+    liveResourceCount: 0
+    liveGraphicsBuffers: 0
+    liveComputeBuffers: 0
+    liveRenderTextures: 0
+    liveRuntimeMeshes: 0
+    liveRuntimeTextures: 0
+    liveRuntimeMaterials: 0
+    largestSingleResourceBytes: 0
+    largestSingleResourceName: 
+    largestSingleResourceOwner: 
+    unityTotalUsedMemoryBytes: 0
+    unityTotalReservedMemoryBytes: 0
+    unityAppResidentMemoryBytes: 0
+    unityAppCommittedMemoryBytes: 0
+    unitySystemUsedMemoryBytes: 0
+    unitySystemTotalUsedMemoryBytes: 0
+    unityGcUsedBytes: 0
+    unityGcReservedBytes: 0
+    unityGcAllocFrameBytes: 0
+    unityGcAllocFrameCount: 0
+    unityGraphicsDriverBytes: 0
+    unityGfxReservedBytes: 0
+    unityRenderUsedBuffersBytes: 0
+    unityRenderUsedBuffersCount: 0
+    unityRenderTextureBytes: 0
+    unityRenderTextureCount: 0
+    unityUsedTextureBytes: 0
+    unityUsedTextureCount: 0
+    unityTextureMemoryBytes: 0
+    unityMeshMemoryBytes: 0
+    unityDrawCalls: 0
+    unitySetPassCalls: 0
+    unityTriangles: 0
+    unityVertices: 0
+    unityVertexBufferUploadFrameBytes: 0
+    unityIndexBufferUploadFrameBytes: 0
+    operationMs: 0
+    profilerCounters: []
+    diagnostic:
+      severity: 0
+      title: 
+      probableCause: 
+      recommendedAction: 
+      relatedMetrics: 
+  snapshotComparison:
+    comparisonName: 
+    before:
+      operationName: 
+      frame: 0
+      realtimeSinceStartup: 0
+      ownedCpuEstimatedBytes: 0
+      ownedGpuEstimatedBytes: 0
+      ownedCombinedEstimatedBytes: 0
+      liveResourceCount: 0
+      liveGraphicsBuffers: 0
+      liveComputeBuffers: 0
+      liveRenderTextures: 0
+      liveRuntimeMeshes: 0
+      liveRuntimeTextures: 0
+      liveRuntimeMaterials: 0
+      largestSingleResourceBytes: 0
+      largestSingleResourceName: 
+      largestSingleResourceOwner: 
+      unityTotalUsedMemoryBytes: 0
+      unityTotalReservedMemoryBytes: 0
+      unityAppResidentMemoryBytes: 0
+      unityAppCommittedMemoryBytes: 0
+      unitySystemUsedMemoryBytes: 0
+      unitySystemTotalUsedMemoryBytes: 0
+      unityGcUsedBytes: 0
+      unityGcReservedBytes: 0
+      unityGcAllocFrameBytes: 0
+      unityGcAllocFrameCount: 0
+      unityGraphicsDriverBytes: 0
+      unityGfxReservedBytes: 0
+      unityRenderUsedBuffersBytes: 0
+      unityRenderUsedBuffersCount: 0
+      unityRenderTextureBytes: 0
+      unityRenderTextureCount: 0
+      unityUsedTextureBytes: 0
+      unityUsedTextureCount: 0
+      unityTextureMemoryBytes: 0
+      unityMeshMemoryBytes: 0
+      unityDrawCalls: 0
+      unitySetPassCalls: 0
+      unityTriangles: 0
+      unityVertices: 0
+      unityVertexBufferUploadFrameBytes: 0
+      unityIndexBufferUploadFrameBytes: 0
+      operationMs: 0
+      profilerCounters: []
+      diagnostic:
+        severity: 0
+        title: 
+        probableCause: 
+        recommendedAction: 
+        relatedMetrics: 
+    after:
+      operationName: 
+      frame: 0
+      realtimeSinceStartup: 0
+      ownedCpuEstimatedBytes: 0
+      ownedGpuEstimatedBytes: 0
+      ownedCombinedEstimatedBytes: 0
+      liveResourceCount: 0
+      liveGraphicsBuffers: 0
+      liveComputeBuffers: 0
+      liveRenderTextures: 0
+      liveRuntimeMeshes: 0
+      liveRuntimeTextures: 0
+      liveRuntimeMaterials: 0
+      largestSingleResourceBytes: 0
+      largestSingleResourceName: 
+      largestSingleResourceOwner: 
+      unityTotalUsedMemoryBytes: 0
+      unityTotalReservedMemoryBytes: 0
+      unityAppResidentMemoryBytes: 0
+      unityAppCommittedMemoryBytes: 0
+      unitySystemUsedMemoryBytes: 0
+      unitySystemTotalUsedMemoryBytes: 0
+      unityGcUsedBytes: 0
+      unityGcReservedBytes: 0
+      unityGcAllocFrameBytes: 0
+      unityGcAllocFrameCount: 0
+      unityGraphicsDriverBytes: 0
+      unityGfxReservedBytes: 0
+      unityRenderUsedBuffersBytes: 0
+      unityRenderUsedBuffersCount: 0
+      unityRenderTextureBytes: 0
+      unityRenderTextureCount: 0
+      unityUsedTextureBytes: 0
+      unityUsedTextureCount: 0
+      unityTextureMemoryBytes: 0
+      unityMeshMemoryBytes: 0
+      unityDrawCalls: 0
+      unitySetPassCalls: 0
+      unityTriangles: 0
+      unityVertices: 0
+      unityVertexBufferUploadFrameBytes: 0
+      unityIndexBufferUploadFrameBytes: 0
+      operationMs: 0
+      profilerCounters: []
+      diagnostic:
+        severity: 0
+        title: 
+        probableCause: 
+        recommendedAction: 
+        relatedMetrics: 
+    ownedCpuDeltaBytes: 0
+    ownedGpuDeltaBytes: 0
+    ownedCombinedDeltaBytes: 0
+    liveResourceDelta: 0
+    diagnostic:
+      severity: 0
+      title: 
+      probableCause: 
+      recommendedAction: 
+      relatedMetrics: 
+  snapshotComparisonSummary: 
   derivedGeodesicFrequency: 79
   derivedTriangleCount: 124820
   derivedVertexCount: 64800
@@ -997,7 +2553,7 @@ SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
   - {fileID: 1146611497}
-  - {fileID: 1956837502}
   - {fileID: 1795443602}
   - {fileID: 2000400001}
   - {fileID: 2100000001}
+  - {fileID: 1220055466}

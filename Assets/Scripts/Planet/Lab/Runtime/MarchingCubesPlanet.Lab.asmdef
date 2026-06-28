@@ -3,7 +3,8 @@
     "rootNamespace": "MarchingCubesPlanet.Lab",
     "references": [
         "MarchingCubesPlanet.Compute",
-        "MarchingCubesPlanet.Coordinates"
+        "MarchingCubesPlanet.Coordinates",
+        "Unity.ugui"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
