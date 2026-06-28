@@ -21,12 +21,23 @@ namespace MarchingCubesPlanet.Preview.Editor
             EditorGUILayout.LabelField("surface radius", preview.DerivedSurfaceRadius.ToString("0.###"));
             EditorGUILayout.LabelField("PlanetWorldCenter", preview.TransformPlanetWorldCenter.ToString("0.###"));
             EditorGUILayout.LabelField("PlanetRotation", preview.TransformPlanetRotation.eulerAngles.ToString("0.###"));
+            EditorGUILayout.LabelField("color mode", preview.ColorMode.ToString());
             EditorGUILayout.LabelField("requested triangles", preview.RequestedTrianglePayload.ToString());
             EditorGUILayout.LabelField("icosphere frequency", preview.DerivedGeodesicFrequency.ToString());
             EditorGUILayout.LabelField("triangles", preview.DerivedTriangleCount.ToString());
             EditorGUILayout.LabelField("vertices", preview.DerivedVertexCount.ToString());
             EditorGUILayout.LabelField("indices", preview.DerivedIndexCount.ToString());
             EditorGUILayout.LabelField("mesh live", preview.HasLiveMesh ? "yes" : "no");
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("VR Deadline UI", EditorStyles.boldLabel);
+
+            if (GUILayout.Button("Create Or Refresh VR Deadline Panels In Scene"))
+            {
+                PlanetRecipePayloadPreviewVrPanelSceneUtility.CreateOrRefreshOpenScene(
+                    useUndo: true,
+                    selectPanel: true);
+            }
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Payload Presets", EditorStyles.boldLabel);
@@ -161,10 +172,25 @@ namespace MarchingCubesPlanet.Preview.Editor
             Undo.RecordObject(preview, "Planet Recipe Payload Preview");
             action(preview);
             EditorUtility.SetDirty(preview);
+            RefreshScenePanels(preview);
 
             if (!Application.isPlaying)
             {
                 EditorSceneManager.MarkSceneDirty(preview.gameObject.scene);
+            }
+        }
+
+        private static void RefreshScenePanels(PlanetRecipePayloadPreview preview)
+        {
+            PlanetRecipePayloadPreviewVrPanel[] panels = Object.FindObjectsByType<PlanetRecipePayloadPreviewVrPanel>(FindObjectsSortMode.None);
+            for (int i = 0; i < panels.Length; i++)
+            {
+                PlanetRecipePayloadPreviewVrPanel panel = panels[i];
+                if (panel.Preview == null || panel.Preview == preview)
+                {
+                    panel.Bind(preview);
+                    EditorUtility.SetDirty(panel);
+                }
             }
         }
     }

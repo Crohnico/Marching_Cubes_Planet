@@ -6,6 +6,13 @@ using UnityEngine.Rendering;
 
 namespace MarchingCubesPlanet.Preview
 {
+    public enum PlanetSpherePayloadColorMode
+    {
+        None = 0,
+        SurfaceGradient = 1,
+        TrianglePalette = 2
+    }
+
     public static class PlanetSpherePayloadMeshBuilder
     {
         public const int MinGeodesicFrequency = 1;
@@ -36,6 +43,20 @@ namespace MarchingCubesPlanet.Preview
             9, 8, 1
         };
 
+        private static readonly Color32[] TriangleDebugPalette =
+        {
+            new Color32(232, 79, 79, 255),
+            new Color32(245, 156, 68, 255),
+            new Color32(246, 222, 91, 255),
+            new Color32(87, 201, 111, 255),
+            new Color32(67, 190, 185, 255),
+            new Color32(84, 154, 241, 255),
+            new Color32(124, 103, 232, 255),
+            new Color32(204, 91, 223, 255),
+            new Color32(238, 112, 165, 255),
+            new Color32(230, 238, 246, 255)
+        };
+
         public static int CalculateGeodesicFrequencyForPayload(int requestedTrianglePayload)
         {
             int requested = Mathf.Max(BaseIcosahedronTriangleCount, requestedTrianglePayload);
@@ -62,6 +83,16 @@ namespace MarchingCubesPlanet.Preview
             return checked(10 * edgeVertexCount * nextEdgeVertexCount);
         }
 
+        public static int CalculateVertexCount(int geodesicFrequency, PlanetSpherePayloadColorMode colorMode)
+        {
+            if (colorMode == PlanetSpherePayloadColorMode.TrianglePalette)
+            {
+                return CalculateIndexCount(geodesicFrequency);
+            }
+
+            return CalculateVertexCount(geodesicFrequency);
+        }
+
         public static float CalculateSurfaceRadius(in PlanetRecipe recipe)
         {
             float surfaceRadius = recipe.WorldRadius - recipe.IsoLevel;
@@ -81,7 +112,7 @@ namespace MarchingCubesPlanet.Preview
             Mesh mesh,
             in PlanetRecipe recipe,
             int geodesicFrequency,
-            bool generateVertexColors)
+            PlanetSpherePayloadColorMode colorMode)
         {
             if (mesh == null)
             {
@@ -97,13 +128,15 @@ namespace MarchingCubesPlanet.Preview
             int triangleCount = CalculateTriangleCount(geodesicFrequency);
             int indexCount = checked(triangleCount * 3);
             float radius = CalculateSurfaceRadius(in recipe);
+            vertexCount = CalculateVertexCount(geodesicFrequency, colorMode);
 
             List<Vector3> vertices = new List<Vector3>(vertexCount);
             List<Vector3> normals = new List<Vector3>(vertexCount);
-            List<Color32> colors = generateVertexColors ? new List<Color32>(vertexCount) : null;
+            List<Color32> colors = colorMode != PlanetSpherePayloadColorMode.None ? new List<Color32>(vertexCount) : null;
             List<int> indices = new List<int>(indexCount);
 
             Vector3[] baseVertices = CreateIcosahedronVertices();
+            int triangleOrdinal = 0;
 
             for (int faceIndex = 0; faceIndex < IcosahedronTriangleVertexIndices.Length; faceIndex += 3)
             {
@@ -111,7 +144,34 @@ namespace MarchingCubesPlanet.Preview
                 Vector3 b = baseVertices[IcosahedronTriangleVertexIndices[faceIndex + 1]];
                 Vector3 c = baseVertices[IcosahedronTriangleVertexIndices[faceIndex + 2]];
 
-                BuildFace(a, b, c, geodesicFrequency, radius, generateVertexColors, vertices, normals, colors, indices);
+                if (colorMode == PlanetSpherePayloadColorMode.TrianglePalette)
+                {
+                    BuildFaceWithTrianglePalette(
+                        a,
+                        b,
+                        c,
+                        geodesicFrequency,
+                        radius,
+                        vertices,
+                        normals,
+                        colors,
+                        indices,
+                        ref triangleOrdinal);
+                }
+                else
+                {
+                    BuildFaceSharedVertices(
+                        a,
+                        b,
+                        c,
+                        geodesicFrequency,
+                        radius,
+                        colorMode,
+                        vertices,
+                        normals,
+                        colors,
+                        indices);
+                }
             }
 
             mesh.Clear();
@@ -119,7 +179,7 @@ namespace MarchingCubesPlanet.Preview
             mesh.indexFormat = vertexCount > ushort.MaxValue ? IndexFormat.UInt32 : IndexFormat.UInt16;
             mesh.SetVertices(vertices);
             mesh.SetNormals(normals);
-            if (generateVertexColors)
+            if (colorMode != PlanetSpherePayloadColorMode.None)
             {
                 mesh.SetColors(colors);
             }
@@ -130,13 +190,13 @@ namespace MarchingCubesPlanet.Preview
             return new PlanetSpherePayloadBuildResult(vertexCount, triangleCount, indexCount, mesh.bounds);
         }
 
-        private static void BuildFace(
+        private static void BuildFaceSharedVertices(
             Vector3 a,
             Vector3 b,
             Vector3 c,
             int geodesicFrequency,
             float radius,
-            bool generateVertexColors,
+            PlanetSpherePayloadColorMode colorMode,
             List<Vector3> vertices,
             List<Vector3> normals,
             List<Color32> colors,
@@ -156,7 +216,7 @@ namespace MarchingCubesPlanet.Preview
                     vertices.Add(direction * radius);
                     normals.Add(direction);
 
-                    if (generateVertexColors)
+                    if (colorMode == PlanetSpherePayloadColorMode.SurfaceGradient)
                     {
                         colors.Add(EvaluateDebugColor(direction));
                     }
@@ -179,6 +239,54 @@ namespace MarchingCubesPlanet.Preview
                     {
                         int i3 = vertexStart + TriangularIndex(row + 1, column + 1, geodesicFrequency);
                         AddOutwardTriangle(vertices, indices, i2, i1, i3);
+                    }
+                }
+            }
+        }
+
+        private static void BuildFaceWithTrianglePalette(
+            Vector3 a,
+            Vector3 b,
+            Vector3 c,
+            int geodesicFrequency,
+            float radius,
+            List<Vector3> vertices,
+            List<Vector3> normals,
+            List<Color32> colors,
+            List<int> indices,
+            ref int triangleOrdinal)
+        {
+            int faceVertexCount = (geodesicFrequency + 1) * (geodesicFrequency + 2) / 2;
+            List<Vector3> faceDirections = new List<Vector3>(faceVertexCount);
+
+            for (int row = 0; row <= geodesicFrequency; row++)
+            {
+                for (int column = 0; column <= geodesicFrequency - row; column++)
+                {
+                    float weightB = row / (float)geodesicFrequency;
+                    float weightC = column / (float)geodesicFrequency;
+                    float weightA = 1f - weightB - weightC;
+                    faceDirections.Add((a * weightA + b * weightB + c * weightC).normalized);
+                }
+            }
+
+            for (int row = 0; row < geodesicFrequency; row++)
+            {
+                int rowLength = geodesicFrequency - row + 1;
+
+                for (int column = 0; column < rowLength - 1; column++)
+                {
+                    int i0 = TriangularIndex(row, column, geodesicFrequency);
+                    int i1 = TriangularIndex(row + 1, column, geodesicFrequency);
+                    int i2 = TriangularIndex(row, column + 1, geodesicFrequency);
+                    AddFlatPaletteTriangle(faceDirections, vertices, normals, colors, indices, i0, i1, i2, radius, triangleOrdinal);
+                    triangleOrdinal++;
+
+                    if (column < rowLength - 2)
+                    {
+                        int i3 = TriangularIndex(row + 1, column + 1, geodesicFrequency);
+                        AddFlatPaletteTriangle(faceDirections, vertices, normals, colors, indices, i2, i1, i3, radius, triangleOrdinal);
+                        triangleOrdinal++;
                     }
                 }
             }
@@ -207,6 +315,49 @@ namespace MarchingCubesPlanet.Preview
             indices.Add(i0);
             indices.Add(i2);
             indices.Add(i1);
+        }
+
+        private static void AddFlatPaletteTriangle(
+            List<Vector3> faceDirections,
+            List<Vector3> vertices,
+            List<Vector3> normals,
+            List<Color32> colors,
+            List<int> indices,
+            int i0,
+            int i1,
+            int i2,
+            float radius,
+            int triangleOrdinal)
+        {
+            Vector3 d0 = faceDirections[i0];
+            Vector3 d1 = faceDirections[i1];
+            Vector3 d2 = faceDirections[i2];
+            Vector3 p0 = d0 * radius;
+            Vector3 p1 = d1 * radius;
+            Vector3 p2 = d2 * radius;
+            Vector3 normal = Vector3.Cross(p1 - p0, p2 - p0);
+
+            if (Vector3.Dot(normal, p0) < 0f)
+            {
+                Vector3 swapDirection = d1;
+                d1 = d2;
+                d2 = swapDirection;
+            }
+
+            Color32 color = EvaluateTrianglePaletteColor(triangleOrdinal);
+            int vertexStart = vertices.Count;
+            vertices.Add(d0 * radius);
+            vertices.Add(d1 * radius);
+            vertices.Add(d2 * radius);
+            normals.Add(d0);
+            normals.Add(d1);
+            normals.Add(d2);
+            colors.Add(color);
+            colors.Add(color);
+            colors.Add(color);
+            indices.Add(vertexStart);
+            indices.Add(vertexStart + 1);
+            indices.Add(vertexStart + 2);
         }
 
         private static Vector3[] CreateIcosahedronVertices()
@@ -251,6 +402,17 @@ namespace MarchingCubesPlanet.Preview
             color.b *= band;
             color.a = 1f;
             return color;
+        }
+
+        private static Color32 EvaluateTrianglePaletteColor(int triangleOrdinal)
+        {
+            uint hash = (uint)triangleOrdinal;
+            hash ^= hash >> 16;
+            hash *= 0x7feb352dU;
+            hash ^= hash >> 15;
+            hash *= 0x846ca68bU;
+            hash ^= hash >> 16;
+            return TriangleDebugPalette[hash % TriangleDebugPalette.Length];
         }
 
         private static void ValidateGeodesicFrequency(int geodesicFrequency)

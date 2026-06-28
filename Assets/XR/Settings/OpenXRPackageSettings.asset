@@ -286,7 +286,7 @@ MonoBehaviour:
   - {fileID: -1129351553166246599}
   - {fileID: -6014533686403304610}
   customLoaderName: 
-  m_renderMode: 1
+  m_renderMode: 0
   m_latencyOptimization: 0
   m_autoColorSubmissionMode: 1
   m_colorSubmissionModes:
@@ -679,7 +679,7 @@ MonoBehaviour:
   - {fileID: -2611983019781567625}
   - {fileID: -6264614015230426847}
   customLoaderName: 
-  m_renderMode: 1
+  m_renderMode: 0
   m_latencyOptimization: 0
   m_autoColorSubmissionMode: 1
   m_colorSubmissionModes:
@@ -1354,7 +1354,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1927c045052a06d49a9b21fdcaa26db6, type: 3}
   m_Name: MetaXRFeature Standalone
   m_EditorClassIdentifier: Oculus.VR::Meta.XR.MetaXRFeature
-  m_enabled: 0
+  m_enabled: 1
   nameUi: Meta XR Feature
   version: 0.0.1
   featureIdInternal: com.meta.openxr.feature.metaxr

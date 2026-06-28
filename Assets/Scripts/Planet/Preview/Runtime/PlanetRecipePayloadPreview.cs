@@ -9,6 +9,7 @@ namespace MarchingCubesPlanet.Preview
     public sealed class PlanetRecipePayloadPreview : MonoBehaviour
     {
         private const string VertexColorShaderName = "MarchingCubesPlanet/Debug/Vertex Color";
+        private const string VertexColorMaterialResourcePath = "PlanetRecipePayloadPreview_VertexColorDebug";
         private const string UrpUnlitShaderName = "Universal Render Pipeline/Unlit";
 
         [Header("Recipe")]
@@ -17,7 +18,7 @@ namespace MarchingCubesPlanet.Preview
 
         [Header("Payload")]
         [SerializeField] private int requestedTrianglePayload = 126000;
-        [SerializeField] private bool generateVertexColors = true;
+        [SerializeField] private PlanetSpherePayloadColorMode colorMode = PlanetSpherePayloadColorMode.TrianglePalette;
         [SerializeField] private Material materialOverride;
 
         [Header("Memory Diagnostics")]
@@ -50,6 +51,7 @@ namespace MarchingCubesPlanet.Preview
         public PlanetPlacement Placement => placement;
         public float IsoLevel => recipe.IsoLevel;
         public int RequestedTrianglePayload => requestedTrianglePayload;
+        public PlanetSpherePayloadColorMode ColorMode => colorMode;
         public int DerivedGeodesicFrequency => derivedGeodesicFrequency;
         public int DerivedTriangleCount => derivedTriangleCount;
         public int DerivedVertexCount => derivedVertexCount;
@@ -149,7 +151,7 @@ namespace MarchingCubesPlanet.Preview
                     runtimeMesh,
                     in recipe,
                     derivedGeodesicFrequency,
-                    generateVertexColors);
+                    colorMode);
 
                 meshFilter.sharedMesh = runtimeMesh;
                 meshRenderer.sharedMaterial = ResolveMaterial();
@@ -165,6 +167,7 @@ namespace MarchingCubesPlanet.Preview
                                  ", geodesicFrequency=" + derivedGeodesicFrequency +
                                  ", triangles=" + derivedTriangleCount +
                                  ", vertices=" + derivedVertexCount +
+                                 ", colorMode=" + colorMode +
                                  ", WorldRadius=" + derivedWorldRadius +
                                  ", SurfaceRadius=" + derivedSurfaceRadius +
                                  ", IsoLevel=" + recipe.IsoLevel +
@@ -234,7 +237,7 @@ namespace MarchingCubesPlanet.Preview
             derivedSurfaceRadius = PlanetSpherePayloadMeshBuilder.CalculateSurfaceRadius(in recipe);
             derivedGeodesicFrequency = PlanetSpherePayloadMeshBuilder.CalculateGeodesicFrequencyForPayload(requestedTrianglePayload);
             derivedTriangleCount = PlanetSpherePayloadMeshBuilder.CalculateTriangleCount(derivedGeodesicFrequency);
-            derivedVertexCount = PlanetSpherePayloadMeshBuilder.CalculateVertexCount(derivedGeodesicFrequency);
+            derivedVertexCount = PlanetSpherePayloadMeshBuilder.CalculateVertexCount(derivedGeodesicFrequency, colorMode);
             derivedIndexCount = PlanetSpherePayloadMeshBuilder.CalculateIndexCount(derivedGeodesicFrequency);
         }
 
@@ -251,7 +254,16 @@ namespace MarchingCubesPlanet.Preview
                 return materialOverride;
             }
 
-            Shader shader = Shader.Find(VertexColorShaderName);
+            if (colorMode != PlanetSpherePayloadColorMode.None)
+            {
+                Material vertexColorMaterial = Resources.Load<Material>(VertexColorMaterialResourcePath);
+                if (vertexColorMaterial != null)
+                {
+                    return vertexColorMaterial;
+                }
+            }
+
+            Shader shader = colorMode == PlanetSpherePayloadColorMode.None ? null : Shader.Find(VertexColorShaderName);
             if (shader == null)
             {
                 shader = Shader.Find(UrpUnlitShaderName);
@@ -309,7 +321,7 @@ namespace MarchingCubesPlanet.Preview
         private long EstimateMeshBytes()
         {
             long vertexBytes = derivedVertexCount * 24L;
-            if (generateVertexColors)
+            if (colorMode != PlanetSpherePayloadColorMode.None)
             {
                 vertexBytes += derivedVertexCount * 4L;
             }

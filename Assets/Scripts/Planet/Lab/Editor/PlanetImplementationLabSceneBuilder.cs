@@ -23,15 +23,15 @@ namespace MarchingCubesPlanet.Lab.Editor
             CreateComputeShaderLab(root.transform, registry);
             CreateMemoryLab(root.transform, registry, controller);
             CreateRecipeLab(root.transform, registry);
-            CreateRecipePayloadPreview();
+            PlanetRecipePayloadPreview payloadPreview = CreateRecipePayloadPreview();
 
             SerializedObject serializedController = new SerializedObject(controller);
             serializedController.FindProperty("resourceRegistry").objectReferenceValue = registry;
             serializedController.ApplyModifiedPropertiesWithoutUndo();
 
-            PlanetMinimalXrRig minimalXrRig = PlanetMinimalXrRigSceneUtility.CreateMinimalRig(Vector3.zero, Quaternion.identity);
+            PlanetMinimalXrRigSceneUtility.CreateMinimalRig(Vector3.zero, Quaternion.identity);
             PlanetMinimalXrRigSceneUtility.EnsureEventSystem();
-            PlanetMinimalXrRigSceneUtility.EnsureTestCanvas(minimalXrRig.Head);
+            PlanetRecipePayloadPreviewVrPanel.CreateDefault(payloadPreview);
 
             GameObject lightObject = new GameObject("PlanetLabDirectionalLight");
             lightObject.transform.rotation = Quaternion.Euler(50f, -30f, 0f);

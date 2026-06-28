@@ -268,14 +268,19 @@ Decision de forma:
 El panel sera un Canvas fisico en mundo.
 Estara delante del player.
 Debe colocarse de forma que no interfiera con las pruebas visuales ni tape el objeto/sistema bajo test.
+El panel vive como GameObject normal de escena en PlanetImplementationLab.
+No se crea en runtime al entrar en Play, porque debe poder moverse y ajustarse comodamente desde Scene View antes de probar con gafas.
 ```
 
 Estructura:
 
 ```text
 Panel izquierdo:
-- botones grandes de accion directa para pruebas manuales.
-- para el deadline de payload, contiene los botones Generate 30k, Generate 130k, Generate 500k, Generate 750k, Generate 1M, Generate 2M y Generate 5M.
+- botones grandes para pruebas manuales.
+- para el deadline de payload, replica la forma del Inspector de PlanetRecipePayloadPreview:
+  Apply Payload 126k, Apply Payload 250k, Apply Payload 500k, Apply Payload 1M, Apply Payload 2M, Apply Payload 5M.
+  Before Snapshot, After Snapshot.
+  Generate, Release.
 
 Zona central:
 - queda libre para ver el objeto/sistema bajo test.
@@ -284,6 +289,8 @@ Zona central:
 Panel derecho:
 - muestra informacion tecnica importante que no se puede leer directamente en la grafica de Quest 3.
 - para el deadline de payload, muestra requested triangles, triangles reales, vertices, indices, frecuencia geodesica, GridRadius, WorldScale, WorldRadius, surfaceRadius, IsoLevel, estado de mesh vivo, ultimo operationMs si existe, bytes CPU/GPU estimados si existen y ultimo diagnostico.
+- tambien muestra el modo de color debug usado por PlanetRecipePayloadPreview.
+- para ver mejor la triangulacion en Quest, el modo recomendado del deadline es TrianglePalette: cada triangulo se pinta con un color plano elegido de una paleta corta, asumiendo el coste extra de duplicar vertices por triangulo.
 ```
 
 Regla:
@@ -293,8 +300,10 @@ La UI VR no inventa logica distinta.
 Puede agrupar comandos existentes en una accion compuesta cuando el deadline lo documenta de forma explicita.
 Cada pantalla replica la intencion del CustomEditor correspondiente.
 Si un boton existe en Inspector para una prueba importante, debe poder existir tambien en la pantalla VR de ese modulo.
-Los botones Generate de payload en VR son acciones directas: liberan la prueba previa, borran la esfera anterior si existe, aplican el payload pedido y generan una esfera nueva delante del player.
-Estos botones no se limitan a cambiar el preset.
+Los botones Apply Payload de VR solo seleccionan el payload, igual que el Inspector.
+El boton Generate de VR llama a PlanetRecipePayloadPreview.Generate, que libera la prueba previa antes de generar.
+El boton Release de VR llama a PlanetRecipePayloadPreview.Release.
+El panel derecho lee el diagnostico y snapshots del mismo PlanetRecipePayloadPreview.
 ```
 
 ### PlanetQuestPlayerSetupLab
@@ -450,13 +459,16 @@ Release All
 Botones esperados para el panel de payload del deadline:
 
 ```text
-Generate 30k
-Generate 130k
-Generate 500k
-Generate 750k
-Generate 1M
-Generate 2M
-Generate 5M
+Apply Payload 126k
+Apply Payload 250k
+Apply Payload 500k
+Apply Payload 1M
+Apply Payload 2M
+Apply Payload 5M
+Before Snapshot
+After Snapshot
+Generate
+Release
 ```
 
 Regla:
@@ -465,7 +477,7 @@ Regla:
 La UI VR debe exponer los mismos comandos o acciones compuestas documentadas desde el Inspector/sistema del modulo.
 No debe explicar el sistema con texto largo.
 Los diagnosticos e informacion lateral si pueden mostrarse como resumen corto.
-Cada Generate de payload ejecuta Release de la prueba activa antes de crear la nueva esfera.
+Generate ejecuta Release de la prueba activa antes de crear la nueva esfera porque delega en PlanetRecipePayloadPreview.Generate.
 ```
 
 ## Pruebas manuales
@@ -482,8 +494,9 @@ El rayo apunta a la UI.
 El rayo pulsa botones de la UI.
 Un boton Validate de algun Lab responde.
 Un boton Release All responde.
-Los botones Generate 30k, Generate 130k, Generate 500k, Generate 750k, Generate 1M, Generate 2M y Generate 5M son visibles en el panel izquierdo del modo payload.
-Pulsar un Generate de payload libera la esfera anterior antes de crear la nueva.
+Los botones Apply Payload 126k, Apply Payload 250k, Apply Payload 500k, Apply Payload 1M, Apply Payload 2M y Apply Payload 5M son visibles en el panel izquierdo del modo payload.
+Los botones Before Snapshot, After Snapshot, Generate y Release son visibles en el panel izquierdo del modo payload.
+Aplicar un payload y pulsar Generate libera la esfera anterior antes de crear la nueva.
 La esfera generada aparece delante del player y no queda tapada por el Canvas.
 El panel derecho actualiza requested triangles, triangles reales, vertices/indices, memoria estimada si existe y ultimo diagnostico.
 La UI muestra un diagnostico corto.

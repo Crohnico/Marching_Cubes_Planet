@@ -216,22 +216,33 @@ No oculta una fuga, allocation caliente o recurso sin owner.
 
 ```text
 [ ] La UI VR tiene un Canvas fisico con panel izquierdo de botones y panel derecho de informacion.
+[ ] Los paneles de la UI VR existen como GameObjects editables en la escena antes de entrar en Play.
 [ ] La zona central queda libre para ver la esfera generada delante del player.
 [ ] El panel izquierdo contiene botones visibles y pulsables con rayo:
-    Generate 30k
-    Generate 130k
-    Generate 500k
-    Generate 750k
-    Generate 1M
-    Generate 2M
-    Generate 5M
-[ ] Cada boton Generate libera primero RAM/VRAM propia de la prueba anterior si existia.
-[ ] Cada boton Generate borra la esfera/prueba actual antes de crear la nueva.
-[ ] Cada boton Generate aplica su payload y genera una esfera nueva delante del player.
-[ ] Cambiar de Generate 30k a Generate 5M no deja meshes, materiales, buffers, handles ni registros vivos de la esfera anterior.
-[ ] `Generate 5M` solo se ejecuta por accion manual explicita y deja diagnostico si supera presupuesto o plataforma.
+    Apply Payload 126k
+    Apply Payload 250k
+    Apply Payload 500k
+    Apply Payload 1M
+    Apply Payload 2M
+    Apply Payload 5M
+    Before Snapshot
+    After Snapshot
+    Generate
+    Release
+[ ] El flujo de generacion en VR replica el Inspector de PlanetRecipePayloadPreview:
+    Apply Payload X
+    Before Snapshot si se quiere comparar
+    Generate
+    After Snapshot
+[ ] El boton Generate libera primero RAM/VRAM propia de la prueba anterior si existia.
+[ ] El boton Generate borra la esfera/prueba actual antes de crear la nueva.
+[ ] El boton Generate aplica el payload actualmente seleccionado y genera una esfera nueva delante del player.
+[ ] Cambiar de Apply Payload 126k a Apply Payload 5M y pulsar Generate no deja meshes, materiales, buffers, handles ni registros vivos de la esfera anterior.
+[ ] `Apply Payload 5M` + `Generate` solo se ejecuta por accion manual explicita y deja diagnostico si supera presupuesto o plataforma.
 [ ] El panel derecho muestra informacion importante que no aparece de forma directa en la grafica de Quest 3.
-[ ] El panel derecho muestra como minimo requested triangles, triangles reales, vertices, indices, frecuencia geodesica, GridRadius, WorldScale, WorldRadius, surfaceRadius, IsoLevel, mesh vivo si/no y ultimo diagnostico.
+[ ] El panel derecho muestra como minimo requested triangles, color mode, triangles reales, vertices, indices, frecuencia geodesica, GridRadius, WorldScale, WorldRadius, surfaceRadius, IsoLevel, mesh vivo si/no y ultimo diagnostico.
+[ ] El modo `TrianglePalette` pinta cada triangulo con color plano de una paleta corta para hacer visible la triangulacion en Quest.
+[ ] Si `TrianglePalette` aumenta vertices y memoria por duplicar vertices por triangulo, el panel derecho y el snapshot deben mostrar ese coste.
 [ ] Si existen metricas de memoria/tiempo conectadas al registry, el panel derecho muestra ownedCpuEstimatedBytes, ownedGpuEstimatedBytes y ultimo operationMs.
 [ ] La informacion del panel derecho se actualiza despues de cada Generate y despues de Release.
 ```
@@ -239,8 +250,9 @@ No oculta una fuga, allocation caliente o recurso sin owner.
 Regla:
 
 ```text
-Los botones Generate del panel izquierdo son acciones completas.
-No son botones que solo cambian el preset para que otro boton genere despues.
+Los botones Apply Payload del panel izquierdo solo cambian el payload seleccionado.
+El boton Generate del panel izquierdo es la accion completa de release previo, borrado y generacion.
+La UI VR delega en PlanetRecipePayloadPreview y no duplica la logica de payload.
 ```
 
 ### 10. APK / Player Quest 3
@@ -275,9 +287,9 @@ No son botones que solo cambian el preset para que otro boton genere despues.
 [ ] Resultado de stress Low y al menos un stress pesado elegido manualmente.
 [ ] Resultado de prueba Quest Link.
 [ ] Resultado de click con rayo en UI VR.
-[ ] Captura o registro manual de Generate 30k desde UI VR.
-[ ] Captura o registro manual de Generate 130k desde UI VR.
-[ ] Captura o registro manual de un Generate pesado elegido manualmente entre 750k, 1M, 2M o 5M.
+[ ] Captura o registro manual de Apply Payload 126k + Generate desde UI VR.
+[ ] Captura o registro manual de Apply Payload 250k + Generate desde UI VR.
+[ ] Captura o registro manual de un payload pesado elegido manualmente entre 1M, 2M o 5M desde UI VR.
 [ ] Captura o registro manual del panel derecho despues de generar y despues de liberar.
 [ ] Estado de generacion APK/Player.
 ```
@@ -298,9 +310,10 @@ Hay crecimiento de memoria propio no explicado tras Release.
 Hay GC recurrente en un camino que deberia ser caliente.
 Una prueba supera hard budget sin confirmacion manual y diagnostico.
 La UI VR ejecuta logica distinta a los sistemas/Inspector sin estar documentada como accion compuesta.
-Un boton Generate de payload no libera la prueba anterior antes de generar.
-Un boton Generate de payload deja la esfera anterior o recursos propios vivos sin diagnostico.
+El boton Generate de payload no libera la prueba anterior antes de generar.
+El boton Generate de payload deja la esfera anterior o recursos propios vivos sin diagnostico.
 El panel derecho no muestra los datos minimos de payload y diagnostico.
+El material/debug visual del payload no se ve igual en APK que en Editor y no hay diagnostico claro.
 El player rig impide probar el Lab.
 Quest Link no permite validar camara/player/UI y no hay diagnostico claro.
 El proyecto no puede preparar APK/Player Android y no hay diagnostico claro.
@@ -316,10 +329,11 @@ Todos los checks obligatorios estan OK.
 Los Warning aceptados tienen diagnostico y accion futura escrita.
 No queda ningun bloqueante automatico.
 Release All queda probado desde Inspector y UI VR.
-Los botones Generate 30k, Generate 130k, Generate 500k, Generate 750k, Generate 1M, Generate 2M y Generate 5M quedan probados desde UI VR como acciones completas de release, borrado y generacion.
+Los botones Apply Payload 126k, Apply Payload 250k, Apply Payload 500k, Apply Payload 1M, Apply Payload 2M y Apply Payload 5M quedan probados desde UI VR junto al boton Generate como accion completa de release, borrado y generacion.
 El panel derecho de la UI VR muestra la informacion tecnica minima de payload, memoria/tiempo si existe y diagnostico.
 Los snapshots propios y oficiales quedan disponibles o con diagnostico claro.
 Quest Link permite usar el Lab con gafas, movimiento y rayo.
+La APK muestra el mismo estado visual debug que el Editor para el payload preview usado en el deadline.
 El proyecto queda listo para empezar `Docs/Implementacion/Pasos/06_Forma_Planeta_GPU.md`.
 ```
 
@@ -341,6 +355,21 @@ Warnings aceptados:
 Snapshots propios:
 Snapshots oficiales .snap:
 Notas:
+- Resultado parcial de primera prueba de payload en Quest/VR:
+  - Payload 5M: va mal para el objetivo actual.
+  - Payload 2M: la prueba se traga bien el caso, con 72 FPS fluidos y sin picos ni vibracion visible en la grafica.
+  - Payload 2M consume aproximadamente 47% del presupuesto GPU soft solo en geometria.
+  - Payload 1M consume aproximadamente 20% del presupuesto GPU soft solo en geometria.
+  - Lectura provisional: 1M parece un presupuesto mas saludable para geometria aislada, porque todavia falta cargar informacion/datos de planetas y otros sistemas.
+  - Puede convenir bajar algo mas el presupuesto base de geometria si los datos restantes presionan RAM/GPU.
+  - El resultado final queda muy dependiente de lo bien que el BVH reparta el poligonaje visible.
+  - La eleccion entre 1M, 2M u otro presupuesto se aplaza hasta medir el reparto real con BVH.
+- Segunda observacion de APK:
+  - El material de debug por triangulo no se ve en build: la esfera aparece blanca.
+  - Esto es bloqueante para cerrar el deadline, no por depender de ese material concreto, sino porque la APK debe representar el mismo estado de validacion que el Editor.
+  - Causa probable inicial: el shader/material de vertex color no estaba referenciado como asset incluido en build y el runtime podia caer a un material Unlit blanco.
+  - Accion aplicada: crear un material `Resources/PlanetRecipePayloadPreview_VertexColorDebug` referenciando el shader de vertex color y usarlo como camino principal del preview.
+  - Pendiente: repetir APK y confirmar que `TrianglePalette` se ve igual que en Editor.
 ```
 
 ## TBD
