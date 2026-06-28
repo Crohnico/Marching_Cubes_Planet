@@ -1,4 +1,6 @@
+using System;
 using System.Text;
+using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.Lab;
 using UnityEngine;
 using UnityEngine.UI;
@@ -10,6 +12,7 @@ namespace MarchingCubesPlanet.Preview
         private const string RootName = "PlanetRecipePayloadPreviewDeadlineVR";
         private const string LegacyDebugCanvasName = "PlanetMinimalXrTestCanvas";
         private const float CanvasScale = 0.0025f;
+        private const int GeneratePlanetTriangleBudget = 1000000;
 
         [SerializeField] private PlanetRecipePayloadPreview preview;
         [SerializeField] private Button applyPayload126kButton;
@@ -26,6 +29,7 @@ namespace MarchingCubesPlanet.Preview
         [SerializeField] private Text diagnosticsText;
 
         private readonly StringBuilder builder = new StringBuilder(2048);
+        private string lastPanelDiagnostic;
 
         public PlanetRecipePayloadPreview Preview => preview;
 
@@ -122,6 +126,14 @@ namespace MarchingCubesPlanet.Preview
             builder.AppendLine();
             builder.AppendLine("Last Diagnostic");
             builder.AppendLine(string.IsNullOrWhiteSpace(preview.LastDiagnostic) ? "-" : preview.LastDiagnostic);
+            if (!string.IsNullOrWhiteSpace(lastPanelDiagnostic))
+            {
+                builder.AppendLine();
+                builder.AppendLine("Canvas Generate");
+                builder.AppendLine(lastPanelDiagnostic);
+            }
+
+            AppendMarchingCubesState();
 
             diagnosticsText.text = builder.ToString();
         }
@@ -221,7 +233,20 @@ namespace MarchingCubesPlanet.Preview
                 return;
             }
 
-            preview.Generate();
+            try
+            {
+                if (!TryGenerateMarchingCubesPlanet())
+                {
+                    preview.Generate();
+                    lastPanelDiagnostic = "Fallback: generated legacy payload preview.";
+                }
+            }
+            catch (Exception exception)
+            {
+                ReleaseMarchingCubesPlanet();
+                lastPanelDiagnostic = "Generate failed: " + exception.GetType().Name + ": " + exception.Message;
+            }
+
             Refresh();
         }
 
@@ -232,8 +257,98 @@ namespace MarchingCubesPlanet.Preview
                 return;
             }
 
+            ReleaseMarchingCubesPlanet();
             preview.Release();
             Refresh();
+        }
+
+        private bool TryGenerateMarchingCubesPlanet()
+        {
+            PlanetGpuShapeLab shapeLab = FindFirstObjectByType<PlanetGpuShapeLab>();
+            PlanetMarchingCubesLab marchingCubesLab = FindFirstObjectByType<PlanetMarchingCubesLab>();
+            PlanetMarchingCubesPaintLab paintLab = FindFirstObjectByType<PlanetMarchingCubesPaintLab>();
+
+            if (shapeLab == null || marchingCubesLab == null || paintLab == null)
+            {
+                lastPanelDiagnostic = "Marching Cubes labs not found. Generate will use the legacy payload preview.";
+                return false;
+            }
+
+            ReleaseMarchingCubesPlanet();
+
+            PlanetRecipe sourceRecipe = preview.Recipe;
+            if (!sourceRecipe.IsValid(out string recipeMessage))
+            {
+                lastPanelDiagnostic = "Generate blocked: preview PlanetRecipe is invalid. " + recipeMessage;
+                return true;
+            }
+
+            int triangleBudget = Mathf.Max(preview.RequestedTrianglePayload, GeneratePlanetTriangleBudget);
+            shapeLab.SetRecipe(in sourceRecipe);
+            shapeLab.InitShapeGpu();
+            if (!shapeLab.IsShapeGpuInitialized)
+            {
+                lastPanelDiagnostic = "Generate blocked: Shape GPU did not initialize.";
+                return true;
+            }
+
+            marchingCubesLab.EnsurePlanetSurfaceTriangleBudget(triangleBudget);
+            marchingCubesLab.InitMarchingCubesGpu();
+            marchingCubesLab.ExtractPlanetSurface();
+
+            if (marchingCubesLab.LastTriangleCountWritten == 0u)
+            {
+                lastPanelDiagnostic = "Generate finished without visible planet surface triangles. Check 07 range/shape diagnostics.";
+                return true;
+            }
+
+            ConfigurePaintPlacement(paintLab);
+            paintLab.UsePlanetSurfaceAtlas((int)Mathf.Min(marchingCubesLab.LastTriangleCountWritten, triangleBudget));
+            preview.EnsureRenderTargets(out MeshFilter targetMeshFilter, out MeshRenderer targetMeshRenderer);
+            paintLab.PaintLastExtraction(targetMeshFilter, targetMeshRenderer, BuildPreviewPlacement());
+            preview.Release();
+
+            lastPanelDiagnostic = marchingCubesLab.LastOverflow
+                ? "Generated via 06 -> 07 -> 08, but 07 hit the triangle buffer limit. Painted mesh is partial; raise payload budget or reduce surface noise."
+                : "Generated via 06 -> 07 -> 08 using PlanetRecipePayloadPreview recipe, transform and payload budget.";
+            return true;
+        }
+
+        private void ConfigurePaintPlacement(PlanetMarchingCubesPaintLab paintLab)
+        {
+            paintLab.SetPlacement(BuildPreviewPlacement());
+        }
+
+        private PlanetPlacement BuildPreviewPlacement()
+        {
+            Vector3 center = preview != null ? preview.TransformPlanetWorldCenter : Vector3.zero;
+            Quaternion rotation = preview != null ? preview.TransformPlanetRotation : Quaternion.identity;
+            PlanetPlacement placement = new PlanetPlacement(center)
+            {
+                PlanetRotation = rotation
+            };
+            return placement;
+        }
+
+        private void ReleaseMarchingCubesPlanet()
+        {
+            PlanetMarchingCubesPaintLab paintLab = FindFirstObjectByType<PlanetMarchingCubesPaintLab>();
+            if (paintLab != null)
+            {
+                paintLab.ReleaseModule();
+            }
+
+            PlanetMarchingCubesLab marchingCubesLab = FindFirstObjectByType<PlanetMarchingCubesLab>();
+            if (marchingCubesLab != null)
+            {
+                marchingCubesLab.ReleaseModule();
+            }
+
+            PlanetGpuShapeLab shapeLab = FindFirstObjectByType<PlanetGpuShapeLab>();
+            if (shapeLab != null)
+            {
+                shapeLab.ReleaseModule();
+            }
         }
 
         private void RegisterButtonCallbacks()
@@ -469,6 +584,33 @@ namespace MarchingCubesPlanet.Preview
             builder.Append(label);
             builder.Append(": ");
             builder.AppendLine(value);
+        }
+
+        private void AppendMarchingCubesState()
+        {
+            PlanetMarchingCubesLab marchingCubesLab = FindFirstObjectByType<PlanetMarchingCubesLab>();
+            PlanetMarchingCubesPaintLab paintLab = FindFirstObjectByType<PlanetMarchingCubesPaintLab>();
+            if (marchingCubesLab == null && paintLab == null)
+            {
+                return;
+            }
+
+            builder.AppendLine();
+            builder.AppendLine("Marching Cubes 06-08");
+            if (marchingCubesLab != null)
+            {
+                AppendLine("MC processed cubes", marchingCubesLab.LastProcessedCubeCount.ToString());
+                AppendLine("MC tris attempted", marchingCubesLab.LastTriangleCountAttempted.ToString());
+                AppendLine("MC tris written", marchingCubesLab.LastTriangleCountWritten.ToString());
+                AppendLine("MC overflow", marchingCubesLab.LastOverflow ? "yes" : "no");
+            }
+
+            if (paintLab != null)
+            {
+                AppendLine("Painted tris", paintLab.LastPaintedTriangleCount.ToString());
+                AppendLine("Painted vertices", paintLab.LastPaintedVertexCount.ToString());
+                AppendLine("Paint mesh live", paintLab.HasLiveMesh ? "yes" : "no");
+            }
         }
 
         private static void AddListener(Button button, UnityEngine.Events.UnityAction action)

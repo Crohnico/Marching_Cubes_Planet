@@ -136,8 +136,7 @@ float PlanetShapeEvaluateDensity(float3 gridPosition, out float surfaceOffset, o
     float noiseFrequency = parameters.noise.y;
     if (noiseAmplitude > 0.0 && noiseFrequency > 0.0)
     {
-        float3 normalizedPosition = gridPosition / max(radius, 0.0001);
-        float noiseValue = PlanetShapePerlin3D(normalizedPosition * noiseFrequency * nearestRoughness, seed);
+        float noiseValue = PlanetShapePerlin3D(direction * noiseFrequency * nearestRoughness, seed);
         surfaceOffset += noiseValue * radius * noiseAmplitude;
     }
 

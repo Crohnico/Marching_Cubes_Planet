@@ -1,48 +1,41 @@
-using MarchingCubesPlanet.Lab;
 using UnityEditor;
 using UnityEngine;
 
 namespace MarchingCubesPlanet.Lab.Editor
 {
-    [CustomEditor(typeof(PlanetMarchingCubesLab))]
-    public sealed class PlanetMarchingCubesLabEditor : UnityEditor.Editor
+    [CustomEditor(typeof(PlanetMarchingCubesPaintLab))]
+    public sealed class PlanetMarchingCubesPaintLabEditor : UnityEditor.Editor
     {
         public override void OnInspectorGUI()
         {
             DrawDefaultInspector();
 
-            PlanetMarchingCubesLab lab = (PlanetMarchingCubesLab)target;
+            PlanetMarchingCubesPaintLab lab = (PlanetMarchingCubesPaintLab)target;
 
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Marching Cubes Commands", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Marching Cubes Paint Commands", EditorStyles.boldLabel);
 
-            if (GUILayout.Button("Validate Marching Cubes Setup"))
+            if (GUILayout.Button("Validate Paint Setup"))
             {
                 lab.ValidateModule();
                 MarkDirty(lab);
             }
 
-            if (GUILayout.Button("Reset Demo Settings"))
+            if (GUILayout.Button("Reset Paint Settings"))
             {
-                lab.ResetDemoSettings();
+                lab.ResetPaintSettings();
                 MarkDirty(lab);
             }
 
-            if (GUILayout.Button("Init Marching Cubes GPU"))
+            if (GUILayout.Button("Cycle Color Mode"))
             {
-                lab.InitMarchingCubesGpu();
+                lab.CycleColorMode();
                 MarkDirty(lab);
             }
 
-            if (GUILayout.Button("Extract Planet Surface"))
+            if (GUILayout.Button("Paint Last Extraction"))
             {
-                lab.ExtractPlanetSurface();
-                MarkDirty(lab);
-            }
-
-            if (GUILayout.Button("Run Marching Cubes Smoke Test"))
-            {
-                lab.RunMarchingCubesSmokeTest();
+                lab.PaintLastExtraction();
                 MarkDirty(lab);
             }
 
@@ -54,7 +47,7 @@ namespace MarchingCubesPlanet.Lab.Editor
                 MarkDirty(lab);
             }
 
-            if (GUILayout.Button("Release Marching Cubes GPU"))
+            if (GUILayout.Button("Release Painted Mesh"))
             {
                 lab.ReleaseModule();
                 MarkDirty(lab);

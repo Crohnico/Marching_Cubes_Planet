@@ -42,21 +42,21 @@ campo escalar -> cubos -> caseIndex -> triTable -> triangulos
 
 08 parte 1 pinta esos triangulos.
 
-08 parte 2, en otro documento, optimizara:
+09, 10 y 11, en documentos separados, definiran:
 
 ```text
-BVH.
-distancia de camara.
-presupuesto de poligonaje.
-prioridad visual.
-seleccion/degradacion de triangulos.
+pool global fijo de triangulos.
+reparto interno de detalle para geometria adaptable.
+visibilidad, oclusion y frustum.
 ```
 
 Regla:
 
 ```text
 Si el problema es "no se ve lo que genera 07", pertenece a 08 parte 1.
-Si el problema es "se ve demasiado caro o hay que priorizar por camara", pertenece a 08-2.
+Si el problema es "quien recibe triangulos del millon global", pertenece a 09.
+Si el problema es "donde pongo mas/menos detalle dentro de una geometria adaptable", pertenece a 10.
+Si el problema es "no deberia haber tris porque no lo veo", pertenece a 11.
 ```
 
 ## Alcance de esta fase
@@ -103,7 +103,9 @@ Regla:
 
 ```text
 08 parte 1 no descarta triangulos por presupuesto salvo limite de seguridad para no romper memoria.
-La optimizacion real queda para 08-2.
+El presupuesto real queda para 09.
+La optimizacion interna de geometria queda para 10.
+La visibilidad/occlusion/frustum queda para 11.
 ```
 
 ## Relacion con otros documentos
@@ -126,9 +128,11 @@ Docs/Implementacion/Pasos/07_Marching_Cubes.md
 Este documento prepara directamente:
 
 ```text
-08-2_BVH_y_Presupuesto_Poligonaje
+09_Pool_Global_Triangulos
+10_Reparto_Geometria_BVH
+11_Visibilidad_Oclusion_Frustum
 _deadline_06-08
-09_Proxy_Planeta_Lejano
+12_Proxy_Planeta_Lejano
 ```
 
 Dependencias cerradas:
@@ -136,7 +140,7 @@ Dependencias cerradas:
 ```text
 07 produce triangulos reales de Marching Cubes.
 07 expone conteos de triangulos/vertices generados.
-07 puede exponer vertices no indexados para Mesh de validacion.
+07 puede exponer vertices no indexados para Mesh visual.
 PlanetLabResourceRegistry registra Mesh runtime y Material runtime.
 PlanetImplementationLab ejecuta botones, metricas y Release All.
 ```
@@ -154,8 +158,10 @@ Reglas de integracion:
 
 ```text
 08 no reutiliza PlanetSpherePayloadMeshBuilder como fuente geometrica.
-08 reutiliza la ruta visual ya validada por PlanetRecipePayloadPreview: Mesh runtime + vertex colors + shader/material de vertex color.
+08 reutiliza la ruta visual ya validada por PlanetRecipePayloadPreview: Mesh runtime + MeshRenderer + material runtime.
 08 debe seguir el patron ClaseReal / ClaseRealLab / ClaseRealEditor.
+El boton Generate del panel preview usa PlanetRecipePayloadPreview como fuente de receta, posicion/rotacion y payload solicitado.
+Los objetos Lab calculan/orquestan, pero no son el ancla espacial del planeta visible.
 ```
 
 ## Datos de entrada
@@ -215,12 +221,19 @@ Persistencia.
 Decision inicial:
 
 ```text
-Pintar vertices con color diagnostico.
+Pintar vertices con atlas de superficie planetaria por defecto.
 Usar Mesh runtime de Unity.
 Usar vertices no indexados tal como salen de 07.
 Generar indices lineales si Unity los necesita.
-Usar vertex colors mediante Mesh.SetColors.
-Usar el shader/material MarchingCubesPlanet/Debug/Vertex Color o un material equivalente de vertex color.
+Generar vertex colors solo para modos diagnosticos.
+Generar UV.y por altura normalizada de cada vertice.
+Generar UV.x por celda `PlanetGpuShapeCell` mas cercana al triangulo.
+Usar un atlas runtime 2D de superficie planetaria: columnas por celda, filas por altura.
+Mantener vertex colors como fallback y para modos diagnosticos.
+Usar el shader/material MarchingCubesPlanet/Planet/Surface como material por defecto.
+El material por defecto no debe ser un material de vertex color.
+El material de superficie debe ser opaco.
+Durante la validacion 06-08 se usa doble cara para no ocultar triangulos por winding/culling mientras se revisa la orientacion final.
 ```
 
 Decision cerrada:
@@ -228,7 +241,7 @@ Decision cerrada:
 ```text
 La primera ruta de pintado de 08 es la misma familia tecnica que PlanetRecipePayloadPreview.
 No se usa render GPU-resident directo en 08 parte 1.
-El render visible inicial es MeshFilter + MeshRenderer + Mesh runtime + vertex colors.
+El render visible inicial es MeshFilter + MeshRenderer + Mesh runtime + material de superficie.
 ```
 
 Modos de color iniciales:
@@ -239,23 +252,36 @@ HeightColor.
 CaseIndexPalette.
 TrianglePalette.
 SolidDebugColor.
+PlanetSurfaceAtlas.
 ```
 
 Regla:
 
 ```text
+El modo recomendado para leer el planeta completo es PlanetSurfaceAtlas.
 El modo recomendado para ver si la triangulacion existe es TrianglePalette o CaseIndexPalette.
 El modo recomendado para ver orientacion es FlatNormalColor.
 El modo recomendado para leer forma planetaria es HeightColor.
+```
+
+Atlas inicial:
+
+```text
+UV.y = altura respecto al radio de la receta y al nivel de mar, no min/max de la mesh pintada.
+UV.x = indice de la celda `PlanetGpuShapeCell` asignada al triangulo.
+Cada triangulo usa una sola celda para evitar interpolacion suave entre biomas.
+Las celdas salen de la misma receta que 06: `VoronoiDivision`, `ContinentCells` y seed.
+Las columnas de continente usan arena, verde oscuro, verde, marron, gris y blanco nieve.
+Las columnas de oceano usan rosa bajo agua y arena humeda en costa.
+El shader fuerza `UV.x` al centro de la columna para que se lean celdas, no manchas suavizadas entre columnas.
 ```
 
 No objetivo:
 
 ```text
 Material final.
-Texturas finales.
 Agua final.
-Atlas final.
+Atlas final de biomas.
 ```
 
 ## Limite de seguridad
@@ -265,7 +291,7 @@ Atlas final.
 Decision inicial:
 
 ```text
-maxPaintedTriangles = 65536
+maxPaintedTriangles = 1000000
 ```
 
 Regla:
@@ -274,7 +300,8 @@ Regla:
 Este limite no es el presupuesto final del juego.
 Es un cortafuegos de validacion.
 Si 07 produce mas triangulos, 08 parte 1 puede truncar la Mesh visible y debe marcarlo como visualTruncated.
-La optimizacion real por distancia/camara/budget queda para 08-2.
+El pool real de triangulos queda para 09.
+El reparto por distancia/camara queda para 10 y 11.
 ```
 
 ## Componentes/scripts previstos
@@ -311,7 +338,7 @@ Guardar diagnostico corto.
 
 ### PlanetMarchingCubesMeshPainter
 
-Sistema real para construir/actualizar Mesh de validacion.
+Sistema real para construir/actualizar Mesh visual.
 
 Responsabilidad:
 
@@ -336,7 +363,7 @@ Responsabilidad:
 ```text
 Exponer settings de 08.
 Validar que 07 tiene resultado.
-Construir Mesh de validacion.
+Construir Mesh visual.
 Mostrar metricas.
 Registrar Mesh runtime y Material runtime si aplica.
 Liberar recursos propios.
@@ -427,7 +454,7 @@ Material runtime solo si se instancia.
 Estimacion inicial:
 
 ```text
-vertexBytes = vertexCountPainted * (position + normal + color)
+vertexBytes = vertexCountPainted * (position + normal + color + uv)
 indexBytes = triangleCountPainted * 3 * indexStride
 meshEstimatedBytes = vertexBytes + indexBytes
 ```
@@ -438,6 +465,7 @@ Valores iniciales:
 position = 12 bytes
 normal = 12 bytes
 color = 4 bytes
+uv = 8 bytes
 indexStride = 4 si vertexCountPainted > 65535, si no 2
 ```
 
@@ -574,14 +602,14 @@ colorMode.
 lastDiagnostic.
 ```
 
-Metricas diferidas a 08-2:
+Metricas diferidas a 09/10/11:
 
 ```text
-Triangulos conservados por presupuesto real.
-Triangulos descartados por distancia/camara.
-Coste de BVH.
-Calidad visual por LOD.
-Distribucion por estado del planeta.
+Triangulos concedidos/reclamados por el pool global.
+Triangulos redistribuidos por geometria adaptable.
+Triangulos descartados por oclusion/frustum.
+Coste de estructura espacial.
+Calidad visual por reparto de detalle.
 ```
 
 ## Riesgos
@@ -601,7 +629,7 @@ Liberar recursos de 07 desde 08.
 Mitigaciones:
 
 ```text
-Frontera clara: 07 extrae, 08 parte 1 pinta, 08-2 optimiza.
+Frontera clara: 07 extrae, 08 parte 1 pinta, 09 reparte slots, 10 adapta detalle, 11 filtra visibilidad.
 maxPaintedTriangles solo como cortafuegos.
 Owner de recursos separado.
 Diagnostico visualTruncated obligatorio.
@@ -616,11 +644,14 @@ No quedan decisiones abiertas para empezar la implementacion de 08 parte 1.
 08 parte 1 pinta la salida de 07.
 08 parte 1 no optimiza por distancia ni camara.
 08 parte 1 usa Mesh runtime de Unity.
-08 parte 1 usa vertex colors igual que PlanetRecipePayloadPreview.
+08 parte 1 usa material de superficie por defecto.
+Los vertex colors quedan reservados a modos de diagnostico.
 08 parte 1 usa MeshFilter + MeshRenderer.
 08 parte 1 mantiene vertices no indexados.
 maxPaintedTriangles es cortafuegos de validacion, no presupuesto final.
-BVH y budget de poligonaje quedan para 08-2.
+El budget global de poligonaje queda para 09.
+BVH/reparto interno queda para 10.
+Oclusion/frustum queda para 11.
 ```
 
 ## Criterio de cierre
@@ -634,7 +665,7 @@ Este documento queda listo para implementar cuando aceptemos este contrato:
 08 parte 1 no optimiza por distancia/camara.
 08 parte 1 registra y libera su Mesh/material.
 08 parte 1 mide triangulos pintados, vertices, bytes y tiempos.
-08-2 queda reservado para BVH y presupuesto de poligonaje.
+09, 10 y 11 quedan reservados para presupuesto global, reparto interno y visibilidad.
 ```
 
 El cierre real del bloque ocurre en:

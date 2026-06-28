@@ -76,7 +76,7 @@ namespace MarchingCubesPlanet.Shape
             SetData(cellBuffer, cells, recipe.VoronoiDivision);
         }
 
-        public void EvaluateDebugSamples(Vector4[] samplePositions, Vector4[] sampleResults)
+        public void EvaluateDensitySamples(Vector4[] samplePositions, Vector4[] sampleResults)
         {
             if (!IsInitialized)
             {
@@ -140,15 +140,15 @@ namespace MarchingCubesPlanet.Shape
 
             ReleaseBuffer(ref sampleInputBuffer);
             ReleaseBuffer(ref sampleOutputBuffer);
-            sampleInputBuffer = CreateBuffer("Planet Shape Debug Sample Positions", sampleCount, 16);
-            sampleOutputBuffer = CreateBuffer("Planet Shape Debug Density Samples", sampleCount, 16);
+            sampleInputBuffer = CreateBuffer("Planet Shape Sample Positions", sampleCount, 16);
+            sampleOutputBuffer = CreateBuffer("Planet Shape Density Samples", sampleCount, 16);
         }
 
-        private PlanetGpuBufferHandle CreateBuffer(string debugName, int elementCount, int stride)
+        private PlanetGpuBufferHandle CreateBuffer(string resourceName, int elementCount, int stride)
         {
             return bufferMode == PlanetGpuBufferMode.GraphicsBuffer
-                ? PlanetGpuBufferHandle.CreateGraphicsBuffer(debugName, elementCount, stride)
-                : PlanetGpuBufferHandle.CreateComputeBuffer(debugName, elementCount, stride);
+                ? PlanetGpuBufferHandle.CreateGraphicsBuffer(resourceName, elementCount, stride)
+                : PlanetGpuBufferHandle.CreateComputeBuffer(resourceName, elementCount, stride);
         }
 
         private static void SetData<T>(PlanetGpuBufferHandle handle, T[] data, int count) where T : struct

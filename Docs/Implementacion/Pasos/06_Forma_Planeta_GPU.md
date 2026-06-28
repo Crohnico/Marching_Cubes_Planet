@@ -92,7 +92,7 @@ El planeta base es campo escalar implicito, no volumen materializado.
 07 decide que zona muestrear con una rejilla temporal.
 07 convierte ese muestreo en triangulos reales de superficie.
 08 parte 1 pinta esos triangulos.
-08-2 decide como optimizarlos por BVH, camara y presupuesto.
+09, 10 y 11 deciden despues pool global, reparto de detalle, camara, oclusion y frustum.
 ```
 
 ## Alcance de esta fase
@@ -122,8 +122,11 @@ La fase debe dejar preparado un evaluador que pueda usarse por:
 
 ```text
 07_Marching_Cubes.
-09_Proxy_Planeta_Lejano.
-11_Chunks_Locales.
+09_Pool_Global_Triangulos.
+10_Reparto_Geometria_BVH.
+11_Visibilidad_Oclusion_Frustum.
+12_Proxy_Planeta_Lejano.
+14_Chunks_Locales.
 13_Cuevas.
 14_Minerales_Sustancias.
 16_Terraformado.
@@ -181,7 +184,9 @@ Este documento prepara directamente:
 ```text
 07_Marching_Cubes
 08_Pintado_Resultado_Marching_Cubes
-08-2_BVH_y_Presupuesto_Poligonaje
+09_Pool_Global_Triangulos
+10_Reparto_Geometria_BVH
+11_Visibilidad_Oclusion_Frustum
 _deadline_06-08
 ```
 
@@ -600,7 +605,9 @@ Salida normalizada esperada en rango aproximado [-1, 1].
 Reglas:
 
 ```text
-Perlin3D recibe posicion local normalizada, frecuencia, roughnessModifier y seed.
+Perlin3D recibe direction normalizada, frecuencia, roughnessModifier y seed.
+El ruido de superficie no debe depender del radio de la muestra.
+Para una misma direccion radial, `surfaceOffset(direction)` debe ser estable.
 El seed entra como offset/hash determinista, no como dependencia de tiempo.
 Si Perlin3D resulta caro en Quest 3, se mide y se documenta antes de sustituirlo.
 ```
@@ -1169,5 +1176,5 @@ Ese deadline valida conjuntamente:
 Forma GPU.
 Marching Cubes.
 Pintado del resultado de Marching Cubes.
-BVH/presupuesto de poligonaje queda reservado para 08-2.
+Pool global, reparto de detalle y visibilidad quedan reservados para 09, 10 y 11.
 ```

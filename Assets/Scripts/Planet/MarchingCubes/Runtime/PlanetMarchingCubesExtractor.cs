@@ -12,22 +12,25 @@ namespace MarchingCubesPlanet.MarchingCubes
         private static readonly int ShapeCellsId = Shader.PropertyToID("_PlanetShapeCells");
         private static readonly int VerticesId = Shader.PropertyToID("_MarchingCubesVertices");
         private static readonly int StateId = Shader.PropertyToID("_MarchingCubesState");
+        private static readonly int EdgeTableId = Shader.PropertyToID("_MarchingCubesEdgeTable");
+        private static readonly int TriTableId = Shader.PropertyToID("_MarchingCubesTriTable");
         private static readonly int CubeCountId = Shader.PropertyToID("_MarchingCubesCubeCount");
+        private static readonly int CubeStartIndexId = Shader.PropertyToID("_MarchingCubesCubeStartIndex");
         private static readonly int GridRadiusId = Shader.PropertyToID("_MarchingCubesGridRadius");
         private static readonly int RadialStartOffsetId = Shader.PropertyToID("_MarchingCubesRadialStartOffset");
         private static readonly int RadialCubeCountId = Shader.PropertyToID("_MarchingCubesRadialCubeCount");
-        private static readonly int TangentHalfExtentId = Shader.PropertyToID("_MarchingCubesTangentHalfExtent");
-        private static readonly int TangentCubeCountId = Shader.PropertyToID("_MarchingCubesTangentCubeCount");
+        private static readonly int SurfaceFaceResolutionId = Shader.PropertyToID("_MarchingCubesSurfaceFaceResolution");
         private static readonly int CubeSizeGridId = Shader.PropertyToID("_MarchingCubesCubeSizeGrid");
         private static readonly int MaxTriangleCountId = Shader.PropertyToID("_MarchingCubesMaxTriangleCount");
 
-        private const string ExtractKernelName = "CS_ExtractValidationPatch";
+        private const string ExtractPlanetSurfaceKernelName = "CS_ExtractPlanetSurface";
+        private const int MaxThreadGroupsPerDispatchAxis = 65535;
 
         private readonly PlanetMarchingCubesState[] stateUpload = new PlanetMarchingCubesState[1];
         private readonly PlanetMarchingCubesState[] stateReadback = new PlanetMarchingCubesState[1];
 
         private ComputeShader computeShader;
-        private int extractKernel;
+        private int extractPlanetSurfaceKernel;
         private uint threadGroupSizeX;
         private PlanetGpuBufferMode bufferMode;
         private PlanetRecipe recipe;
@@ -35,6 +38,8 @@ namespace MarchingCubesPlanet.MarchingCubes
         private PlanetGpuShapeEvaluator shapeEvaluator;
         private PlanetGpuBufferHandle vertexBuffer;
         private PlanetGpuBufferHandle stateBuffer;
+        private PlanetGpuBufferHandle edgeTableBuffer;
+        private PlanetGpuBufferHandle triTableBuffer;
         private PlanetMarchingCubesVertex[] vertexReadback;
 
         public bool IsInitialized => vertexBuffer != null && vertexBuffer.IsAlive &&
@@ -43,6 +48,8 @@ namespace MarchingCubesPlanet.MarchingCubes
         public uint ThreadGroupSizeX => threadGroupSizeX;
         public PlanetGpuBufferHandle VertexBuffer => vertexBuffer;
         public PlanetGpuBufferHandle StateBuffer => stateBuffer;
+        public PlanetGpuBufferHandle EdgeTableBuffer => edgeTableBuffer;
+        public PlanetGpuBufferHandle TriTableBuffer => triTableBuffer;
         public PlanetMarchingCubesSettings Settings => settings;
 
         public void Initialize(
@@ -62,7 +69,9 @@ namespace MarchingCubesPlanet.MarchingCubes
                 throw new ArgumentException(recipeMessage, nameof(sourceRecipe));
             }
 
-            if (!extractionSettings.Validate(out string settingsMessage))
+            PlanetMarchingCubesSettings sanitizedSettings = extractionSettings;
+            sanitizedSettings.EnsureDefaults();
+            if (!sanitizedSettings.Validate(out string settingsMessage))
             {
                 throw new ArgumentException(settingsMessage, nameof(extractionSettings));
             }
@@ -76,54 +85,100 @@ namespace MarchingCubesPlanet.MarchingCubes
 
             computeShader = shader;
             recipe = sourceRecipe;
-            settings = extractionSettings;
+            settings = sanitizedSettings;
             shapeEvaluator = initializedShapeEvaluator;
             bufferMode = requestedBufferMode;
-            extractKernel = computeShader.FindKernel(ExtractKernelName);
-            computeShader.GetKernelThreadGroupSizes(extractKernel, out threadGroupSizeX, out _, out _);
+            extractPlanetSurfaceKernel = computeShader.FindKernel(ExtractPlanetSurfaceKernelName);
+            computeShader.GetKernelThreadGroupSizes(extractPlanetSurfaceKernel, out threadGroupSizeX, out _, out _);
 
             vertexBuffer = CreateBuffer(
                 "Planet Marching Cubes Vertices",
-                settings.MaxValidationVertices,
+                settings.MaxPlanetSurfaceVertices,
                 PlanetMarchingCubesVertex.Stride);
             stateBuffer = CreateBuffer("Planet Marching Cubes State", 1, PlanetMarchingCubesState.Stride);
-            vertexReadback = new PlanetMarchingCubesVertex[settings.MaxValidationVertices];
+            edgeTableBuffer = CreateBuffer("Planet Marching Cubes Edge Table", PlanetMarchingCubesLookupTables.EdgeTable.Length, sizeof(uint));
+            triTableBuffer = CreateBuffer("Planet Marching Cubes Tri Table", PlanetMarchingCubesLookupTables.TriTable.Length, sizeof(int));
+            SetData(edgeTableBuffer, PlanetMarchingCubesLookupTables.EdgeTable, PlanetMarchingCubesLookupTables.EdgeTable.Length);
+            SetData(triTableBuffer, PlanetMarchingCubesLookupTables.TriTable, PlanetMarchingCubesLookupTables.TriTable.Length);
+            vertexReadback = new PlanetMarchingCubesVertex[settings.MaxPlanetSurfaceVertices];
         }
 
-        public PlanetMarchingCubesExtractionResult ExtractValidationPatch()
+        public PlanetMarchingCubesExtractionResult ExtractPlanetSurface()
         {
             if (!IsInitialized)
             {
                 throw new InvalidOperationException("PlanetMarchingCubesExtractor must be initialized before extraction.");
             }
 
+            PlanetMarchingCubesSurfaceRange range = settings.surfaceRange;
+            BindCommonBuffers(extractPlanetSurfaceKernel);
+            SetCommonParameters((int)range.CubeCount);
+            computeShader.SetInt(RadialStartOffsetId, range.radialStartOffset);
+            computeShader.SetInt(RadialCubeCountId, range.radialCubeCount);
+            computeShader.SetInt(SurfaceFaceResolutionId, range.faceResolution);
+            computeShader.SetFloat(CubeSizeGridId, range.cubeSizeGrid);
+
+            Dispatch(extractPlanetSurfaceKernel, range.CubeCount);
+            return ReadbackResult();
+        }
+
+        public void Release()
+        {
+            ReleaseBuffer(ref triTableBuffer);
+            ReleaseBuffer(ref edgeTableBuffer);
+            ReleaseBuffer(ref stateBuffer);
+            ReleaseBuffer(ref vertexBuffer);
+            computeShader = null;
+            extractPlanetSurfaceKernel = 0;
+            threadGroupSizeX = 0;
+            shapeEvaluator = null;
+            vertexReadback = null;
+        }
+
+        private void BindCommonBuffers(int kernel)
+        {
             stateUpload[0] = default;
             SetData(stateBuffer, stateUpload, 1);
 
-            shapeEvaluator.ParameterBuffer.BindTo(computeShader, extractKernel, ShapeParametersId);
-            shapeEvaluator.CellBuffer.BindTo(computeShader, extractKernel, ShapeCellsId);
-            vertexBuffer.BindTo(computeShader, extractKernel, VerticesId);
-            stateBuffer.BindTo(computeShader, extractKernel, StateId);
+            shapeEvaluator.ParameterBuffer.BindTo(computeShader, kernel, ShapeParametersId);
+            shapeEvaluator.CellBuffer.BindTo(computeShader, kernel, ShapeCellsId);
+            vertexBuffer.BindTo(computeShader, kernel, VerticesId);
+            stateBuffer.BindTo(computeShader, kernel, StateId);
+            edgeTableBuffer.BindTo(computeShader, kernel, EdgeTableId);
+            triTableBuffer.BindTo(computeShader, kernel, TriTableId);
+        }
 
-            PlanetMarchingCubesRange range = settings.range;
-            computeShader.SetInt(CubeCountId, (int)range.CubeCount);
+        private void SetCommonParameters(int cubeCount)
+        {
+            computeShader.SetInt(CubeCountId, cubeCount);
             computeShader.SetInt(GridRadiusId, recipe.GridRadius);
-            computeShader.SetInt(RadialStartOffsetId, range.radialStartOffset);
-            computeShader.SetInt(RadialCubeCountId, range.radialCubeCount);
-            computeShader.SetInt(TangentHalfExtentId, range.tangentHalfExtent);
-            computeShader.SetInt(TangentCubeCountId, range.tangentCubeCount);
-            computeShader.SetFloat(CubeSizeGridId, range.cubeSizeGrid);
-            computeShader.SetInt(MaxTriangleCountId, settings.maxValidationTriangles);
+            computeShader.SetInt(MaxTriangleCountId, settings.maxPlanetSurfaceTriangles);
+        }
 
+        private void Dispatch(int kernel, long cubeCount)
+        {
             uint safeThreadGroupSizeX = threadGroupSizeX == 0u ? 1u : threadGroupSizeX;
-            int groupCount = Mathf.CeilToInt(range.CubeCount / (float)safeThreadGroupSizeX);
-            computeShader.Dispatch(extractKernel, groupCount, 1, 1);
+            long maxCubesPerDispatch = MaxThreadGroupsPerDispatchAxis * (long)safeThreadGroupSizeX;
+            long cubeStartIndex = 0L;
 
+            while (cubeStartIndex < cubeCount)
+            {
+                long remainingCubes = cubeCount - cubeStartIndex;
+                long dispatchCubeCount = Math.Min(remainingCubes, maxCubesPerDispatch);
+                int groupCount = Mathf.CeilToInt(dispatchCubeCount / (float)safeThreadGroupSizeX);
+                computeShader.SetInt(CubeStartIndexId, (int)cubeStartIndex);
+                computeShader.Dispatch(kernel, groupCount, 1, 1);
+                cubeStartIndex += dispatchCubeCount;
+            }
+        }
+
+        private PlanetMarchingCubesExtractionResult ReadbackResult()
+        {
             GetData(stateBuffer, stateReadback, 1);
             PlanetMarchingCubesState state = stateReadback[0];
             int clampedVertexCount = Mathf.Min(
-                (int)Math.Min(state.vertexCountWritten, (uint)settings.MaxValidationVertices),
-                settings.MaxValidationVertices);
+                (int)Math.Min(state.vertexCountWritten, (uint)settings.MaxPlanetSurfaceVertices),
+                settings.MaxPlanetSurfaceVertices);
 
             if (clampedVertexCount > 0)
             {
@@ -134,25 +189,14 @@ namespace MarchingCubesPlanet.MarchingCubes
                 state,
                 vertexReadback,
                 clampedVertexCount,
-                settings.maxValidationTriangles);
+                settings.maxPlanetSurfaceTriangles);
         }
 
-        public void Release()
-        {
-            ReleaseBuffer(ref stateBuffer);
-            ReleaseBuffer(ref vertexBuffer);
-            computeShader = null;
-            extractKernel = 0;
-            threadGroupSizeX = 0;
-            shapeEvaluator = null;
-            vertexReadback = null;
-        }
-
-        private PlanetGpuBufferHandle CreateBuffer(string debugName, int elementCount, int stride)
+        private PlanetGpuBufferHandle CreateBuffer(string resourceName, int elementCount, int stride)
         {
             return bufferMode == PlanetGpuBufferMode.GraphicsBuffer
-                ? PlanetGpuBufferHandle.CreateGraphicsBuffer(debugName, elementCount, stride)
-                : PlanetGpuBufferHandle.CreateComputeBuffer(debugName, elementCount, stride);
+                ? PlanetGpuBufferHandle.CreateGraphicsBuffer(resourceName, elementCount, stride)
+                : PlanetGpuBufferHandle.CreateComputeBuffer(resourceName, elementCount, stride);
         }
 
         private static void SetData<T>(PlanetGpuBufferHandle handle, T[] data, int count) where T : struct

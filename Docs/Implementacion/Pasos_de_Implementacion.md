@@ -214,17 +214,19 @@ _deadline_01-05
 06_Forma_Planeta_GPU
 07_Marching_Cubes
 08_Pintado_Resultado_Marching_Cubes
-08-2_BVH_y_Presupuesto_Poligonaje
+09_Pool_Global_Triangulos
+10_Reparto_Geometria_BVH
+11_Visibilidad_Oclusion_Frustum
 _deadline_06-08
-09_Proxy_Planeta_Lejano
-10_Estados_Planeta
-11_Chunks_Locales
-12_Streaming_Prioridades
-13_Cuevas
-14_Minerales_Sustancias
-15_Colisiones_Locales
-16_Terraformado
-17_Persistencia
+12_Proxy_Planeta_Lejano
+13_Estados_Planeta
+14_Chunks_Locales
+15_Streaming_Prioridades
+16_Cuevas
+17_Minerales_Sustancias
+18_Colisiones_Locales
+19_Terraformado
+20_Persistencia
 ```
 
 El orden puede cambiar si aparece un bloqueo tecnico, pero no se debe saltar a codigo de un sistema importante sin su documento funcional.
@@ -454,7 +456,9 @@ La cell logica sigue siendo 1x1x1.
 La salida inicial son vertices no indexados.
 La Mesh de validacion no es payload final.
 08 pinta el resultado de 07.
-08-2 decide BVH, compactacion y presupuesto.
+09 decide el pool global fijo de triangulos.
+10 decide reparto interno/BVH para geometria adaptable.
+11 decide visibilidad, oclusion y frustum global.
 ```
 
 Regla:
@@ -497,40 +501,97 @@ Decisiones cerradas:
 08 parte 1 no define BVH.
 08 parte 1 usa Mesh runtime de validacion.
 08 parte 1 puede truncar solo por cortafuegos de validacion.
-El budget real de poligonaje queda para 08-2.
+El budget real de poligonaje empieza en 09 como pool global fijo.
 ```
 
-## 08-2 - BVH y presupuesto de poligonaje
+## 09 - Pool global de triangulos
 
-Documento para optimizar el resultado de Marching Cubes segun camara y presupuesto.
+Documento para crear el presupuesto global de triangulos compartido por todo el universo.
 
 Documento propio:
 
 ```text
-Docs/Implementacion/Pasos/08-2_BVH_y_Presupuesto_Poligonaje.md
+Docs/Implementacion/Pasos/09_Pool_Global_Triangulos.md
+```
+
+Debe concretar:
+
+```text
+Pool fijo inicial de 1M tris.
+Asignaciones por owner/sistema.
+Peticiones de "necesito X tris".
+Reclamacion de slots lejanos si el pool esta lleno.
+Distancia al player como criterio inicial.
+Metricas de tris concedidos, denegados y reclamados.
+Release de slots por owner.
+```
+
+Regla:
+
+```text
+09 no cambia el poligonaje de ninguna geometria.
+09 solo reparte slots de triangulos del presupuesto global.
+```
+
+## 10 - Reparto de geometria y detalle espacial
+
+Documento para optimizar donde se gastan los triangulos dentro de una geometria adaptable.
+
+Documento propio:
+
+```text
+Docs/Implementacion/Pasos/10_Reparto_Geometria_BVH.md
 ```
 
 Debe concretar:
 
 ```text
 BVH inicial o estructura espacial equivalente.
-Distancia de camara.
-Tamaño aparente.
-Presupuesto de poligonaje.
-Seleccion/degradacion de triangulos.
-Prioridad visual.
-Metricas de coste.
+Reparto por distancia.
+Reparto por direccion de mirada.
+Mas detalle donde mira/esta el player.
+Menos detalle conforme se aleja.
+Relacion con terreno y geometria adaptable.
+Metricas de calidad/coste.
 ```
 
 Regla:
 
 ```text
-No se implementa 08-2 antes de que 08 parte 1 pinte correctamente el resultado de 07.
+10 consume un budget ya concedido por 09.
+10 no tiene por que aplicarse a props; props pueden usar LODs naturales futuros.
+```
+
+## 11 - Visibilidad, oclusion y frustum
+
+Documento para evitar gastar triangulos en lo que no se ve.
+
+Documento propio:
+
+```text
+Docs/Implementacion/Pasos/11_Visibilidad_Oclusion_Frustum.md
+```
+
+Debe concretar:
+
+```text
+Frustum culling global.
+Oclusion inicial.
+Prioridad por direccion de camara.
+Liberacion/degradacion de tris invisibles.
+Borrado natural del hemisferio contrario a la mirada.
+Metricas de tris visibles, ocultos y liberados.
+```
+
+Regla:
+
+```text
+11 afecta a todo el universo gestionado por el pool de tris.
 ```
 
 ## Deadline 06-08 - Validacion de forma, Marching Cubes y pintado
 
-Documento para cerrar el gate entre `06_Forma_Planeta_GPU`, `07_Marching_Cubes`, `08_Pintado_Resultado_Marching_Cubes` y el inicio de `09_Proxy_Planeta_Lejano`.
+Documento para cerrar el gate entre `06_Forma_Planeta_GPU`, `07_Marching_Cubes`, `08_Pintado_Resultado_Marching_Cubes` y el inicio de `09_Pool_Global_Triangulos`.
 
 Debe concretar:
 
@@ -548,10 +609,10 @@ Resultado de ejecucion del deadline.
 Regla:
 
 ```text
-No se empieza 09_Proxy_Planeta_Lejano hasta que _deadline_06-08 este en verde.
+No se empieza 09_Pool_Global_Triangulos hasta que _deadline_06-08 este en verde.
 ```
 
-## 09 - Proxy planeta lejano
+## 12 - Proxy planeta lejano
 
 Documento para render lejano barato.
 

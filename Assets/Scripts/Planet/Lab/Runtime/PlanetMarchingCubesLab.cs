@@ -37,6 +37,8 @@ namespace MarchingCubesPlanet.Lab
         private PlanetMarchingCubesExtractionResult lastResult = PlanetMarchingCubesExtractionResult.Empty;
         private int vertexBufferResourceId;
         private int stateBufferResourceId;
+        private int edgeTableBufferResourceId;
+        private int triTableBufferResourceId;
 
         public override string ModuleName => "Planet Marching Cubes Lab";
         public override bool HasLiveResources => extractor.IsInitialized;
@@ -56,6 +58,7 @@ namespace MarchingCubesPlanet.Lab
         public override bool ValidateModule()
         {
             supportsComputeShaders = SystemInfo.supportsComputeShaders;
+            settings.EnsureDefaults();
 
             if (marchingCubesComputeShader == null)
             {
@@ -90,12 +93,14 @@ namespace MarchingCubesPlanet.Lab
                 return false;
             }
 
+            settings.EnsureSurfaceRangeCoversRecipe(shapeLab.Recipe);
+
             if (!settings.Validate(out string settingsMessage))
             {
                 lastDiagnostic = PlanetLabDiagnostic.Warning(
                     "Marching Cubes settings are invalid",
                     settingsMessage,
-                    "Fix the validation patch settings before extracting triangles.",
+                    "Fix the Marching Cubes settings before extracting triangles.",
                     BuildSettingsMetrics());
                 lastAction = "Validate Marching Cubes Setup failed.";
                 return false;
@@ -131,6 +136,14 @@ namespace MarchingCubesPlanet.Lab
             CaptureMetrics("Reset Marching Cubes Demo Settings", 0);
         }
 
+        public void EnsurePlanetSurfaceTriangleBudget(int minimumTriangleBudget)
+        {
+            if (minimumTriangleBudget > settings.maxPlanetSurfaceTriangles)
+            {
+                settings.maxPlanetSurfaceTriangles = minimumTriangleBudget;
+            }
+        }
+
         public void InitMarchingCubesGpu()
         {
             stopwatch.Restart();
@@ -158,7 +171,7 @@ namespace MarchingCubesPlanet.Lab
             CaptureMetrics("Init Marching Cubes GPU", stopwatch.Elapsed.TotalMilliseconds);
         }
 
-        public void ExtractValidationPatch()
+        public void ExtractPlanetSurface()
         {
             stopwatch.Restart();
 
@@ -173,21 +186,21 @@ namespace MarchingCubesPlanet.Lab
                 return;
             }
 
-            lastResult = extractor.ExtractValidationPatch();
+            lastResult = extractor.ExtractPlanetSurface();
             ApplyResultSummary(lastResult);
 
             stopwatch.Stop();
             lastDiagnostic = PlanetLabDiagnostic.Ok(
-                "Marching Cubes validation patch extracted",
+                "Planet surface extracted",
                 BuildResultMetrics());
-            lastAction = "Extract Validation Patch finished.";
-            CaptureMetrics("Extract Validation Patch", stopwatch.Elapsed.TotalMilliseconds);
+            lastAction = "Extract Planet Surface finished.";
+            CaptureMetrics("Extract Planet Surface", stopwatch.Elapsed.TotalMilliseconds);
         }
 
         public void RunMarchingCubesSmokeTest()
         {
             InitMarchingCubesGpu();
-            ExtractValidationPatch();
+            ExtractPlanetSurface();
         }
 
         public override void RunModuleTest()
@@ -211,6 +224,8 @@ namespace MarchingCubesPlanet.Lab
             lastVertexCountWritten = 0u;
             lastOverflow = false;
             lastInvalidCase = false;
+            MarkReleased(ref triTableBufferResourceId);
+            MarkReleased(ref edgeTableBufferResourceId);
             MarkReleased(ref stateBufferResourceId);
             MarkReleased(ref vertexBufferResourceId);
 
@@ -244,6 +259,8 @@ namespace MarchingCubesPlanet.Lab
         {
             vertexBufferResourceId = RegisterResource(extractor.VertexBuffer);
             stateBufferResourceId = RegisterResource(extractor.StateBuffer);
+            edgeTableBufferResourceId = RegisterResource(extractor.EdgeTableBuffer);
+            triTableBufferResourceId = RegisterResource(extractor.TriTableBuffer);
         }
 
         private int RegisterResource(PlanetGpuBufferHandle handle)

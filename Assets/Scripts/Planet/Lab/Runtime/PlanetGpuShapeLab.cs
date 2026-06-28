@@ -129,6 +129,27 @@ namespace MarchingCubesPlanet.Lab
             CaptureMetrics("Reset Shape Demo Recipe", 0);
         }
 
+        public void SetRecipe(in PlanetRecipe value)
+        {
+            if (!PlanetRecipeValidator.Validate(in value, out string recipeMessage))
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "PlanetRecipe shape values are invalid",
+                    recipeMessage,
+                    "Fix the source PlanetRecipe before uploading shape data.",
+                    BuildRecipeMetrics());
+                lastAction = "Set Shape Recipe failed.";
+                return;
+            }
+
+            ReleaseModule();
+            recipe = value;
+            lastBuildSummary = default;
+            lastDiagnostic = PlanetLabDiagnostic.Ok("Shape recipe assigned", BuildRecipeMetrics());
+            lastAction = "Set Shape Recipe finished.";
+            CaptureMetrics("Set Shape Recipe", 0);
+        }
+
         public void GenerateVoronoiCells()
         {
             stopwatch.Restart();
@@ -188,7 +209,7 @@ namespace MarchingCubesPlanet.Lab
             EnsureSampleArrays();
             FillDebugSamplePositions();
             MarkSampleResourcesIfResizeNeeded(samplePositions.Length);
-            evaluator.EvaluateDebugSamples(samplePositions, sampleResults);
+            evaluator.EvaluateDensitySamples(samplePositions, sampleResults);
             RegisterSampleBuffers();
             ApplySampleSummary();
 

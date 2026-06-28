@@ -200,6 +200,13 @@ namespace MarchingCubesPlanet.Preview
             snapshotComparisonSummary = BuildComparisonSummary(snapshotComparison, ResolveMemoryBudget());
         }
 
+        public void EnsureRenderTargets(out MeshFilter targetMeshFilter, out MeshRenderer targetMeshRenderer)
+        {
+            EnsureRendererComponents();
+            targetMeshFilter = meshFilter;
+            targetMeshRenderer = meshRenderer;
+        }
+
         public void Release()
         {
             CacheRendererComponents();
