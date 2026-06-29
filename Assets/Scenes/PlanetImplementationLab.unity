@@ -544,7 +544,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 893d3261334e4161b1c171dc047b5076, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: MarchingCubesPlanet.Lab::MarchingCubesPlanet.Lab.DebugMinimalLocomotion
   approachSpeed: 900
   interiorSpeed: 30
@@ -6343,7 +6343,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: MarchingCubesPlanet.Preview::MarchingCubesPlanet.Preview.PlanetRecipePayloadPreview
   recipe:
     gridRadius: 130
-    worldScale: 62
+    worldScale: 54
     seed: 15666
     isoLevel: 0
     voronoiDivision: 80
@@ -6620,8 +6620,8 @@ MonoBehaviour:
   derivedTriangleCount: 124820
   derivedVertexCount: 374460
   derivedIndexCount: 374460
-  derivedWorldRadius: 8060
-  derivedSurfaceRadius: 8060
+  derivedWorldRadius: 7020
+  derivedSurfaceRadius: 7020
   hasLiveMesh: 0
   lastDiagnostic: 
 --- !u!1 &2038297193

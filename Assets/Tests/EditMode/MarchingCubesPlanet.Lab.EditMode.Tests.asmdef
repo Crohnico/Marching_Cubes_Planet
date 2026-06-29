@@ -6,7 +6,8 @@
         "MarchingCubesPlanet.Compute",
         "MarchingCubesPlanet.MarchingCubes",
         "MarchingCubesPlanet.Shape",
-        "MarchingCubesPlanet.Lab"
+        "MarchingCubesPlanet.Lab",
+        "MarchingCubesPlanet.TrianglePools"
     ],
     "includePlatforms": [
         "Editor"

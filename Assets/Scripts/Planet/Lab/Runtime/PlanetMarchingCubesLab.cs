@@ -173,7 +173,7 @@ namespace MarchingCubesPlanet.Lab
                 lastDiagnostic = PlanetLabDiagnostic.Warning(
                     "Marching Cubes GPU initialization failed",
                     exception.Message,
-                    "Use a smaller GridRadius for the brute 07 validation or split the extraction into multiple jobs.",
+                    "Read the exception and fix the 07 extraction configuration, compute shader contract, or GPU resource setup.",
                     BuildSettingsMetrics());
                 lastAction = "Init Marching Cubes GPU failed.";
                 CaptureMetrics("Init Marching Cubes GPU Failed", stopwatch.Elapsed.TotalMilliseconds);

@@ -164,11 +164,6 @@ namespace MarchingCubesPlanet.Lab
         public void UsePlanetSurfaceAtlas(int requiredTriangleCapacity)
         {
             settings.colorMode = PlanetMarchingCubesPaintColorMode.PlanetSurfaceAtlas;
-            if (requiredTriangleCapacity > settings.meshTriangleCapacity)
-            {
-                settings.meshTriangleCapacity = requiredTriangleCapacity;
-            }
-
             lastDiagnostic = PlanetLabDiagnostic.Ok("Marching Cubes paint configured for planet surface atlas", settings.ToString());
             lastAction = "Use Planet Surface Atlas finished.";
         }
@@ -240,7 +235,7 @@ namespace MarchingCubesPlanet.Lab
                 lastDiagnostic = PlanetLabDiagnostic.Warning(
                     "Marching Cubes mesh paint blocked",
                     exception.Message,
-                    "Increase meshTriangleCapacity. 08 does not paint partial meshes.",
+                    "Check the 09 Environment painter budget and the source extraction diagnostics.",
                     settings.ToString());
                 lastAction = "Paint Last Extraction blocked.";
                 stopwatch.Stop();

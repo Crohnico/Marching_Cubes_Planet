@@ -1,11 +1,7 @@
 {
-    "name": "MarchingCubesPlanet.Preview",
-    "rootNamespace": "MarchingCubesPlanet.Preview",
-    "references": [
-        "MarchingCubesPlanet.Coordinates",
-        "MarchingCubesPlanet.Lab",
-        "MarchingCubesPlanet.TrianglePools"
-    ],
+    "name": "MarchingCubesPlanet.TrianglePools",
+    "rootNamespace": "MarchingCubesPlanet.TrianglePools",
+    "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

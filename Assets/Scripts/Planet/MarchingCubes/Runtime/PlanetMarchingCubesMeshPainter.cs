@@ -1,6 +1,7 @@
 using System;
 using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.Shape;
+using MarchingCubesPlanet.TrianglePools;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -24,6 +25,8 @@ namespace MarchingCubesPlanet.MarchingCubes
         private Material runtimeWaterMaterial;
         private Texture2D runtimeSurfaceAtlas;
         private GameObject runtimeWaterObject;
+        private readonly PlanetTrianglePoolWriter trianglePoolWriter =
+            new PlanetTrianglePoolWriter(PlanetTrianglePoolRegistry.Environment);
 
         public Mesh RuntimeMesh => runtimeMesh;
         public Mesh RuntimeWaterMesh => runtimeWaterMesh;
@@ -76,21 +79,25 @@ namespace MarchingCubesPlanet.MarchingCubes
 
             int sourceVertexCount = source.VertexCount - source.VertexCount % 3;
             int sourceTriangleCount = sourceVertexCount / 3;
-            if (sourceTriangleCount > settings.meshTriangleCapacity)
-            {
-                throw new InvalidOperationException(
-                    "The full 07 result does not fit in the 08 temporary Mesh capacity. Increase meshTriangleCapacity; 08 does not paint partial meshes.");
-            }
-
-            int expectedWaterTriangleCount = CountWaterTriangles(source.Vertices, sourceVertexCount, recipe.GridRadius);
-            if (expectedWaterTriangleCount > settings.meshTriangleCapacity)
-            {
-                throw new InvalidOperationException(
-                    "The generated water surface does not fit in the 08 temporary Mesh capacity. Increase meshTriangleCapacity; 08 does not paint partial water meshes.");
-            }
-
-            int paintedVertexCount = sourceVertexCount;
-            int paintedTriangleCount = sourceTriangleCount;
+            Vector3 priorityOriginWorld = PlanetTrianglePoolRegistry.PriorityOriginWorld;
+            PlanetRecipe recipeCopy = recipe;
+            PlanetPlacement placementCopy = placement;
+            PlanetMarchingCubesVertex[] sourceVertices = source.Vertices;
+            PlanetTriangleDrawResult drawResult = trianglePoolWriter.Draw(
+                sourceTriangleCount,
+                triangleIndex => EvaluateTriangleScore(
+                    sourceVertices,
+                    triangleIndex,
+                    recipeCopy,
+                    placementCopy,
+                    priorityOriginWorld),
+                triangleIndex => EvaluateOutputTriangleCost(
+                    sourceVertices,
+                    triangleIndex,
+                    recipeCopy.GridRadius),
+                PlanetTriangleOwnerId.PlanetSurfaceValue);
+            int paintedTriangleCount = drawResult.SelectedSourceTriangleCount;
+            int paintedVertexCount = paintedTriangleCount * 3;
             PlanetGpuShapeCell[] cells = new PlanetGpuShapeCell[recipe.VoronoiDivision];
             PlanetGpuShapeCellBuilder.Build(in recipe, cells);
 
@@ -108,6 +115,8 @@ namespace MarchingCubesPlanet.MarchingCubes
                     runtimeMesh,
                     meshFilter.transform,
                     source.Vertices,
+                    sourceVertexCount,
+                    trianglePoolWriter,
                     paintedVertexCount,
                     cells,
                     in recipe,
@@ -122,7 +131,8 @@ namespace MarchingCubesPlanet.MarchingCubes
                 meshFilter,
                 meshRenderer,
                 source.Vertices,
-                paintedVertexCount,
+                sourceVertexCount,
+                trianglePoolWriter,
                 in recipe,
                 in placement,
                 settings,
@@ -210,48 +220,72 @@ namespace MarchingCubesPlanet.MarchingCubes
             Mesh mesh,
             Transform targetTransform,
             PlanetMarchingCubesVertex[] sourceVertices,
-            int vertexCount,
+            int sourceVertexCount,
+            PlanetTrianglePoolWriter poolWriter,
+            int paintedVertexCount,
             PlanetGpuShapeCell[] cells,
             in PlanetRecipe recipe,
             in PlanetPlacement placement,
             PlanetMarchingCubesPaintSettings settings)
         {
-            Vector3[] positions = new Vector3[vertexCount];
-            Vector3[] normals = new Vector3[vertexCount];
-            Vector2[] uvs = new Vector2[vertexCount];
-            Color32[] colors = new Color32[vertexCount];
-            int[] indices = new int[vertexCount];
+            Vector3[] positions = new Vector3[paintedVertexCount];
+            Vector3[] normals = new Vector3[paintedVertexCount];
+            Vector2[] uvs = new Vector2[paintedVertexCount];
+            Color32[] colors = new Color32[paintedVertexCount];
+            int[] indices = new int[paintedVertexCount];
 
             float minRadius = float.MaxValue;
             float maxRadius = float.MinValue;
-            for (int i = 0; i < vertexCount; i++)
+            int sourceTriangleCount = sourceVertexCount / 3;
+            for (int sourceTriangleIndex = 0; sourceTriangleIndex < sourceTriangleCount; sourceTriangleIndex++)
             {
-                Vector4 packedPosition = sourceVertices[i].positionAndCase;
-                Vector3 gridPosition = new Vector3(packedPosition.x, packedPosition.y, packedPosition.z);
-                float radius = gridPosition.magnitude;
-                if (radius < minRadius)
+                if (!poolWriter.IsSourceTriangleSelected(sourceTriangleIndex))
                 {
-                    minRadius = radius;
+                    continue;
                 }
 
-                if (radius > maxRadius)
+                int sourceVertexIndex = sourceTriangleIndex * 3;
+                for (int corner = 0; corner < 3; corner++)
                 {
-                    maxRadius = radius;
+                    Vector4 packedPosition = sourceVertices[sourceVertexIndex + corner].positionAndCase;
+                    Vector3 gridPosition = new Vector3(packedPosition.x, packedPosition.y, packedPosition.z);
+                    float radius = gridPosition.magnitude;
+                    if (radius < minRadius)
+                    {
+                        minRadius = radius;
+                    }
+
+                    if (radius > maxRadius)
+                    {
+                        maxRadius = radius;
+                    }
                 }
             }
 
-            for (int i = 0; i < vertexCount; i += 3)
+            if (minRadius == float.MaxValue)
             {
-                Vector3 a = ReadGridPosition(sourceVertices[i]);
-                Vector3 b = ReadGridPosition(sourceVertices[i + 1]);
-                Vector3 c = ReadGridPosition(sourceVertices[i + 2]);
+                minRadius = 0f;
+                maxRadius = 1f;
+            }
+
+            int writeVertexIndex = 0;
+            for (int sourceTriangleIndex = 0; sourceTriangleIndex < sourceTriangleCount; sourceTriangleIndex++)
+            {
+                if (!poolWriter.IsSourceTriangleSelected(sourceTriangleIndex))
+                {
+                    continue;
+                }
+
+                int sourceVertexIndex = sourceTriangleIndex * 3;
+                Vector3 a = ReadGridPosition(sourceVertices[sourceVertexIndex]);
+                Vector3 b = ReadGridPosition(sourceVertices[sourceVertexIndex + 1]);
+                Vector3 c = ReadGridPosition(sourceVertices[sourceVertexIndex + 2]);
                 Vector3 triangleCenter = (a + b + c) * 0.33333334f;
                 Vector2 triangleUv = EvaluateSurfaceAtlasUv(triangleCenter.magnitude, in recipe);
 
                 for (int corner = 0; corner < 3; corner++)
                 {
-                    int vertexIndex = i + corner;
-                    PlanetMarchingCubesVertex sourceVertex = sourceVertices[vertexIndex];
+                    PlanetMarchingCubesVertex sourceVertex = sourceVertices[sourceVertexIndex + corner];
                     Vector4 packedPosition = sourceVertex.positionAndCase;
                     Vector4 packedNormal = sourceVertex.normalAndDiagnostic;
                     Vector3 gridPosition = new Vector3(packedPosition.x, packedPosition.y, packedPosition.z);
@@ -267,20 +301,21 @@ namespace MarchingCubesPlanet.MarchingCubes
 
                     Vector3 worldPosition = PlanetCoordinateConverter.GridToWorld(gridPosition, in recipe, in placement);
                     Vector3 worldNormal = placement.PlanetRotation * gridNormal;
-                    positions[vertexIndex] = targetTransform != null ? targetTransform.InverseTransformPoint(worldPosition) : worldPosition;
-                    normals[vertexIndex] = targetTransform != null ? targetTransform.InverseTransformDirection(worldNormal).normalized : worldNormal.normalized;
+                    positions[writeVertexIndex] = targetTransform != null ? targetTransform.InverseTransformPoint(worldPosition) : worldPosition;
+                    normals[writeVertexIndex] = targetTransform != null ? targetTransform.InverseTransformDirection(worldNormal).normalized : worldNormal.normalized;
                     float height01 = triangleUv.y;
-                    uvs[vertexIndex] = triangleUv;
-                    colors[vertexIndex] = EvaluateColor(
+                    uvs[writeVertexIndex] = triangleUv;
+                    colors[writeVertexIndex] = EvaluateColor(
                         settings,
                         gridPosition,
                         gridNormal,
                         Mathf.RoundToInt(packedPosition.w),
-                        vertexIndex / 3,
+                        sourceTriangleIndex,
                         minRadius,
                         maxRadius,
                         height01);
-                    indices[vertexIndex] = vertexIndex;
+                    indices[writeVertexIndex] = writeVertexIndex;
+                    writeVertexIndex++;
                 }
             }
 
@@ -298,6 +333,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             MeshRenderer surfaceMeshRenderer,
             PlanetMarchingCubesVertex[] sourceVertices,
             int sourceVertexCount,
+            PlanetTrianglePoolWriter poolWriter,
             in PlanetRecipe recipe,
             in PlanetPlacement placement,
             PlanetMarchingCubesPaintSettings settings,
@@ -305,16 +341,10 @@ namespace MarchingCubesPlanet.MarchingCubes
             out int waterTriangleCount)
         {
             waterVertexCount = 0;
-            waterTriangleCount = CountWaterTriangles(sourceVertices, sourceVertexCount, recipe.GridRadius);
+            waterTriangleCount = CountWaterTriangles(sourceVertices, sourceVertexCount, recipe.GridRadius, poolWriter);
             if (waterTriangleCount <= 0)
             {
                 return;
-            }
-
-            if (waterTriangleCount > settings.meshTriangleCapacity)
-            {
-                throw new InvalidOperationException(
-                    "The generated water surface does not fit in the 08 temporary Mesh capacity. Increase meshTriangleCapacity; 08 does not paint partial water meshes.");
             }
 
             MeshFilter waterMeshFilter = EnsureWaterRenderer(surfaceMeshFilter, surfaceMeshRenderer, out MeshRenderer waterMeshRenderer);
@@ -339,6 +369,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                 sourceVertices,
                 sourceVertexCount,
                 recipe.GridRadius,
+                poolWriter,
                 surfaceMeshFilter.transform,
                 in recipe,
                 in placement);
@@ -355,11 +386,22 @@ namespace MarchingCubesPlanet.MarchingCubes
             waterMeshRenderer.sharedMaterial = ResolveWaterMaterial();
         }
 
-        private static int CountWaterTriangles(PlanetMarchingCubesVertex[] sourceVertices, int sourceVertexCount, float seaRadius)
+        private static int CountWaterTriangles(
+            PlanetMarchingCubesVertex[] sourceVertices,
+            int sourceVertexCount,
+            float seaRadius,
+            PlanetTrianglePoolWriter poolWriter)
         {
             int triangleCount = 0;
-            for (int i = 0; i < sourceVertexCount; i += 3)
+            int sourceTriangleCount = sourceVertexCount / 3;
+            for (int sourceTriangleIndex = 0; sourceTriangleIndex < sourceTriangleCount; sourceTriangleIndex++)
             {
+                if (!poolWriter.IsSourceTriangleSelected(sourceTriangleIndex))
+                {
+                    continue;
+                }
+
+                int i = sourceTriangleIndex * 3;
                 int underwaterCount = 0;
                 if (IsUnderSea(ReadGridPosition(sourceVertices[i]), seaRadius))
                 {
@@ -398,14 +440,22 @@ namespace MarchingCubesPlanet.MarchingCubes
             PlanetMarchingCubesVertex[] sourceVertices,
             int sourceVertexCount,
             float seaRadius,
+            PlanetTrianglePoolWriter poolWriter,
             Transform targetTransform,
             in PlanetRecipe recipe,
             in PlanetPlacement placement)
         {
             Vector3[] clipped = new Vector3[4];
             int vertexCursor = 0;
-            for (int i = 0; i < sourceVertexCount; i += 3)
+            int sourceTriangleCount = sourceVertexCount / 3;
+            for (int sourceTriangleIndex = 0; sourceTriangleIndex < sourceTriangleCount; sourceTriangleIndex++)
             {
+                if (!poolWriter.IsSourceTriangleSelected(sourceTriangleIndex))
+                {
+                    continue;
+                }
+
+                int i = sourceTriangleIndex * 3;
                 Vector3 a = ReadGridPosition(sourceVertices[i]);
                 Vector3 b = ReadGridPosition(sourceVertices[i + 1]);
                 Vector3 c = ReadGridPosition(sourceVertices[i + 2]);
@@ -761,6 +811,65 @@ namespace MarchingCubesPlanet.MarchingCubes
         {
             Vector4 packedPosition = vertex.positionAndCase;
             return new Vector3(packedPosition.x, packedPosition.y, packedPosition.z);
+        }
+
+        private static float EvaluateTriangleScore(
+            PlanetMarchingCubesVertex[] sourceVertices,
+            int sourceTriangleIndex,
+            PlanetRecipe recipe,
+            PlanetPlacement placement,
+            Vector3 priorityOriginWorld)
+        {
+            int vertexIndex = sourceTriangleIndex * 3;
+            Vector3 a = ReadGridPosition(sourceVertices[vertexIndex]);
+            Vector3 b = ReadGridPosition(sourceVertices[vertexIndex + 1]);
+            Vector3 c = ReadGridPosition(sourceVertices[vertexIndex + 2]);
+            Vector3 centerGrid = (a + b + c) * 0.33333334f;
+            Vector3 centerWorld = PlanetCoordinateConverter.GridToWorld(centerGrid, in recipe, in placement);
+            return (centerWorld - priorityOriginWorld).sqrMagnitude;
+        }
+
+        private static int EvaluateOutputTriangleCost(
+            PlanetMarchingCubesVertex[] sourceVertices,
+            int sourceTriangleIndex,
+            float seaRadius)
+        {
+            int vertexIndex = sourceTriangleIndex * 3;
+            Vector3 a = ReadGridPosition(sourceVertices[vertexIndex]);
+            Vector3 b = ReadGridPosition(sourceVertices[vertexIndex + 1]);
+            Vector3 c = ReadGridPosition(sourceVertices[vertexIndex + 2]);
+            return 1 + CountWaterTrianglesForSourceTriangle(a, b, c, seaRadius);
+        }
+
+        private static int CountWaterTrianglesForSourceTriangle(Vector3 a, Vector3 b, Vector3 c, float seaRadius)
+        {
+            int underwaterCount = 0;
+            if (a.magnitude < seaRadius)
+            {
+                underwaterCount++;
+            }
+
+            if (b.magnitude < seaRadius)
+            {
+                underwaterCount++;
+            }
+
+            if (c.magnitude < seaRadius)
+            {
+                underwaterCount++;
+            }
+
+            if (underwaterCount == 3 || underwaterCount == 1)
+            {
+                return 1;
+            }
+
+            if (underwaterCount == 2)
+            {
+                return 2;
+            }
+
+            return 0;
         }
 
         private static int FindNearestCellIndex(Vector3 gridPosition, PlanetGpuShapeCell[] cells)

@@ -2,6 +2,7 @@ using System;
 using System.Text;
 using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.Lab;
+using MarchingCubesPlanet.TrianglePools;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -100,6 +101,7 @@ namespace MarchingCubesPlanet.Preview
 
             builder.Clear();
             AppendLine("Requested triangles", preview.RequestedTrianglePayload.ToString());
+            AppendLine("09 Environment budget", PlanetTrianglePoolRegistry.Environment.TotalTriangleBudget.ToString());
             AppendLine("Color mode", preview.ColorMode.ToString());
             AppendLine("Triangles", preview.DerivedTriangleCount.ToString());
             AppendLine("Vertices", preview.DerivedVertexCount.ToString());
@@ -146,6 +148,7 @@ namespace MarchingCubesPlanet.Preview
             }
 
             preview.ApplyPayload126k();
+            ApplyEnvironmentTriangleBudget(126000);
             Refresh();
         }
 
@@ -157,6 +160,7 @@ namespace MarchingCubesPlanet.Preview
             }
 
             preview.ApplyPayload250k();
+            ApplyEnvironmentTriangleBudget(250000);
             Refresh();
         }
 
@@ -168,6 +172,7 @@ namespace MarchingCubesPlanet.Preview
             }
 
             preview.ApplyPayload500k();
+            ApplyEnvironmentTriangleBudget(500000);
             Refresh();
         }
 
@@ -179,6 +184,7 @@ namespace MarchingCubesPlanet.Preview
             }
 
             preview.ApplyPayload1M();
+            ApplyEnvironmentTriangleBudget(1000000);
             Refresh();
         }
 
@@ -190,6 +196,7 @@ namespace MarchingCubesPlanet.Preview
             }
 
             preview.ApplyPayload2M();
+            ApplyEnvironmentTriangleBudget(2000000);
             Refresh();
         }
 
@@ -201,6 +208,7 @@ namespace MarchingCubesPlanet.Preview
             }
 
             preview.ApplyPayload5M();
+            ApplyEnvironmentTriangleBudget(5000000);
             Refresh();
         }
 
@@ -237,8 +245,7 @@ namespace MarchingCubesPlanet.Preview
             {
                 if (!TryGenerateMarchingCubesPlanet())
                 {
-                    preview.Generate();
-                    lastPanelDiagnostic = "Fallback: generated legacy payload preview.";
+                    lastPanelDiagnostic = "Generate blocked: 09 requires the 06-07-08 lab path. Legacy payload preview fallback is disabled.";
                 }
             }
             catch (Exception exception)
@@ -270,8 +277,8 @@ namespace MarchingCubesPlanet.Preview
 
             if (shapeLab == null || marchingCubesLab == null || paintLab == null)
             {
-                lastPanelDiagnostic = "Marching Cubes labs not found. Generate will use the legacy payload preview.";
-                return false;
+                lastPanelDiagnostic = "Generate blocked: Marching Cubes labs not found. Generate must use 06 -> 07 -> 08 -> 09.";
+                return true;
             }
 
             ReleaseMarchingCubesPlanet();
@@ -284,6 +291,8 @@ namespace MarchingCubesPlanet.Preview
             }
 
             int temporaryTriangleCapacity = Mathf.Max(preview.RequestedTrianglePayload, DefaultTemporaryTriangleCapacity);
+            ApplyEnvironmentTriangleBudget(preview.RequestedTrianglePayload);
+            PlanetTrianglePoolRegistry.SetFallbackPriorityOriginWorld(ResolvePriorityOriginWorld());
             shapeLab.SetRecipe(in sourceRecipe);
             shapeLab.InitShapeGpu();
             if (!shapeLab.IsShapeGpuInitialized)
@@ -294,13 +303,27 @@ namespace MarchingCubesPlanet.Preview
 
             marchingCubesLab.EnsureTemporaryOutputTriangleCapacity(temporaryTriangleCapacity);
             marchingCubesLab.InitMarchingCubesGpu();
+            if (!marchingCubesLab.HasLiveResources)
+            {
+                lastPanelDiagnostic = "Generate blocked: 07 did not initialize. " +
+                                      FormatLabDiagnostic(marchingCubesLab.LastDiagnostic);
+                return true;
+            }
+
             marchingCubesLab.ExtractPlanetSurface();
+
+            if (marchingCubesLab.LastOverflow)
+            {
+                lastPanelDiagnostic = "Generate blocked: Te has pasado del buffer temporal de 07 (" +
+                                      FormatBytes(CalculateMarchingCubesTemporaryBufferBytes(temporaryTriangleCapacity)) +
+                                      "). Attempted tris=" + marchingCubesLab.LastTriangleCountAttempted +
+                                      ", capacity tris=" + temporaryTriangleCapacity + ".";
+                return true;
+            }
 
             if (marchingCubesLab.LastTriangleCountWritten == 0u)
             {
-                lastPanelDiagnostic = marchingCubesLab.LastOverflow
-                    ? "Generate blocked: 07 needs more temporary output capacity for the full brute planet surface. No partial mesh was painted."
-                    : "Generate finished without visible planet surface triangles. Check 07 chunk/shape diagnostics.";
+                lastPanelDiagnostic = "Generate finished without visible planet surface triangles. Check 07 chunk/shape diagnostics.";
                 return true;
             }
 
@@ -310,9 +333,14 @@ namespace MarchingCubesPlanet.Preview
             paintLab.PaintLastExtraction(targetMeshFilter, targetMeshRenderer, BuildPreviewPlacement());
             preview.Release();
 
-            lastPanelDiagnostic = marchingCubesLab.LastOverflow
-                ? "Generate blocked: 07 hit the temporary output capacity. No partial planet mesh was painted."
-                : "Generated via 06 -> 07 -> 08 using PlanetRecipePayloadPreview recipe, transform and temporary output capacity.";
+            if (!paintLab.HasLiveMesh)
+            {
+                lastPanelDiagnostic = "Generate finished without visible 09 Environment triangles. " +
+                                      FormatLabDiagnostic(paintLab.LastDiagnostic);
+                return true;
+            }
+
+            lastPanelDiagnostic = "Generated via 06 -> 07 -> 08 -> 09 using PlanetRecipePayloadPreview recipe, transform and active Environment budget.";
             return true;
         }
 
@@ -332,6 +360,29 @@ namespace MarchingCubesPlanet.Preview
             return placement;
         }
 
+        private Vector3 ResolvePriorityOriginWorld()
+        {
+            PlanetTriangleDistanceReference distanceReference = FindFirstObjectByType<PlanetTriangleDistanceReference>();
+            if (distanceReference != null)
+            {
+                return distanceReference.Position;
+            }
+
+            PlanetMinimalXrRig rig = FindFirstObjectByType<PlanetMinimalXrRig>();
+            if (rig != null && rig.Head != null)
+            {
+                return rig.Head.position;
+            }
+
+            Camera mainCamera = Camera.main;
+            if (mainCamera != null)
+            {
+                return mainCamera.transform.position;
+            }
+
+            return preview != null ? preview.transform.position : Vector3.zero;
+        }
+
         private void ReleaseMarchingCubesPlanet()
         {
             PlanetMarchingCubesPaintLab paintLab = FindFirstObjectByType<PlanetMarchingCubesPaintLab>();
@@ -339,6 +390,8 @@ namespace MarchingCubesPlanet.Preview
             {
                 paintLab.ReleaseModule();
             }
+
+            PlanetTrianglePoolRegistry.ReleaseAllSlots();
 
             PlanetMarchingCubesLab marchingCubesLab = FindFirstObjectByType<PlanetMarchingCubesLab>();
             if (marchingCubesLab != null)
@@ -613,8 +666,52 @@ namespace MarchingCubesPlanet.Preview
             {
                 AppendLine("Painted tris", paintLab.LastPaintedTriangleCount.ToString());
                 AppendLine("Painted vertices", paintLab.LastPaintedVertexCount.ToString());
+                AppendLine("Painted water tris", paintLab.LastWaterTriangleCount.ToString());
+                AppendLine("Painted water vertices", paintLab.LastWaterVertexCount.ToString());
                 AppendLine("Paint mesh live", paintLab.HasLiveMesh ? "yes" : "no");
             }
+
+            PlanetTrianglePoolMetrics environmentMetrics = PlanetTrianglePoolRegistry.Environment.Metrics;
+            builder.AppendLine();
+            builder.AppendLine("Triangle Pool 09 Environment");
+            AppendLine("09 budget", environmentMetrics.totalTriangleBudget.ToString());
+            AppendLine("09 used", environmentMetrics.usedTriangleSlots.ToString());
+            AppendLine("09 free", environmentMetrics.freeTriangleSlots.ToString());
+            AppendLine("09 requested", environmentMetrics.requestedTriangleCount.ToString());
+            AppendLine("09 granted", environmentMetrics.grantedTriangleCount.ToString());
+            AppendLine("09 denied", environmentMetrics.deniedTriangleCount.ToString());
+            AppendLine("09 reclaimed", environmentMetrics.reclaimedTriangleCount.ToString());
+            AppendLine("09 worst bucket", environmentMetrics.worstResidentBucket.ToString());
+            AppendLine("09 distance reference", PlanetTrianglePoolRegistry.HasDistanceReference ? "Player component" : "fallback world position");
+            AppendLine("09 diagnostic", string.IsNullOrWhiteSpace(environmentMetrics.lastDiagnostic) ? "-" : environmentMetrics.lastDiagnostic);
+        }
+
+        private static void ApplyEnvironmentTriangleBudget(int triangleBudget)
+        {
+            PlanetTrianglePoolRegistry.SetEnvironmentTriangleBudget(Mathf.Max(1, triangleBudget));
+        }
+
+        private static long CalculateMarchingCubesTemporaryBufferBytes(int temporaryTriangleCapacity)
+        {
+            return (long)Mathf.Max(0, temporaryTriangleCapacity) * 3L * 32L;
+        }
+
+        private static string FormatBytes(long bytes)
+        {
+            double mib = bytes / (1024.0 * 1024.0);
+            return bytes + " bytes / " + mib.ToString("0.00") + " MiB";
+        }
+
+        private static string FormatLabDiagnostic(PlanetLabDiagnostic diagnostic)
+        {
+            if (string.IsNullOrWhiteSpace(diagnostic.title))
+            {
+                return "No lab diagnostic was reported.";
+            }
+
+            return diagnostic.title +
+                   " Cause: " + diagnostic.probableCause +
+                   " Action: " + diagnostic.recommendedAction;
         }
 
         private static void AddListener(Button button, UnityEngine.Events.UnityAction action)
