@@ -42,7 +42,7 @@ Usarlo desde los painters indicando ese artistId.
 Contrato funcional:
 
 ```text
-sistema quiere pintar tris -> wrapper 09 pide slots -> pool concede slots libres o reclama slots peores -> sistema escribe/pinta en esos slots
+sistema quiere pintar tris -> llama a Draw(datos[]) del artista -> 09 decide que entra en su presupuesto -> 09 pinta/actualiza su salida visible
 ```
 
 Regla central:
@@ -53,6 +53,10 @@ Regla central:
 09 no decide donde una geometria debe tener mas o menos detalle.
 09 define artistas/pools que poseen y reparten slots dentro de su presupuesto fijo.
 Dentros de un artista, los triangulos gestionados solo se publican a traves de ese artista.
+Un artista/painter tiene un presupuesto.
+Todo lo que use ese artista compite por el mismo presupuesto.
+El ownerId no da prioridad ni reserva capacidad.
+El materialId/renderBatch no da prioridad ni reserva capacidad.
 ```
 
 ## Modelo mental
@@ -82,9 +86,21 @@ Oye, artista Environment, necesito publicar X tris en esta zona.
 09 responde:
 
 ```text
-toma X slots.
-no hay hueco, pero he reclamado slots mas lejanos.
-no hay hueco ni candidatos peores, queda pendiente/denegado con diagnostico.
+internamente pinta X slots.
+internamente reclama slots mas lejanos si necesita sitio.
+internamente deniega o deja sin pintar lo que no mejora el estado actual.
+```
+
+El sistema que llama no usa esa respuesta para decidir gameplay ni para corregir su geometria.
+
+Contrato mental:
+
+```text
+El caller dice: toma, pintame esta mesh/lote.
+El artista recibe la peticion.
+El artista procesa presupuesto, distancia y reclamacion.
+El artista pinta todos, algunos o ninguno.
+El caller principal no necesita saber si quedo visible.
 ```
 
 La idea practica:
@@ -96,6 +112,9 @@ Cada slot tiene una posicion representativa o distancia al player.
 Cuando el pool se llena, los slots mas lejanos son los primeros candidatos a ser reutilizados.
 El pool conoce que slots estan pintados y que recursos visuales propios ocupan.
 El pool puede liberar, invalidar o sobrescribir los slots que posee.
+Si dios esta mas cerca y una mariposa esta mas lejos, el artista puede quitar slots a la mariposa para darselos a dios.
+Si el agua esta mas cerca que tierra ya pintada, el artista puede reclamar tierra para pintar agua.
+El tipo de cosa que pide no importa; solo importa que compite dentro del mismo artista y con la misma politica.
 ```
 
 ## Alcance de esta fase
@@ -176,7 +195,8 @@ Si una decision trata de cuando volver a pedir presupuesto por distancia/visibil
 08 no escribe directo a una Mesh ilimitada.
 08 llama al wrapper del artista Environment de 09.
 09 decide que slots de Environment puede usar.
-08 actualiza la representacion visible con los slots concedidos.
+09 actualiza la representacion visible propia del artista con lo que decida pintar.
+08 no inspecciona que parte quedo visible como contrato de funcionamiento.
 ```
 
 Cambio importante al entrar 09:
@@ -185,7 +205,7 @@ Cambio importante al entrar 09:
 El cortafuegos local que antes limitaba el pintado/generacion deja de ser la autoridad.
 El generador/painter puede pedir publicar todos los triangulos que haya producido.
 El wrapper del artista decide cuantos entran realmente en su presupuesto.
-Si no hay hueco y la nueva peticion no mejora lo que ya existe, 09 responde no sin obligar al generador a cambiar su poligonaje.
+Si no hay hueco y la nueva peticion no mejora lo que ya existe, 09 deja esa parte sin pintar y lo registra como diagnostico interno.
 ```
 
 Propiedad de lo visible:
@@ -202,7 +222,8 @@ Regla:
 ```text
 El generador genera.
 El painter pide publicar.
-El artista de 09 concede, reclama o deniega.
+El artista de 09 concede, reclama, deniega y pinta su salida visible.
+El caller principal no cambia su flujo segun el resultado.
 ```
 
 ## Limite funcional de 09
@@ -214,6 +235,7 @@ Te paso datos de triangulos para este artista y esta zona.
 El artista intenta pintarlos dentro de su presupuesto.
 Si caben, los pinta.
 Si no caben, pinta lo que pueda/reclama lo que toque/deniega segun politica.
+La decision queda dentro del artista.
 ```
 
 09 no decide cuando se debe volver a pedir.
@@ -231,6 +253,7 @@ Regla:
 El caller principal no necesita saber si finalmente se pinto todo.
 El planeta pide pintar y continua.
 El artista mantiene internamente que slots quedaron vivos, reclamados o denegados.
+El planeta, agua, roca, prop o particula no poseen la verdad de visibilidad.
 ```
 
 Ejemplos:
@@ -400,6 +423,54 @@ Debris_29k.
 TemporaryDebug_5k.
 ```
 
+## Referencia de distancia
+
+09 necesita una posicion de referencia para decidir cercania.
+
+Decision inicial:
+
+```text
+La referencia vive en el Player de la escena.
+El componente se llama PlanetTriangleDistanceReference.
+El componente expone una posicion world plana.
+09 no conoce el XR Rig.
+09 no conoce el Player como clase de gameplay.
+09 no recibe Transform, GameObject ni referencias complejas en GPU.
+```
+
+Contrato:
+
+```text
+PlanetTriangleDistanceReference -> Vector3 Position.
+PlanetTrianglePoolRegistry o PlanetTrianglePoolBootstrap registra esa referencia.
+Cada artista lee la ultima posicion world disponible antes de procesar requests/buckets.
+La GPU recibe solo float3/float4 priorityOriginWorld.
+```
+
+Formato GPU:
+
+```text
+priorityOriginWorld = float4(playerPosition.xyz, 1)
+```
+
+Uso:
+
+```text
+requestScore = squaredDistance(priorityOriginWorld.xyz, representativeWorldPosition)
+menor score = mas cerca
+mayor score = mas lejos
+```
+
+Reglas:
+
+```text
+La referencia de distancia es un dato plano.
+No hay dependencia directa entre 09 y locomocion.
+No hay dependencia directa entre 09 y XR.
+Si no existe referencia valida, 09 debe fallar con diagnostico claro o usar una referencia explicita de fallback configurada en lab.
+Actualizar esta posicion no crea GC.
+```
+
 ## Unidad de asignacion
 
 La unidad conceptual es un slot de triangulo.
@@ -434,7 +505,8 @@ Regla:
 ```text
 La posicion representativa se usa para prioridad/reclamacion.
 No es una fuente de verdad geometrica.
-La geometria real vive en el sistema que escribe/pinta en los slots concedidos.
+La geometria de entrada viene del sistema que pide pintar.
+La geometria visible gestionada vive en la salida del artista.
 ```
 
 Aunque el slot sea un triangulo, las peticiones normales deben agruparse en lotes:
@@ -465,6 +537,7 @@ Pedir slots al PlanetTrianglePoolController de forma interna.
 Escribir o actualizar la representacion visible solo en slots concedidos.
 Guardar diagnostico si no caben.
 Invalidar triangulos cuyo slot fue reclamado.
+Ocultar al caller principal si se pinto todo, parte o nada.
 ```
 
 Uso desde 08:
@@ -475,7 +548,9 @@ Uso desde 08:
 08 llama a PlanetTrianglePoolWriter.
 PlanetTrianglePoolWriter llama a Draw(datos[]) del artista Environment.
 El artista decide internamente que slots concede/reclama/deniega.
-08 no necesita gestionar el resultado como owner de una asignacion.
+El artista actualiza su salida visible.
+08 no gestiona el resultado como owner de una asignacion.
+08 no decide que hacer si solo entro una parte.
 ```
 
 Regla:
@@ -483,7 +558,8 @@ Regla:
 ```text
 08 deja de ser el dueño ilimitado de todos los triangulos visibles.
 09 pasa a ser el dueño del presupuesto de slots.
-08 sigue siendo responsable de convertir el dato de triangulo a representacion visual.
+08 sigue siendo responsable de preparar el dato publicable.
+09 es responsable de convertir lo aceptado por el presupuesto en representacion visible.
 09 sigue siendo responsable de saber que quedo realmente pintado.
 ```
 
@@ -864,6 +940,7 @@ PlanetTrianglePoolRegistry
 PlanetTriangleBudget
 PlanetTrianglePoolController
 PlanetTrianglePoolWriter
+PlanetTriangleDistanceReference
 PlanetTriangleOwnerId
 PlanetTriangleArtistId
 PlanetTriangleAllocationHandle
@@ -954,9 +1031,33 @@ Responsabilidad:
 ```text
 Traducir "quiero pintar estos tris" a requests de slots.
 Seleccionar el artista correcto o estar ligado a uno.
-Recibir slots concedidos.
-Actualizar la representacion visible.
-Propagar diagnosticos.
+Pedir slots internamente.
+Actualizar la representacion visible del artista.
+Guardar diagnosticos internos.
+No obligar al caller principal a reaccionar al resultado.
+```
+
+### PlanetTriangleDistanceReference
+
+Componente minimo que vive en el Player de la escena.
+
+Responsabilidad:
+
+```text
+Exponer la posicion world usada por 09 para calcular cercania.
+No contener logica de locomocion.
+No contener logica XR.
+No conocer artistas ni presupuestos.
+No crear GC al consultar la posicion.
+```
+
+Contrato:
+
+```text
+Position -> Vector3 world.
+El bootstrap/registry de 09 puede registrarlo como referencia activa.
+Los artistas leen esa posicion como dato plano.
+La GPU recibe priorityOriginWorld, no el componente.
 ```
 
 ### PlanetTriangleOwnerId
@@ -1241,92 +1342,78 @@ Regla:
 La primera implementacion debe priorizar coste predecible y cero GC en requests repetidas.
 ```
 
-## Gestion de VRAM
+## Gestion de GPU, CPU y salida visible
 
 09 puede mantener estado CPU ligero para ownership, metricas y diagnostico.
 
-La ruta pesada de vertices/indices/triangulos vive desde 09 en `GraphicsBuffer` por artista.
+La decision actual de backend visible es:
 
-Este sistema forma parte del camino GPU/compute del proyecto.
+```text
+09 arbitra el presupuesto.
+09 puede apoyarse en GPU/compute para procesar buckets, reclamacion y datos pesados cuando toque.
+La geometria puede venir de un pipeline GPU/compute anterior.
+La salida visible de esta fase es Mesh runtime CPU gestionada por el artista.
+El output final que consume Unity para render/colision/debug es CPU Mesh.
+El caller no escribe esa Mesh directamente.
+```
 
 Separacion esperada:
 
 ```text
-C# orquesta profiles, artistas, owners, requests, metricas y dispatches.
-GPU/compute mantiene o actualiza los datos pesados.
-CPU no debe copiar, ordenar ni reconstruir millones de triangulos como camino normal.
+C# orquesta profiles, artistas, owners, requests y metricas.
+GPU/compute puede producir o transformar datos pesados.
+El artista decide que triangulos pasan a su Mesh visible.
+CPU no debe ordenar ni decidir prioridad recorriendo millones de triangulos por request.
 ```
 
 Decision inicial:
 
 ```text
 09 define presupuesto, ownership y estado de slots por artista.
-CPU envia requests compactas y metadata.
-Cada artista posee GraphicsBuffers propios para lo que pinta.
-Mesh runtime no es backend de 09.
+Cada artista posee su salida visible Mesh runtime.
+EnvironmentArtist -> Mesh runtime propia de Environment.
+ParticlesArtist -> Mesh runtime propia de Particles si este artista necesita salida mesh.
+GraphicsBuffer no es el backend visual obligatorio de 09 en esta fase.
 ```
 
 Regla:
 
 ```text
-Los buffers GPU de 09 se registran con owner del artista correspondiente.
 Los recursos visuales de Environment no se mezclan con los de Particles salvo decision futura documentada.
-Un artista puede liberar, invalidar o sobrescribir la VRAM que pertenece a sus slots.
+Un artista puede liberar, invalidar o sobrescribir la Mesh/recursos que pertenecen a sus slots.
 Un artista no libera recursos de otro artista.
-```
-
-Formato exacto:
-
-```text
-Backend de 09: GraphicsBuffer por artista.
-EnvironmentArtist -> GraphicsBuffers propios de Environment.
-ParticlesArtist -> GraphicsBuffers propios de Particles.
-Mesh runtime queda como implementacion previa de 08, no como backend nuevo de 09.
+El planeta, agua, rocas o props no escriben directamente en la Mesh gestionada.
 ```
 
 Implicacion para 08:
 
 ```text
-08 actual pinta Mesh runtime.
-Al entrar 09, 08 no se adapta manteniendo Mesh como destino final.
-08 pasa a emitir datos hacia Draw(datos[]) del artista Environment.
-El artista Environment escribe/publica en GraphicsBuffers propios.
+08 actual preparaba una Mesh visible de validacion.
+Al entrar 09, 08 pasa a emitir datos hacia Draw(datos[]) del artista Environment.
+El artista Environment decide que triangulos pinta dentro de su presupuesto.
+El artista Environment actualiza su Mesh runtime CPU.
+```
+
+Ruta futura posible:
+
+```text
+Mover el backend visible de un artista a GraphicsBuffer sigue siendo posible.
+No entra como requisito de esta version.
+Si se hace, debe mantener el mismo contrato Draw(datos[]) y el mismo control de presupuesto.
+No puede obligar al caller a saber si sus tris quedaron visibles.
 ```
 
 ## Materiales y shader de artista
 
-09 usa `GraphicsBuffer`, asi que el material visual debe tener un shader compatible con buffers.
+Como la salida visible de esta fase es Mesh runtime CPU, el artista puede usar materiales normales de Unity sobre Mesh.
 
 Regla:
 
 ```text
-Se puede usar un Material normal de Unity como asset.
-No se puede usar sin cambios un shader que espera vertices de Mesh.
-El shader del artista lee posiciones/normales/uvs/atributos desde GraphicsBuffer.
-```
-
-Implicacion para el planeta:
-
-```text
-Crear variante buffer-aware del material/shader actual del planeta.
-Mantener el look del PlanetSurface actual.
-Leer datos con SV_VertexID o mecanismo equivalente.
-Pasar buffers al Material con SetBuffer.
-```
-
-Concepto HLSL:
-
-```hlsl
-StructuredBuffer<float3> _PlanetPositions;
-StructuredBuffer<float3> _PlanetNormals;
-StructuredBuffer<float2> _PlanetUvs;
-
-Varyings vert(uint vertexId : SV_VertexID)
-{
-    float3 position = _PlanetPositions[vertexId];
-    float3 normal = _PlanetNormals[vertexId];
-    float2 uv = _PlanetUvs[vertexId];
-}
+Se puede reutilizar el material/look actual del planeta si espera vertices de Mesh.
+No se crea una variante buffer-aware obligatoria en 09.
+El material no decide presupuesto.
+El material no decide prioridad.
 ```
 
 Material no es owner:
@@ -1337,14 +1424,13 @@ materialId/renderBatch responde a con que material se dibuja.
 Un arbol, una roca o la luna pueden escribir en el mismo artista si consumen el mismo presupuesto.
 Si necesitan materiales distintos, el artista los agrupa por materialId/render batch.
 No se crea un owner distinto solo por cambiar de material.
-No se vuelve a Mesh runtime solo porque haya varios materiales.
 ```
 
 Regla:
 
 ```text
-Un artista puede tener varios batches de render sobre sus GraphicsBuffers.
-Cada batch usa su Material buffer-aware.
+Un artista puede tener varios batches de render sobre su salida visible.
+Cada batch puede usar su Material normal de Unity.
 El presupuesto de tris sigue siendo comun al artista.
 ```
 
@@ -1415,9 +1501,24 @@ Pruebas de integracion con 08:
 
 ```text
 08 no pinta directo saltandose el wrapper.
-08 recibe diagnostico si 09 no concede todo.
+El panel/lab muestra diagnostico si 09 no pinta todo.
 Al saturar el pool, un lote cercano reemplaza slots mas lejanos.
 Los triangulos reclamados desaparecen o quedan invalidos visualmente.
+```
+
+Pruebas de integracion con el canvas actual de la escena:
+
+```text
+Los botones Apply Payload actuales aplican el presupuesto del artista Environment de 09.
+Apply Payload 126k deja Environment con 126k tris maximos vivos.
+Apply Payload 250k deja Environment con 250k tris maximos vivos.
+Apply Payload 500k deja Environment con 500k tris maximos vivos.
+Apply Payload 1M deja Environment con 1M tris maximos vivos.
+Apply Payload 2M deja Environment con 2M tris maximos vivos si la plataforma/memoria lo permite.
+El boton Generate genera el planeta usando 09 como unica via de pintado gestionado.
+Generate se ciñe al presupuesto activo del artista Environment.
+Si 07/08 producen mas triangulos que el presupuesto activo, 09 pinta como maximo el presupuesto y reclama/deniega segun distancia.
+El planeta/generador no cambia su geometria ni sabe cuantos triangulos acabaron visibles.
 ```
 
 ## Tests automatizados
@@ -1526,7 +1627,7 @@ artistId explicito en profile/request/writer.
 Perfiles clonables en Resources/TrianglePools.
 Tests de pool lleno.
 Separar 09 de 10/11.
-Contrato request/grant cerrado: X solicitados, Y concedidos.
+Diagnostico interno cerrado: X solicitados, Y pintados, Y denegados/reclamados.
 CPU solo como espejo ligero de control.
 ```
 
@@ -1545,6 +1646,9 @@ El namespace inicial es MarchingCubesPlanet.TrianglePools.
 El profile se llama PlanetTriangleBudgetProfile.
 El bootstrap se llama PlanetTrianglePoolBootstrap.
 El registry se llama PlanetTrianglePoolRegistry.
+La referencia de distancia se llama PlanetTriangleDistanceReference.
+PlanetTriangleDistanceReference vive en el Player de la escena.
+09 recibe la posicion de referencia como dato plano, no como XR Rig/Transform/GameObject en GPU.
 artistId es uint escrito a mano en el SO; 0 = Environment, 1 = Particles, 2 queda para el siguiente artista.
 ownerId es uint opcional para release/diagnostico; 0 = Anonymous/Untracked.
 Nadie necesita ownerId registrado para llamar a Draw.
@@ -1555,7 +1659,9 @@ worstResidentScore es aproximado por bucket en 09.
 La unica prioridad de 09 es cercania/distancia.
 Refresh Distance Buckets reconstruye buckets en GPU cuando player/camara se mueve mas de media anchura de bucket o antes de reclaim si estan stale.
 La invalidacion usa versionado interno y cola compacta de eventos; no callbacks por triangulo ni polling CPU masivo.
-El material del artista usa shader compatible con GraphicsBuffer; el shader de Mesh actual no se usa tal cual.
+La salida visible inicial de 09 es Mesh runtime CPU gestionada por el artista.
+El material del artista puede usar el shader/material actual de Mesh.
+GraphicsBuffer queda como backend visual futuro opcional, no como requisito de esta fase.
 09 no cambia el poligonaje de ninguna geometria.
 09 solo reparte slots dentro de cada artista.
 09 no decide cuando una geometria debe volver a pedir presupuesto.
@@ -1589,7 +1695,12 @@ Existen presupuestos fijos configurables por artista.
 Environment y Particles pueden arrancar como pools separados.
 Crear un artista pequeno adicional no requiere cambiar el core.
 Cada controlador reserva/prepara su pool al arrancar.
+Existe PlanetTriangleDistanceReference en el Player o una referencia explicita equivalente para labs.
+Los artistas pueden obtener priorityOriginWorld como dato plano para calcular distancias.
 08 publica triangulos llamando a Draw(datos[]) del artista Environment.
+Los botones Apply Payload del canvas actual aplican el presupuesto real de 09.
+El boton Generate del canvas actual genera el planeta usando 09.
+Generate no puede pintar mas triangulos que el presupuesto activo del artista Environment.
 Un painter de particulas publica triangulos llamando a Draw(datos[]) del artista Particles.
 El pool concede slots libres.
 Cuando esta lleno, puede reclamar slots mas lejanos.
