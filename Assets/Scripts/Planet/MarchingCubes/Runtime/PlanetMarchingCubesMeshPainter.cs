@@ -10,9 +10,11 @@ namespace MarchingCubesPlanet.MarchingCubes
     {
         private const string SurfaceShaderName = "MarchingCubesPlanet/Planet/Surface";
         private const string UrpUnlitShaderName = "Universal Render Pipeline/Unlit";
+        private const string DefaultSurfaceMaterialResourceName = "PlanetWorld_Surface";
         private const string SurfaceAtlasTexturePropertyName = "_PlanetSurfaceAtlas";
         private const string UseSurfaceAtlasPropertyName = "_UsePlanetSurfaceAtlas";
         private const int SurfaceAtlasResolution = 256;
+        private const float LegacySeaLevelAtlasV = 0.337f;
 
         private Mesh runtimeMesh;
         private Material runtimeMaterial;
@@ -65,10 +67,15 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
 
             int sourceVertexCount = source.VertexCount - source.VertexCount % 3;
-            int paintedVertexCount = Mathf.Min(sourceVertexCount, settings.MaxPaintedVertices);
-            paintedVertexCount -= paintedVertexCount % 3;
             int sourceTriangleCount = sourceVertexCount / 3;
-            int paintedTriangleCount = paintedVertexCount / 3;
+            if (sourceTriangleCount > settings.meshTriangleCapacity)
+            {
+                throw new InvalidOperationException(
+                    "The full 07 result does not fit in the 08 temporary Mesh capacity. Increase meshTriangleCapacity; 08 does not paint partial meshes.");
+            }
+
+            int paintedVertexCount = sourceVertexCount;
+            int paintedTriangleCount = sourceTriangleCount;
             PlanetGpuShapeCell[] cells = new PlanetGpuShapeCell[recipe.VoronoiDivision];
             PlanetGpuShapeCellBuilder.Build(in recipe, cells);
 
@@ -103,7 +110,6 @@ namespace MarchingCubesPlanet.MarchingCubes
                 sourceTriangleCount,
                 paintedTriangleCount,
                 paintedVertexCount,
-                paintedTriangleCount < sourceTriangleCount,
                 estimatedBytes,
                 settings.colorMode);
         }
@@ -185,8 +191,8 @@ namespace MarchingCubesPlanet.MarchingCubes
                 Vector3 a = ReadGridPosition(sourceVertices[i]);
                 Vector3 b = ReadGridPosition(sourceVertices[i + 1]);
                 Vector3 c = ReadGridPosition(sourceVertices[i + 2]);
-                int cellIndex = FindNearestCellIndex((a + b + c) * 0.33333334f, cells);
-                float cellU = ((float)cellIndex + 0.5f) / cells.Length;
+                Vector3 triangleCenter = (a + b + c) * 0.33333334f;
+                Vector2 triangleUv = EvaluateSurfaceAtlasUv(triangleCenter.magnitude, in recipe);
 
                 for (int corner = 0; corner < 3; corner++)
                 {
@@ -209,8 +215,8 @@ namespace MarchingCubesPlanet.MarchingCubes
                     Vector3 worldNormal = placement.PlanetRotation * gridNormal;
                     positions[vertexIndex] = targetTransform != null ? targetTransform.InverseTransformPoint(worldPosition) : worldPosition;
                     normals[vertexIndex] = targetTransform != null ? targetTransform.InverseTransformDirection(worldNormal).normalized : worldNormal.normalized;
-                    float height01 = EvaluateSurfaceAtlasCoordinate(gridPosition.magnitude, in recipe);
-                    uvs[vertexIndex] = new Vector2(cellU, height01);
+                    float height01 = triangleUv.y;
+                    uvs[vertexIndex] = triangleUv;
                     colors[vertexIndex] = EvaluateColor(
                         settings,
                         gridPosition,
@@ -239,6 +245,17 @@ namespace MarchingCubesPlanet.MarchingCubes
             {
                 ApplyMaterialProperties(materialOverride, colorMode, cells);
                 return materialOverride;
+            }
+
+            Material defaultSurfaceMaterial = Resources.Load<Material>(DefaultSurfaceMaterialResourceName);
+            if (defaultSurfaceMaterial != null)
+            {
+                runtimeMaterial = new Material(defaultSurfaceMaterial)
+                {
+                    name = "PlanetMarchingCubesPaint_SurfaceMaterial_Runtime"
+                };
+                ApplyMaterialProperties(runtimeMaterial, colorMode, cells);
+                return runtimeMaterial;
             }
 
             Shader shader = Shader.Find(SurfaceShaderName);
@@ -274,7 +291,8 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
 
             bool useSurfaceAtlas = colorMode == PlanetMarchingCubesPaintColorMode.PlanetSurfaceAtlas;
-            if (useSurfaceAtlas)
+            bool supportsRuntimeSurfaceAtlas = material.HasProperty(SurfaceAtlasTexturePropertyName);
+            if (useSurfaceAtlas && supportsRuntimeSurfaceAtlas)
             {
                 EnsureSurfaceAtlas(cells);
             }
@@ -284,7 +302,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                 material.SetFloat(UseSurfaceAtlasPropertyName, useSurfaceAtlas ? 1f : 0f);
             }
 
-            if (useSurfaceAtlas && runtimeSurfaceAtlas != null && material.HasProperty(SurfaceAtlasTexturePropertyName))
+            if (useSurfaceAtlas && supportsRuntimeSurfaceAtlas && runtimeSurfaceAtlas != null)
             {
                 material.SetTexture(SurfaceAtlasTexturePropertyName, runtimeSurfaceAtlas);
             }
@@ -345,7 +363,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                 for (int y = 0; y < SurfaceAtlasResolution; y++)
                 {
                     float t = y / (float)(SurfaceAtlasResolution - 1);
-                    pixels[y * atlasWidth + x] = EvaluateSurfaceCellGradient(t, x, cells[x]);
+                    pixels[y * atlasWidth + x] = EvaluateSurfaceCellGradient(t, x);
                 }
             }
 
@@ -382,23 +400,27 @@ namespace MarchingCubesPlanet.MarchingCubes
             return nearestIndex;
         }
 
-        private static float EvaluateSurfaceAtlasCoordinate(float radius, in PlanetRecipe recipe)
+        private static Vector2 EvaluateSurfaceAtlasUv(float radius, in PlanetRecipe recipe)
         {
             float surfaceOffset = radius - recipe.GridRadius;
-            float oceanDepth = Mathf.Max(recipe.GridRadius * recipe.OceanDepth, recipe.GridRadius * recipe.MinimumOceanDepth, 1f);
+            float safeRadius = Mathf.Max(recipe.GridRadius, 0.0001f);
+            float minHeightAtlasOffset =
+                -safeRadius * Mathf.Max(recipe.OceanDepth, recipe.MinimumOceanDepth) -
+                safeRadius * Mathf.Max(0f, recipe.SurfaceNoiseAmplitude);
+            float maxHeightAtlasOffset =
+                safeRadius * recipe.MaxLandElevation * recipe.MaxHeightModifier +
+                safeRadius * Mathf.Max(0f, recipe.SurfaceNoiseAmplitude);
 
-            if (surfaceOffset < 0f)
+            if (surfaceOffset <= 0f)
             {
-                float water01 = Mathf.InverseLerp(-oceanDepth, 0f, surfaceOffset);
-                return Mathf.Lerp(0f, 0.18f, water01);
+                float depthRange = Mathf.Max(0.0001f, -minHeightAtlasOffset);
+                float underwaterHeight = Mathf.Clamp01((surfaceOffset - minHeightAtlasOffset) / depthRange);
+                return new Vector2(0.5f, Mathf.Lerp(0f, LegacySeaLevelAtlasV, underwaterHeight));
             }
 
-            float landHeight =
-                recipe.GridRadius * recipe.MaxLandElevation * recipe.MaxHeightModifier +
-                recipe.GridRadius * Mathf.Max(0f, recipe.SurfaceNoiseAmplitude);
-            landHeight = Mathf.Max(landHeight, 1f);
-            float land01 = Mathf.Clamp01(surfaceOffset / landHeight);
-            return Mathf.Lerp(0.18f, 1f, land01);
+            float landRange = Mathf.Max(0.0001f, maxHeightAtlasOffset);
+            float landHeight = Mathf.Clamp01(surfaceOffset / landRange);
+            return new Vector2(0.5f, Mathf.Lerp(LegacySeaLevelAtlasV, 1f, landHeight));
         }
 
         private static float EvaluateHeight01(float radius, float minRadius, float maxRadius)
@@ -457,69 +479,96 @@ namespace MarchingCubesPlanet.MarchingCubes
             return Color.Lerp(grey, snow, (height01 - 0.90f) / 0.10f);
         }
 
-        private static Color32 EvaluateSurfaceCellGradient(float height01, int cellIndex, PlanetGpuShapeCell cell)
+        private static Color32 EvaluateSurfaceCellGradient(float height01, int cellIndex)
         {
-            Color baseColor = cell.IsContinent
-                ? EvaluateLandCellGradient(height01)
-                : EvaluateOceanCellGradient(height01);
-            float tint = Hash01((uint)cellIndex, 0x6ac690c5u);
-            float warmth = tint - 0.5f;
-            Color cellTint = new Color(
-                Mathf.Clamp01(baseColor.r + warmth * 0.16f),
-                Mathf.Clamp01(baseColor.g + (0.5f - Mathf.Abs(warmth)) * 0.10f),
-                Mathf.Clamp01(baseColor.b - warmth * 0.12f),
+            Color baseColor = EvaluatePlanetSurfacePalette(height01);
+
+            float valueNoise = Hash01((uint)cellIndex, 0x6ac690c5u);
+            float warmthNoise = Hash01((uint)cellIndex, 0x9e3779b9u) - 0.5f;
+            float value = Mathf.Lerp(0.94f, 1.06f, valueNoise);
+            Color cellColor = new Color(
+                Mathf.Clamp01(baseColor.r * value + warmthNoise * 0.025f),
+                Mathf.Clamp01(baseColor.g * value),
+                Mathf.Clamp01(baseColor.b * value - warmthNoise * 0.020f),
                 1f);
-            return Color.Lerp(baseColor, cellTint, 0.75f);
+
+            return cellColor;
         }
 
-        private static Color EvaluateLandCellGradient(float height01)
+        private static Color EvaluatePlanetSurfacePalette(float height01)
         {
             height01 = Mathf.Clamp01(height01);
 
-            Color sand = new Color(0.74f, 0.66f, 0.46f, 1f);
-            Color darkGreen = new Color(0.12f, 0.30f, 0.16f, 1f);
-            Color green = new Color(0.24f, 0.46f, 0.22f, 1f);
-            Color brown = new Color(0.36f, 0.28f, 0.20f, 1f);
-            Color grey = new Color(0.48f, 0.48f, 0.45f, 1f);
-            Color snow = new Color(0.88f, 0.89f, 0.84f, 1f);
+            Color deepPink = new Color(0.78f, 0.36f, 0.55f, 1f);
+            Color salmon = new Color(0.72f, 0.42f, 0.45f, 1f);
+            Color darkRedBrown = new Color(0.28f, 0.17f, 0.15f, 1f);
+            Color roseRed = new Color(0.62f, 0.32f, 0.38f, 1f);
+            Color sand = new Color(0.78f, 0.68f, 0.44f, 1f);
+            Color paleYellow = new Color(0.88f, 0.80f, 0.56f, 1f);
+            Color brightGreen = new Color(0.42f, 0.62f, 0.29f, 1f);
+            Color darkGreen = new Color(0.17f, 0.40f, 0.19f, 1f);
+            Color brown = new Color(0.43f, 0.31f, 0.20f, 1f);
+            Color darkGrey = new Color(0.32f, 0.32f, 0.30f, 1f);
+            Color grey = new Color(0.55f, 0.55f, 0.51f, 1f);
+            Color lightGrey = new Color(0.78f, 0.78f, 0.74f, 1f);
+            Color snow = new Color(0.93f, 0.93f, 0.89f, 1f);
+
+            if (height01 < 0.12f)
+            {
+                return Color.Lerp(deepPink, salmon, height01 / 0.12f);
+            }
 
             if (height01 < 0.24f)
             {
-                return Color.Lerp(sand, darkGreen, height01 / 0.24f);
+                return Color.Lerp(salmon, darkRedBrown, (height01 - 0.12f) / 0.12f);
             }
 
-            if (height01 < 0.56f)
+            if (height01 < 0.36f)
             {
-                return Color.Lerp(darkGreen, green, (height01 - 0.24f) / 0.32f);
+                return Color.Lerp(darkRedBrown, roseRed, (height01 - 0.24f) / 0.12f);
             }
 
-            if (height01 < 0.76f)
+            if (height01 < 0.5f)
             {
-                return Color.Lerp(green, brown, (height01 - 0.56f) / 0.20f);
+                return Color.Lerp(roseRed, sand, (height01 - 0.36f) / 0.14f);
             }
 
-            if (height01 < 0.90f)
+            if (height01 < 0.58f)
             {
-                return Color.Lerp(brown, grey, (height01 - 0.76f) / 0.14f);
+                return Color.Lerp(sand, paleYellow, (height01 - 0.5f) / 0.08f);
             }
 
-            return Color.Lerp(grey, snow, (height01 - 0.90f) / 0.10f);
-        }
-
-        private static Color EvaluateOceanCellGradient(float height01)
-        {
-            height01 = Mathf.Clamp01(height01);
-
-            Color deepPink = new Color(0.76f, 0.32f, 0.50f, 1f);
-            Color shallowPink = new Color(0.86f, 0.48f, 0.61f, 1f);
-            Color wetSand = new Color(0.78f, 0.66f, 0.50f, 1f);
-
-            if (height01 < 0.55f)
+            if (height01 < 0.68f)
             {
-                return Color.Lerp(deepPink, shallowPink, height01 / 0.55f);
+                return Color.Lerp(paleYellow, brightGreen, (height01 - 0.58f) / 0.10f);
             }
 
-            return Color.Lerp(shallowPink, wetSand, (height01 - 0.55f) / 0.45f);
+            if (height01 < 0.78f)
+            {
+                return Color.Lerp(brightGreen, darkGreen, (height01 - 0.68f) / 0.10f);
+            }
+
+            if (height01 < 0.86f)
+            {
+                return Color.Lerp(darkGreen, brown, (height01 - 0.78f) / 0.08f);
+            }
+
+            if (height01 < 0.93f)
+            {
+                return Color.Lerp(brown, darkGrey, (height01 - 0.86f) / 0.07f);
+            }
+
+            if (height01 < 0.97f)
+            {
+                return Color.Lerp(darkGrey, grey, (height01 - 0.93f) / 0.04f);
+            }
+
+            if (height01 < 0.99f)
+            {
+                return Color.Lerp(grey, lightGrey, (height01 - 0.97f) / 0.02f);
+            }
+
+            return Color.Lerp(lightGrey, snow, (height01 - 0.99f) / 0.01f);
         }
 
         private static float Hash01(uint value, uint salt)

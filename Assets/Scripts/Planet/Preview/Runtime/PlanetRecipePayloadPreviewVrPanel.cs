@@ -12,7 +12,7 @@ namespace MarchingCubesPlanet.Preview
         private const string RootName = "PlanetRecipePayloadPreviewDeadlineVR";
         private const string LegacyDebugCanvasName = "PlanetMinimalXrTestCanvas";
         private const float CanvasScale = 0.0025f;
-        private const int GeneratePlanetTriangleBudget = 1000000;
+        private const int DefaultTemporaryTriangleCapacity = 1000000;
 
         [SerializeField] private PlanetRecipePayloadPreview preview;
         [SerializeField] private Button applyPayload126kButton;
@@ -283,7 +283,7 @@ namespace MarchingCubesPlanet.Preview
                 return true;
             }
 
-            int triangleBudget = Mathf.Max(preview.RequestedTrianglePayload, GeneratePlanetTriangleBudget);
+            int temporaryTriangleCapacity = Mathf.Max(preview.RequestedTrianglePayload, DefaultTemporaryTriangleCapacity);
             shapeLab.SetRecipe(in sourceRecipe);
             shapeLab.InitShapeGpu();
             if (!shapeLab.IsShapeGpuInitialized)
@@ -292,25 +292,27 @@ namespace MarchingCubesPlanet.Preview
                 return true;
             }
 
-            marchingCubesLab.EnsurePlanetSurfaceTriangleBudget(triangleBudget);
+            marchingCubesLab.EnsureTemporaryOutputTriangleCapacity(temporaryTriangleCapacity);
             marchingCubesLab.InitMarchingCubesGpu();
             marchingCubesLab.ExtractPlanetSurface();
 
             if (marchingCubesLab.LastTriangleCountWritten == 0u)
             {
-                lastPanelDiagnostic = "Generate finished without visible planet surface triangles. Check 07 range/shape diagnostics.";
+                lastPanelDiagnostic = marchingCubesLab.LastOverflow
+                    ? "Generate blocked: 07 needs more temporary output capacity for the full brute planet surface. No partial mesh was painted."
+                    : "Generate finished without visible planet surface triangles. Check 07 chunk/shape diagnostics.";
                 return true;
             }
 
             ConfigurePaintPlacement(paintLab);
-            paintLab.UsePlanetSurfaceAtlas((int)Mathf.Min(marchingCubesLab.LastTriangleCountWritten, triangleBudget));
+            paintLab.UsePlanetSurfaceAtlas((int)marchingCubesLab.LastTriangleCountWritten);
             preview.EnsureRenderTargets(out MeshFilter targetMeshFilter, out MeshRenderer targetMeshRenderer);
             paintLab.PaintLastExtraction(targetMeshFilter, targetMeshRenderer, BuildPreviewPlacement());
             preview.Release();
 
             lastPanelDiagnostic = marchingCubesLab.LastOverflow
-                ? "Generated via 06 -> 07 -> 08, but 07 hit the triangle buffer limit. Painted mesh is partial; raise payload budget or reduce surface noise."
-                : "Generated via 06 -> 07 -> 08 using PlanetRecipePayloadPreview recipe, transform and payload budget.";
+                ? "Generate blocked: 07 hit the temporary output capacity. No partial planet mesh was painted."
+                : "Generated via 06 -> 07 -> 08 using PlanetRecipePayloadPreview recipe, transform and temporary output capacity.";
             return true;
         }
 
@@ -599,7 +601,9 @@ namespace MarchingCubesPlanet.Preview
             builder.AppendLine("Marching Cubes 06-08");
             if (marchingCubesLab != null)
             {
-                AppendLine("MC processed cubes", marchingCubesLab.LastProcessedCubeCount.ToString());
+                AppendLine("MC candidate chunks", marchingCubesLab.LastCandidateChunkCount.ToString());
+                AppendLine("MC processed chunks", marchingCubesLab.LastProcessedChunkCount.ToString());
+                AppendLine("MC processed cells", marchingCubesLab.LastProcessedCellCount.ToString());
                 AppendLine("MC tris attempted", marchingCubesLab.LastTriangleCountAttempted.ToString());
                 AppendLine("MC tris written", marchingCubesLab.LastTriangleCountWritten.ToString());
                 AppendLine("MC overflow", marchingCubesLab.LastOverflow ? "yes" : "no");

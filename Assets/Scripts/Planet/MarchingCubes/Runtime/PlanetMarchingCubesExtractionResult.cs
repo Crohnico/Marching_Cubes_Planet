@@ -11,19 +11,19 @@ namespace MarchingCubesPlanet.MarchingCubes
             PlanetMarchingCubesState state,
             PlanetMarchingCubesVertex[] vertices,
             int vertexCount,
-            int maxTriangleBudget)
+            int temporaryTriangleCapacity)
         {
             State = state;
             Vertices = vertices ?? Array.Empty<PlanetMarchingCubesVertex>();
             VertexCount = Math.Max(0, Math.Min(vertexCount, Vertices.Length));
-            MaxTriangleBudget = Math.Max(0, maxTriangleBudget);
+            TemporaryTriangleCapacity = Math.Max(0, temporaryTriangleCapacity);
         }
 
         public PlanetMarchingCubesState State { get; }
         public PlanetMarchingCubesVertex[] Vertices { get; }
         public int VertexCount { get; }
         public int TriangleCount => VertexCount / 3;
-        public int MaxTriangleBudget { get; }
+        public int TemporaryTriangleCapacity { get; }
         public bool HasOverflow => State.overflowFlag != 0u;
         public bool HasInvalidCase => State.invalidCaseFlag != 0u;
     }

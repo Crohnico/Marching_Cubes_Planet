@@ -27,7 +27,6 @@ namespace MarchingCubesPlanet.Lab
         [SerializeField] private int lastSourceTriangleCount;
         [SerializeField] private int lastPaintedTriangleCount;
         [SerializeField] private int lastPaintedVertexCount;
-        [SerializeField] private bool lastVisualTruncated;
         [SerializeField] private long lastMeshEstimatedBytes;
         [SerializeField] private string lastAction;
         [SerializeField] private PlanetLabMetricsSnapshot lastSnapshot;
@@ -55,14 +54,13 @@ namespace MarchingCubesPlanet.Lab
         public int LastSourceTriangleCount => lastSourceTriangleCount;
         public int LastPaintedTriangleCount => lastPaintedTriangleCount;
         public int LastPaintedVertexCount => lastPaintedVertexCount;
-        public bool LastVisualTruncated => lastVisualTruncated;
         public long LastMeshEstimatedBytes => lastMeshEstimatedBytes;
 
         private void OnValidate()
         {
-            if (settings.maxPaintedTriangles <= 0)
+            if (settings.meshTriangleCapacity <= 0)
             {
-                settings.maxPaintedTriangles = PlanetMarchingCubesPaintSettings.Default().maxPaintedTriangles;
+                settings.meshTriangleCapacity = PlanetMarchingCubesPaintSettings.Default().meshTriangleCapacity;
             }
         }
 
@@ -120,7 +118,7 @@ namespace MarchingCubesPlanet.Lab
                 lastDiagnostic = PlanetLabDiagnostic.Warning(
                     "No Marching Cubes extraction is available",
                     "08-1 only paints the latest 07 extraction result; it does not run the extraction itself.",
-                    "Run Extract Planet Surface in PlanetMarchingCubesLab, then Paint Last Extraction.",
+                    "Run Extract Cartesian Planet Surface in PlanetMarchingCubesLab, then Paint Last Extraction.",
                     "lastVertexCount=0");
                 lastAction = "Validate Marching Cubes Paint failed.";
                 return false;
@@ -155,12 +153,12 @@ namespace MarchingCubesPlanet.Lab
             lastAction = "Cycle Paint Color Mode finished.";
         }
 
-        public void UsePlanetSurfaceAtlas(int minimumTriangleBudget)
+        public void UsePlanetSurfaceAtlas(int requiredTriangleCapacity)
         {
             settings.colorMode = PlanetMarchingCubesPaintColorMode.PlanetSurfaceAtlas;
-            if (minimumTriangleBudget > settings.maxPaintedTriangles)
+            if (requiredTriangleCapacity > settings.meshTriangleCapacity)
             {
-                settings.maxPaintedTriangles = minimumTriangleBudget;
+                settings.meshTriangleCapacity = requiredTriangleCapacity;
             }
 
             lastDiagnostic = PlanetLabDiagnostic.Ok("Marching Cubes paint configured for planet surface atlas", settings.ToString());
@@ -217,14 +215,30 @@ namespace MarchingCubesPlanet.Lab
             activeMeshFilter = targetMeshFilter;
             activeMeshRenderer = targetMeshRenderer;
             placement = targetPlacement;
-            PlanetMarchingCubesPaintResult result = painter.Paint(
-                activeMeshFilter,
-                activeMeshRenderer,
-                materialOverride,
-                marchingCubesLab.LastResult,
-                shapeLab.Recipe,
-                placement,
-                settings);
+            PlanetMarchingCubesPaintResult result;
+            try
+            {
+                result = painter.Paint(
+                    activeMeshFilter,
+                    activeMeshRenderer,
+                    materialOverride,
+                    marchingCubesLab.LastResult,
+                    shapeLab.Recipe,
+                    placement,
+                    settings);
+            }
+            catch (System.Exception exception)
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "Marching Cubes mesh paint blocked",
+                    exception.Message,
+                    "Increase meshTriangleCapacity. 08 does not paint partial meshes.",
+                    settings.ToString());
+                lastAction = "Paint Last Extraction blocked.";
+                stopwatch.Stop();
+                CaptureMetrics("Paint Last Extraction Blocked", stopwatch.Elapsed.TotalMilliseconds);
+                return;
+            }
 
             ApplyResultSummary(result);
             RegisterRuntimeResources();
@@ -264,7 +278,6 @@ namespace MarchingCubesPlanet.Lab
             lastSourceTriangleCount = 0;
             lastPaintedTriangleCount = 0;
             lastPaintedVertexCount = 0;
-            lastVisualTruncated = false;
             lastMeshEstimatedBytes = 0L;
 
             if (resourceRegistry != null)
@@ -288,7 +301,6 @@ namespace MarchingCubesPlanet.Lab
             lastSourceTriangleCount = result.SourceTriangleCount;
             lastPaintedTriangleCount = result.PaintedTriangleCount;
             lastPaintedVertexCount = result.PaintedVertexCount;
-            lastVisualTruncated = result.VisualTruncated;
             lastMeshEstimatedBytes = result.MeshEstimatedBytes;
         }
 
@@ -353,7 +365,6 @@ namespace MarchingCubesPlanet.Lab
             return "sourceTriangleCount=" + lastSourceTriangleCount +
                    "\npaintedTriangleCount=" + lastPaintedTriangleCount +
                    "\npaintedVertexCount=" + lastPaintedVertexCount +
-                   "\nvisualTruncated=" + lastVisualTruncated +
                    "\nmeshEstimatedBytes=" + lastMeshEstimatedBytes +
                    "\n" + settings;
         }

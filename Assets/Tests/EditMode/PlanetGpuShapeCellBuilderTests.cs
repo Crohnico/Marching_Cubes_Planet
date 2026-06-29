@@ -60,13 +60,13 @@ namespace MarchingCubesPlanet.Lab.Tests
         }
 
         [Test]
-        public void FibonacciDirectionsAreNormalized()
+        public void LegacyRandomDirectionsAreNormalized()
         {
             PlanetRecipe recipe = PlanetRecipe.Default();
 
             for (int i = 0; i < recipe.VoronoiDivision; i++)
             {
-                Vector3 direction = PlanetGpuShapeCellBuilder.FibonacciDirection(i, recipe.VoronoiDivision, recipe.Seed);
+                Vector3 direction = PlanetGpuShapeCellBuilder.LegacyRandomUnitVector(recipe.Seed, i);
                 Assert.LessOrEqual(Mathf.Abs(1f - direction.magnitude), 0.00001f);
             }
         }

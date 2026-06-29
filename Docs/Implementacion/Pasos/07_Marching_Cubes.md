@@ -10,22 +10,24 @@ Si una validacion falla por contexto incorrecto, debe fallar de forma directa y 
 
 ## Objetivo
 
-Convertir el campo de densidad definido en `06_Forma_Planeta_GPU` en triangulos reales mediante Marching Cubes para obtener la superficie del planeta.
+Convertir el campo de densidad definido en `06_Forma_Planeta_GPU` en triangulos reales mediante Marching Cubes sobre un grid cartesiano bruto.
 
-Este documento no define la forma del planeta. Consume:
+Este paso no busca una version optimizada para Quest 3.
+
+Este paso busca la verdad geometrica inicial del planeta:
 
 ```text
-PlanetShapeDensity.hlsl
-density(point)
-PlanetRecipe
-PlanetGpuShapeEvaluator
-Buffers GPU de parametros/celdas Voronoi vivos
+density(point) -> grid cartesiano 1x1x1 -> Marching Cubes -> triangulos brutos
 ```
 
 Contrato funcional:
 
 ```text
-campo escalar -> muestras de cubo -> mascara de ocupacion -> triangulos reales
+06 define density(point).
+07 coloca chunks cartesianos de 64x64x64 celdas sobre el grid del planeta.
+07 evalua las 8 esquinas reales de cada celda.
+07 genera triangulos reales de Marching Cubes.
+08 pinta esos triangulos.
 ```
 
 Regla central:
@@ -33,6 +35,27 @@ Regla central:
 ```text
 07 no reimplementa density(point).
 07 incluye el HLSL compartido de 06.
+07 no usa cubemap, esfera parametrica, cáscara radial ni proxy angular.
+07 trabaja con celdas cartesianas reales de 1x1x1 en GridCoordinates.
+07 no contiene reglas especiales para Voronoi, altura, ruido, biomas, cuevas ni terraformado.
+```
+
+Contrato invariable:
+
+```text
+for each cell 1x1x1:
+    sample density(point) en sus 8 esquinas
+    corner solid = density > 0
+    construir caseIndex
+    resolver triangulos con edgeTable/triTable
+```
+
+Regla de depuracion:
+
+```text
+07 debe funcionar igual con density esfera pura que con la formula completa de 06.
+Si density esfera pura no cierra una mesh, 07/08 estan mal.
+Si density esfera pura cierra y la formula completa no, 07 no se cambia salvo que falten chunks candidatos.
 ```
 
 ## Modelo mental
@@ -53,21 +76,30 @@ cero     -> superficie
 negativo -> fuera/aire
 ```
 
-Por tanto, la "masa" del planeta existe como campo escalar implicito, no como millones de celdas guardadas en RAM/VRAM.
+07 no debe inventar otra representacion del planeta.
 
-07 coloca un muestreo temporal sobre la superficie esperada del planeta y pregunta por las 8 esquinas de cada cubo:
+07 hace lo mas literal:
 
 ```text
-corner solid/air -> caseIndex -> triangulos de Marching Cubes
+1. Toma un chunk cartesiano.
+2. Recorre sus celdas 1x1x1.
+3. Evalua density(point) en las 8 esquinas de cada celda.
+4. Construye caseIndex.
+5. Usa edgeTable/triTable.
+6. Emite triangulos.
 ```
 
-La rejilla de 07 no es el resultado visual. Es la herramienta de muestreo.
+La rejilla de 07 no es el resultado visual.
+
+La rejilla de 07 es la herramienta de muestreo.
 
 El resultado de 07 son triangulos reales de superficie, interpolados en las aristas donde el campo cruza el isoLevel.
 
-08 parte 1 no decide como unir los 8 vertices de cada cubo. Eso ya lo decide Marching Cubes en 07 mediante `triTable`.
+08 no decide como unir los 8 vertices de cada celda.
 
-08 parte 1 decide como pintar los triangulos ya generados:
+Eso lo decide Marching Cubes en 07 mediante `triTable`.
+
+08 solo decide como pintar los triangulos ya generados:
 
 ```text
 como se convierten en Mesh visible.
@@ -77,24 +109,20 @@ como se miden sus vertices/triangulos/bytes.
 como se liberan sus recursos visuales.
 ```
 
-09, 10 y 11 deciden la gestion posterior:
+09, 10 y 11 empiezan despues.
 
 ```text
-pool global de triangulos.
-reparto interno por BVH o estructura equivalente.
-visibilidad, oclusion y frustum.
-triangulos concedidos, reclamados, redistribuidos o descartados por visibilidad.
+09 = pool global fijo de triangulos.
+10 = reparto interno de detalle/BVH o estructura equivalente.
+11 = visibilidad, oclusion y frustum.
 ```
 
-Resumen:
+Regla importante:
 
 ```text
-06 = campo escalar implicito.
-07 = muestreo de superficie + triangulacion de Marching Cubes.
-08 = pintado del resultado.
-09 = pool global fijo de triangulos.
-10 = reparto interno de detalle para geometria adaptable.
-11 = visibilidad, oclusion y frustum.
+No meter en 07 una optimizacion que pertenece a 09, 10 u 11.
+No usar 07 para hacer una version ligera del planeta.
+No usar 07 para resolver presupuesto de triangulos.
 ```
 
 ## Alcance de esta fase
@@ -103,31 +131,38 @@ Entra:
 
 ```text
 Marching Cubes sobre GPU.
-Tabla de casos de Marching Cubes.
+Tabla estandar de 256 casos.
 Muestreo de density(point) desde el HLSL de 06.
-Rango inicial exacto de muestreo de la superficie del planeta sobre el grid de receta.
+Chunks cartesianos de 64x64x64 celdas.
+Cell size fijo de 1x1x1 en GridCoordinates.
+Seleccion inicial de chunks que intersectan la banda posible de superficie.
 Extraccion de triangulos reales de Marching Cubes.
 Normales geometricas iniciales.
 Buffer GPU de vertices no indexados.
 Readback acotado para que 08 pueda construir una Mesh de Unity.
 Resultado visual no final.
-Metricas de cubos, triangulos, vertices, overflow y memoria.
+Metricas de chunks, celdas, triangulos, vertices, overflow y memoria.
 Registro y liberacion de recursos.
 Botones de Lab para generar/liberar la superficie.
 ```
 
-La fase debe validar visualmente por primera vez que la forma de 06 produce superficie.
+La fase debe validar visualmente por primera vez que la forma de 06 produce una superficie con grid real.
 
 ## Fuera de alcance
 
 No entra:
 
 ```text
+Cubemap extractor.
+Cáscara radial.
+Proxy angular.
 Payload final de triangulos.
 Asignacion de presupuesto global.
 LOD final.
-Chunks locales reales.
-Proxy lejano final.
+BVH.
+Frustum/occlusion.
+Chunks jugables finales.
+Streaming.
 Deduplicacion avanzada de vertices.
 Persistencia.
 Colisiones.
@@ -135,15 +170,12 @@ Materiales finales.
 Cuevas.
 Minerales/sustancias.
 Terraformado.
-Streaming.
-BVH.
-Volumen planetario completo.
 ```
 
 Regla:
 
 ```text
-Si una decision trata de pintar los triangulos generados, pertenece a 08.
+Si una decision trata de pintar triangulos generados, pertenece a 08.
 Si una decision trata de conceder o reclamar slots del presupuesto global, pertenece a 09.
 Si una decision trata de repartir detalle dentro de una geometria adaptable, pertenece a 10.
 Si una decision trata de no gastar tris en lo que no se ve, pertenece a 11.
@@ -190,46 +222,6 @@ PlanetResourceRegistry registra recursos grandes.
 PlanetImplementationLab ejecuta botones, metricas y Release All.
 ```
 
-Estado del codigo existente antes de implementar 07:
-
-```text
-PlanetRecipe existe en `Assets/Scripts/Planet/Coordinates/Runtime/PlanetRecipe.cs`.
-PlanetRecipe actual todavia no tiene VoronoiDivision ni ContinentCells hasta que 06 lo amplie.
-PlanetRecipeValidator ya existe y debe validar los nuevos campos cuando 06 los añada.
-PlanetLabModule ya define InitModule, ReleaseModule, ValidateModule y CaptureMetrics.
-PlanetLabResourceRegistry ya registra recursos por owner, type, elementCount, stride y estimatedBytes.
-PlanetGpuBufferHandle ya encapsula GraphicsBuffer/ComputeBuffer estructurados.
-PlanetComputeShaderRunner existe, pero es un adaptador especifico de `PlanetComputeDebug.compute`.
-PlanetRecipePayloadPreview ya genera una esfera de payload preview, pero no usa density(point).
-```
-
-Reglas de integracion con codigo existente:
-
-```text
-07 no debe modificar PlanetComputeShaderRunner para convertirlo implicitamente en API generica si eso rompe el objetivo del paso 02.
-07 puede crear un extractor propio o una API compute nueva y explicita.
-07 debe seguir el patron PlanetLabModule para su modulo de Lab.
-07 debe usar PlanetLabResourceRegistry con owner propio.
-07 no debe reutilizar PlanetSpherePayloadMeshBuilder como fuente geometrica de Marching Cubes.
-```
-
-Ensamblados previstos:
-
-```text
-Crear MarchingCubesPlanet.Shape para 06 si no existe como asmdef real.
-Crear MarchingCubesPlanet.MarchingCubes para 07 si conviene separar extractor y datos.
-Actualizar MarchingCubesPlanet.Lab para referenciar los ensamblados reales de 06/07.
-Actualizar MarchingCubesPlanet.Lab.Editor si se añaden editores nativos.
-Actualizar asmdefs de tests para referenciar los nuevos ensamblados.
-```
-
-Regla:
-
-```text
-No meter el algoritmo real de Marching Cubes directamente en MarchingCubesPlanet.Lab.
-El Lab invoca codigo real y mide, pero no es la implementacion del algoritmo.
-```
-
 ## Regla de grid heredado
 
 07 no define otro tamaño logico de grid.
@@ -241,7 +233,7 @@ GridDiameter = GridRadius * 2.
 Con GridRadius = 1000, el diametro logico del planeta es 2000 cells.
 ```
 
-Marching Cubes trabaja sobre cubos de una micro cell logica:
+Marching Cubes trabaja sobre cubos reales de una micro cell logica:
 
 ```text
 cubeSizeGrid = 1
@@ -250,8 +242,137 @@ cubeSizeGrid = 1
 Regla:
 
 ```text
-07 solo decide que volumen/rango inicial de ese grid se muestrea.
+07 decide que chunks de ese grid se muestrean.
 07 no cambia la resolucion logica del planeta.
+07 no reparametriza el grid a cubemap.
+```
+
+## Chunks cartesianos
+
+Decision cerrada:
+
+```text
+ChunkSize = 64
+```
+
+Significado:
+
+```text
+Cada chunk contiene 64x64x64 celdas Marching Cubes.
+Cada celda mide 1x1x1 en GridCoordinates.
+Cada chunk cubre 64x64x64 unidades de grid.
+Cada chunk necesita muestras de esquina en una reticula de 65x65x65 puntos.
+```
+
+Coordenadas:
+
+```text
+chunkCoord = int3(cx, cy, cz)
+chunkOriginGrid = chunkCoord * 64
+localCell = int3(x, y, z), con x/y/z en 0..63
+cellOriginGrid = chunkOriginGrid + localCell
+```
+
+Esquinas:
+
+```text
+samplePosition = cellOriginGrid + cornerOffset
+```
+
+Regla:
+
+```text
+Las posiciones de muestra son posiciones cartesianas reales.
+No se normalizan para construir una cáscara.
+No se derivan de faceIndex/u/v/radialIndex.
+```
+
+## Seleccion inicial de chunks
+
+07 bruto no significa recorrer todo el cubo global siempre.
+
+07 bruto significa que, cuando un chunk se procesa, se procesa con grid cartesiano real.
+
+Para evitar evaluar un volumen entero imposible, la seleccion inicial de chunks puede usar una banda aproximada de superficie.
+
+Rango radial de superficie posible:
+
+```text
+maxOutwardOffset =
+    GridRadius * MaxLandElevation * MaxHeightModifier
+    + GridRadius * SurfaceNoiseAmplitude
+    + max(0, -IsoLevel)
+
+maxInwardOffset =
+    max(GridRadius * OceanDepth, GridRadius * MinimumOceanDepth) * MaxHeightModifier
+    + GridRadius * SurfaceNoiseAmplitude
+    + max(0, IsoLevel)
+
+innerRadius = GridRadius - maxInwardOffset - safetyMargin
+outerRadius = GridRadius + maxOutwardOffset + safetyMargin
+```
+
+Un chunk se considera candidato si su AABB cartesiano puede intersectar la cascara:
+
+```text
+chunkAabbMin = chunkOriginGrid
+chunkAabbMax = chunkOriginGrid + int3(64, 64, 64)
+
+minDistanceToAabb <= outerRadius
+maxDistanceToAabb >= innerRadius
+```
+
+Regla:
+
+```text
+Esta seleccion no simplifica el grid.
+Solo evita lanzar chunks que no pueden contener superficie.
+La seleccion puede ser conservadora.
+Si incluye chunks de mas, solo aumenta coste.
+Si excluye chunks que contienen superficie, es bug de 07.
+```
+
+Para pruebas iniciales:
+
+```text
+Se permite bajar GridRadius en la receta, por ejemplo 500u, para validar el pipeline bruto.
+No se baja la resolucion de celda.
+No se sustituye el grid cartesiano por otro sistema.
+```
+
+## Escala y coste esperado
+
+Este paso puede producir muchos triangulos.
+
+Eso es intencionado.
+
+Ejemplo:
+
+```text
+GridRadius = 1000
+WorldScale = 4
+diametro visual = 8000 metros
+```
+
+Con pocos cientos de miles de triangulos, el planeta completo seria un proxy.
+
+Para 06-07-08 se acepta que la salida bruta pueda estar en millones de triangulos.
+
+Valores de validacion esperados:
+
+```text
+temporaryOutputTriangleCapacity inicial alto para PC/editor.
+10M triangulos es aceptable como objetivo bruto de validacion si la maquina lo soporta.
+Overflow no es fallo de Marching Cubes; es capacidad temporal insuficiente del buffer de salida de 07 para esa prueba.
+```
+
+Regla:
+
+```text
+El limite de triangulos de 07 es capacidad temporal de extraccion, no presupuesto de poligonaje.
+Si no cabe la extraccion completa, 07 no debe exponer una malla parcial como resultado valido.
+07 debe reportar overflow/capacidad insuficiente.
+La politica de calidad empieza en 09/10/11.
 ```
 
 ## Decision de extraccion inicial
@@ -259,12 +380,13 @@ Regla:
 La extraccion inicial corre en GPU.
 
 ```text
-CPU prepara parametros y dispatch.
+CPU prepara lista de chunks candidatos.
+CPU sube chunk origins o despacha por chunk/lote.
 GPU evalua density(point).
 GPU calcula mascaras de ocupacion.
 GPU aplica Marching Cubes.
 GPU escribe vertices no indexados.
-CPU hace readback acotado solo para que 08 construya una Mesh de Unity.
+CPU hace readback acotado para que 08 construya una Mesh de Unity.
 ```
 
 Motivo:
@@ -273,7 +395,7 @@ Motivo:
 La funcion density(point) vive en GPU.
 Evita crear una ruta CPU paralela de forma.
 Evita duplicar el algoritmo de forma.
-Prepara la ruta real de chunks/payload.
+Prepara la ruta real de chunks.
 Mantiene el readback como herramienta de Lab, no como contrato final.
 ```
 
@@ -281,114 +403,12 @@ Regla:
 
 ```text
 No implementar Marching Cubes CPU como ruta alternativa de validacion.
-Tests CPU solo pueden comprobar tablas, indices y formulas pequeñas sin sustituir la ruta GPU.
+Tests CPU solo pueden comprobar tablas, indices, bounds y formulas pequeñas sin sustituir la ruta GPU.
 ```
 
-## Rango inicial de muestreo
+## Ocupacion de celda
 
-El primer rango extrae directamente la superficie del planeta. No malla el volumen completo.
-
-Decision inicial:
-
-```text
-surfaceRadialStartOffset = -512
-surfaceRadialCubeCount = 1024
-surfaceFaceResolution = 16
-surfaceCubeSizeGrid = 1
-```
-
-Estos valores son el rango serializado inicial.
-
-Antes de inicializar GPU, 07 debe expandir ese rango si la receta viva puede generar superficie fuera de esa banda.
-
-Cada cubo se ubica sobre una de las 6 caras de un cubemap normalizado y una banda radial alrededor de `GridRadius`.
-
-Posicion de una esquina de muestra:
-
-```text
-radial = GridRadius + surfaceRadialStartOffset + radialIndex
-u = -1..1 dentro de la cara
-v = -1..1 dentro de la cara
-
-direction = normalize(faceVector(faceIndex, u, v))
-point = direction * radial
-```
-
-Numero de cubos:
-
-```text
-6 * surfaceFaceResolution * surfaceFaceResolution * surfaceRadialCubeCount
-6 * 16 * 16 * 1024 = 1572864 cubos
-```
-
-Motivo:
-
-```text
-El rango radial cruza la superficie esperada alrededor del radio base.
-El rango radial debe cubrir tambien montañas por encima de `GridRadius` y oceano/ruido por debajo.
-El cubemap cubre todo el planeta sin crear un volumen 3D global.
-La resolucion de cara controla el coste angular inicial.
-La cell logica sigue siendo 1x1x1 en la dimension radial.
-```
-
-Calculo de rango requerido por receta:
-
-```text
-maxOutwardOffset = GridRadius * MaxLandElevation * MaxHeightModifier
-                 + GridRadius * SurfaceNoiseAmplitude
-
-maxInwardOffset = max(GridRadius * OceanDepth, GridRadius * MinimumOceanDepth)
-                + GridRadius * SurfaceNoiseAmplitude
-
-surfaceRadialStartOffset <= -ceil(maxInwardOffset) - safetyMargin
-surfaceRadialEndOffset   >=  ceil(maxOutwardOffset) + safetyMargin
-```
-
-Regla:
-
-```text
-El rango de Inspector puede ser mayor.
-07 no debe encogerlo automaticamente.
-07 si debe expandirlo antes del dispatch si la receta actual no cabe.
-```
-
-Regla:
-
-```text
-Este rango es la primera superficie del planeta.
-No es el chunk final.
-No es el proxy final.
-No es el volumen global del planeta.
-```
-
-Parametros editables de Lab:
-
-```text
-surfaceRadialStartOffset.
-surfaceRadialCubeCount.
-surfaceFaceResolution.
-maxPlanetSurfaceTriangles.
-```
-
-Valores de seguridad iniciales:
-
-```text
-maxPlanetSurfaceTriangles = 1000000
-maxPlanetSurfaceVertices = maxPlanetSurfaceTriangles * 3
-```
-
-Si se supera el limite:
-
-```text
-Se marca overflow.
-No se escribe fuera del buffer.
-El resultado visual puede quedar truncado.
-El diagnostico debe indicar cuantos triangulos se intentaron escribir.
-```
-
-## Ocupacion de cubo
-
-Cada cubo tiene 8 esquinas.
+Cada celda tiene 8 esquinas.
 
 Orden inicial de esquinas:
 
@@ -505,26 +525,39 @@ Los tests EditMode pueden validar una copia CPU pequeña o generada, pero no def
 
 ## Normales
 
-La normal inicial es geometrica por triangulo.
+La tabla se lee con el orden estandar de `triTable`, pero la emision aplica un flip global de winding para la convencion del proyecto:
 
 ```text
-normal = normalize(cross(b - a, c - a))
+density > 0  -> solido
+density <= 0 -> aire
 ```
 
-Como la densidad es positiva dentro del planeta, se fuerza orientacion exterior:
+Orden de emision:
 
 ```text
-triangleCenter = (a + b + c) / 3
-outward = normalize(triangleCenter - planetCenter)
+edgeA = triTable[row + 0]
+edgeB = triTable[row + 1]
+edgeC = triTable[row + 2]
 
-si dot(normal, outward) < 0:
-    swap(b, c)
-    normal = -normal
+a = edgeVertex[edgeA]
+b = edgeVertex[edgeC]
+c = edgeVertex[edgeB]
+```
+
+La normal sale del orden emitido.
+
+```text
+geometricNormal = normalize(cross(b - a, c - a))
 ```
 
 Regla:
 
 ```text
+La orientacion no se corrige por direccion radial al centro del planeta.
+La orientacion no se corrige por gradiente estimado de density(point).
+El winding lo define la combinacion caseIndex + edgeTable + triTable.
+El flip global de B/C pertenece a la convencion density > 0 = solido.
+Si aparecen triangulos aislados invertidos, el bug esta en la convencion caseIndex/triTable o en el orden de esquinas/aristas.
 La normal se duplica en los 3 vertices del triangulo.
 No se calculan normales suaves compartidas en 07.
 ```
@@ -542,8 +575,8 @@ Formato conceptual de vertice:
 ```text
 positionGrid.xyz
 normalGrid.xyz
-diagnosticData.x = density/height opcional
-diagnosticData.y = caseIndex opcional
+diagnosticData.x = caseIndex opcional
+diagnosticData.y = chunkIndex opcional
 diagnosticData.z = reserved
 diagnosticData.w = reserved
 ```
@@ -557,7 +590,7 @@ float4 positionAndCase:
 
 float4 normalAndDiagnostic:
     x,y,z = normal.
-    w     = valor diagnostico/reservado.
+    w     = chunk/celda/debug.
 ```
 
 Stride:
@@ -589,42 +622,37 @@ No hay indexacion compartida real en 07.
 Recursos previstos:
 
 ```text
-GraphicsBuffer de parametros de Marching Cubes.
+GraphicsBuffer de chunk origins o parametros de chunk.
 GraphicsBuffer de vertices.
 GraphicsBuffer de contador/estado.
 Buffers de forma de 06 ya vivos.
-Mesh runtime de validacion.
 ```
 
 Estado/contador:
 
 ```text
+chunkCountCandidate.
+chunkCountProcessed.
+cellCountProcessed.
 triangleCountAttempted.
 triangleCountWritten.
 vertexCountWritten.
 overflowFlag.
 invalidCaseFlag.
-processedCubeCount.
 ```
 
-Layout cerrado:
+Layout conceptual:
 
 ```text
 PlanetMarchingCubesStateGpu:
+    uint chunkCountCandidate;
+    uint chunkCountProcessed;
+    uint cellCountProcessed;
     uint triangleCountAttempted;
     uint triangleCountWritten;
     uint vertexCountWritten;
     uint overflowFlag;
     uint invalidCaseFlag;
-    uint processedCubeCount;
-    uint reserved0;
-    uint reserved1;
-```
-
-Stride:
-
-```text
-32 bytes.
 ```
 
 Reglas:
@@ -633,9 +661,9 @@ Reglas:
 triangleCountAttempted cuenta los triangulos que Marching Cubes quiso generar.
 triangleCountWritten cuenta los triangulos que entraron en el buffer.
 vertexCountWritten siempre debe ser triangleCountWritten * 3.
-overflowFlag se activa si maxPlanetSurfaceTriangles no alcanza.
+overflowFlag se activa si temporaryOutputTriangleCapacity no alcanza.
 invalidCaseFlag se activa si se detecta una lectura invalida de tabla o caso imposible.
-processedCubeCount cuenta cuantos cubos proceso el dispatch.
+cellCountProcessed cuenta cuantas celdas reales proceso el dispatch.
 ```
 
 Reglas:
@@ -644,26 +672,8 @@ Reglas:
 GraphicsBuffer es el camino principal.
 ComputeBuffer solo se usa si una API concreta lo exige y queda documentado.
 No se crea buffer de densidad global.
-No se crea volumen 3D global.
-No se crea una Mesh del planeta completo.
+No se crea volumen 3D global persistente.
 Todos los recursos se registran con owner y estimatedBytes.
-```
-
-Estimacion inicial:
-
-```text
-vertexBufferBytes = maxPlanetSurfaceVertices * 32
-stateBufferBytes = strideState
-meshCpuBytes estimado = vertexCountWritten * datos de Mesh
-```
-
-Con los valores iniciales:
-
-```text
-maxPlanetSurfaceTriangles = 1000000
-maxPlanetSurfaceVertices = 3000000
-vertexBufferBytes = 6291456 bytes
-vertexBufferBytes ~= 6 MiB
 ```
 
 ## Compute Shader previsto
@@ -681,10 +691,10 @@ Assets/Shaders/Compute/PlanetShapeDensity.hlsl
 Assets/Shaders/Compute/PlanetMarchingCubesTables.hlsl
 ```
 
-Kernel inicial:
+Kernel canonico de 07:
 
 ```text
-CS_ExtractPlanetSurface
+CS_ExtractChunkedCartesianSurface
 ```
 
 Thread group inicial:
@@ -696,16 +706,23 @@ Thread group inicial:
 Dispatch:
 
 ```text
-cubeCount = 6 * surfaceFaceResolution * surfaceFaceResolution * surfaceRadialCubeCount
-groupCountX = ceil(cubeCount / 64)
+cellCount = chunkCount * 64 * 64 * 64
+groupCountX = ceil(cellCount / 64)
+```
+
+Conversion de indice lineal:
+
+```text
+globalCellIndex -> chunkIndex + localCellIndex
+localCellIndex -> local x/y/z en 0..63
+cellOrigin = chunkOriginGrid + int3(x, y, z)
 ```
 
 Regla:
 
 ```text
-Un thread procesa un cubo.
-El indice lineal se convierte a face/radial/u/v dentro del rango de superficie.
-Si groupCountX supera el limite de Unity, 07 debe partir la extraccion en varios dispatch con `cubeStartIndex`.
+Un thread procesa una celda 1x1x1 real.
+Si groupCountX supera el limite de Unity, 07 debe partir la extraccion en varios dispatch con `cellStartIndex`.
 Los dispatch parciales comparten el mismo buffer de vertices y el mismo estado GPU.
 El estado GPU solo se limpia una vez antes del primer dispatch del lote completo.
 ```
@@ -717,15 +734,15 @@ Flujo minimo:
 ```text
 1. Validar que 06 esta inicializado.
 2. Validar settings de Marching Cubes.
-3. Crear buffers GPU de salida y estado.
-4. Resetear contador/estado.
-5. Configurar parametros de superficie.
-6. Configurar includes/buffers de density(point) desde 06.
-7. Dispatch CS_ExtractPlanetSurface.
-8. Leer contador/estado de forma acotada para diagnostico.
-9. Leer vertices escritos de forma acotada para 08.
-10. Dejar el resultado disponible para pintado.
-11. Registrar Mesh runtime.
+3. Construir lista CPU de chunks candidatos.
+4. Subir chunk origins a GPU.
+5. Crear buffers GPU de salida y estado.
+6. Resetear contador/estado.
+7. Configurar buffers de density(point) desde 06.
+8. Dispatch CS_ExtractChunkedCartesianSurface.
+9. Leer contador/estado de forma acotada para diagnostico.
+10. Leer vertices escritos de forma acotada para 08.
+11. Dejar el resultado disponible para pintado.
 12. Mostrar diagnostico.
 13. Liberar recursos cuando se pida.
 ```
@@ -746,25 +763,44 @@ Dato serializable de configuracion.
 Responsabilidad:
 
 ```text
-Guardar rango de superficie.
-Guardar maxPlanetSurfaceTriangles.
+Guardar chunkSize.
+Guardar temporaryOutputTriangleCapacity.
+Guardar safetyMargin.
+Guardar limite opcional de chunks para pruebas.
 Guardar flags de diagnostico.
 Validar limites.
 No contener buffers GPU.
 No depender del Lab.
 ```
 
-### PlanetMarchingCubesSurfaceRange
+Valores iniciales:
 
-Dato pequeño de rango de muestreo de superficie.
+```text
+chunkSize = 64
+cellSizeGrid = 1
+safetyMargin = 4
+temporaryOutputTriangleCapacity = configurable alto para validacion bruta
+```
+
+### PlanetMarchingCubesChunkRange
+
+Dato pequeño para describir los chunks candidatos.
 
 Responsabilidad:
 
 ```text
-Representar offsets radiales, resolucion angular por cara y counts.
-Calcular cubeCount.
-Calcular bounds aproximados.
-No redefinir cell size.
+Calcular shell radial posible desde PlanetRecipe.
+Enumerar chunkCoord candidates.
+Calcular chunkAabb.
+Validar interseccion AABB-shell.
+No reparametrizar el planeta.
+```
+
+Nota:
+
+```text
+PlanetMarchingCubesSurfaceRange basado en cubemap/radial no es el contrato canonico de 07.
+Si existe codigo previo con ese nombre, se considera prototipo descartado o pendiente de reemplazo.
 ```
 
 ### PlanetMarchingCubesVertex
@@ -780,25 +816,6 @@ Mantener stride de 32 bytes.
 No transportar payload final.
 ```
 
-Layout cerrado:
-
-```text
-PlanetMarchingCubesVertex:
-    float4 positionAndCase;
-        xyz = posicion en GridCoordinates.
-        w   = caseIndex.
-
-    float4 normalAndDiagnostic;
-        xyz = normal geometrica en GridCoordinates.
-        w   = dato diagnostico/reservado.
-```
-
-Stride:
-
-```text
-32 bytes.
-```
-
 ### PlanetMarchingCubesExtractionResult
 
 Dato de intercambio entre 07 y 08.
@@ -806,34 +823,13 @@ Dato de intercambio entre 07 y 08.
 Responsabilidad:
 
 ```text
-Exponer el resultado valido de la extraccion.
+Exponer resultado valido de la extraccion.
 Exponer conteos ya leidos del estado GPU.
 Exponer si hubo overflow.
 Exponer vertices no indexados para readback/pintado de validacion.
 No contener density samples.
 No contener celdas de Marching Cubes.
 No contener una Mesh final.
-```
-
-Contenido conceptual:
-
-```text
-vertexBuffer.
-triangleCountAttempted.
-triangleCountWritten.
-vertexCountWritten.
-overflowFlag.
-invalidCaseFlag.
-processedCubeCount.
-hasValidResult.
-lastDiagnostic.
-```
-
-Regla:
-
-```text
-08 consume triangulos ya resueltos.
-08 no recibe el grid, no recibe densidades y no consulta triTable.
 ```
 
 ### PlanetMarchingCubesExtractor
@@ -846,19 +842,18 @@ Responsabilidad:
 Gestionar buffers GPU de Marching Cubes.
 Configurar ComputeShader.
 Conectar con PlanetGpuShapeEvaluator.
-Ejecutar dispatch.
+Ejecutar dispatch por chunks cartesianos.
 Gestionar readback acotado.
-Construir Mesh visual si se solicita.
 Registrar y liberar recursos.
 No contener parametros de forma de 06.
 ```
 
-Regla de implementacion:
+Regla:
 
 ```text
-No basarlo directamente en PlanetComputeShaderRunner actual.
-Ese runner esta documentado en codigo como adaptador del paso 02 para PlanetComputeDebug.compute.
-Si se extrae una utilidad comun de dispatch, debe ser una clase nueva o una ampliacion documentada sin romper el runner debug existente.
+No basarlo en el extractor cubemap/radial actual.
+No hacer cambios quirurgicos sobre la base equivocada.
+La implementacion canonica debe ser chunked/cartesian desde el diseño.
 ```
 
 ### PlanetMarchingCubesLab
@@ -870,7 +865,7 @@ Responsabilidad:
 ```text
 Exponer settings de 07.
 Validar que 06 esta listo.
-Ejecutar extraccion de superficie del planeta.
+Ejecutar extraccion cartesiana por chunks.
 Mostrar metricas.
 Ejecutar stress pequeño/medio.
 Liberar recursos propios.
@@ -885,27 +880,6 @@ El Lab solo orquesta PlanetMarchingCubesExtractor.
 Debe heredar de PlanetLabModule y respetar InitModule, ReleaseModule, ValidateModule y CaptureMetrics.
 ```
 
-Integracion con escena:
-
-```text
-PlanetImplementationLabSceneBuilder debe crear el GameObject/modulo de 06 y 07 cuando existan.
-El orden de modulos debe permitir inicializar 06 antes de extraer 07.
-Release All debe dejar el registry a cero como los tests actuales esperan.
-```
-
-### PlanetMarchingCubesLabEditor
-
-CustomEditor nativo para botones de 07.
-
-Responsabilidad:
-
-```text
-Mostrar parametros.
-Mostrar recursos vivos.
-Mostrar diagnostico.
-Exponer botones de Validate, Extract Planet Surface, Stress y Release.
-```
-
 ## Botones de Inspector
 
 Botones esperados:
@@ -914,7 +888,8 @@ Botones esperados:
 Validate Marching Cubes Setup
 Reset Demo Settings
 Init Marching Cubes GPU
-Extract Planet Surface
+Build Candidate Chunks
+Extract Cartesian Planet Surface
 Run Marching Cubes Smoke Test
 Run Stress Low
 Run Stress Medium
@@ -926,7 +901,7 @@ Release All
 Reglas:
 
 ```text
-Extract Planet Surface exige que 06 este inicializado.
+Extract Cartesian Planet Surface exige que 06 este inicializado.
 Release Marching Cubes GPU no libera recursos cuyo owner sea 06.
 Release All libera 07 y despues puede liberar 06 segun el orden del Lab.
 ```
@@ -937,9 +912,9 @@ Pruebas minimas:
 
 ```text
 Validate Marching Cubes Setup detecta referencias nulas.
-Init Marching Cubes GPU crea buffers y los registra.
-Extract Planet Surface ejecuta sin excepcion.
-Extract Planet Surface produce diagnostico con cubeCount.
+Build Candidate Chunks produce conteo de chunks.
+Extract Cartesian Planet Surface ejecuta sin excepcion.
+Extract Cartesian Planet Surface produce diagnostico con chunkCount y cellCount.
 Release Marching Cubes GPU libera buffers propios.
 Release doble no rompe.
 Init -> Release -> Init funciona.
@@ -949,17 +924,18 @@ Release All deja recursos propios de 07 a cero.
 Pruebas visuales:
 
 ```text
-La superficie del planeta muestra triangulos si el rango radial cruza la superficie.
+La superficie del planeta aparece con triangulos si los chunks candidatos cruzan la superficie.
+Las celdas son cartesianas, sin costuras de cubemap.
 Las normales apuntan hacia fuera.
 Cambiar seed cambia la silueta.
 Cambiar parametros de 06 cambia la superficie extraida.
-Cambiar maxPlanetSurfaceTriangles puede provocar overflow diagnosticado.
+Cambiar temporaryOutputTriangleCapacity puede provocar overflow diagnosticado.
 ```
 
 Regla:
 
 ```text
-Si la superficie no aparece por parametros extremos, se cambia el rango radial desde settings y se documenta el diagnostico.
+Si la superficie no aparece por parametros extremos, se revisa el calculo de chunks candidatos.
 No se añade una ruta alternativa de forma.
 ```
 
@@ -968,16 +944,16 @@ No se añade una ruta alternativa de forma.
 Tests EditMode esperados:
 
 ```text
-PlanetRecipe conserva WorldRadius derivado y añade VoronoiDivision/ContinentCells sin guardar WorldRadius.
-PlanetMarchingCubesSettings valida maxPlanetSurfaceTriangles > 0.
-PlanetMarchingCubesSurfaceRange calcula cubeCount correctamente.
-PlanetMarchingCubesSurfaceRange mantiene cubeSizeGrid = 1.
-PlanetMarchingCubesSurfaceRange expande el rango radial para cubrir elevacion, oceano y ruido de la receta.
+PlanetMarchingCubesSettings valida chunkSize = 64.
+PlanetMarchingCubesSettings valida cellSizeGrid = 1.
+PlanetMarchingCubesSettings valida temporaryOutputTriangleCapacity > 0.
+PlanetMarchingCubesChunkRange calcula shell inner/outer desde PlanetRecipe.
+PlanetMarchingCubesChunkRange detecta interseccion AABB-shell.
+PlanetMarchingCubesChunkRange no devuelve chunks fuera del volumen candidato salvo margen documentado.
 El orden de esquinas coincide con el documentado.
 El orden de aristas coincide con el documentado.
 El stride C# de PlanetMarchingCubesVertex coincide con 32 bytes.
-El calculo de vertexBufferBytes es correcto.
-El calculo de dispatch groups usa ceil(cubeCount / 64).
+El calculo de dispatch groups usa ceil(cellCount / 64).
 Release simulado no deja handles vivos.
 ```
 
@@ -987,7 +963,7 @@ Tests PlayMode esperados:
 PlanetMarchingCubesLab existe en PlanetImplementationLab cuando se integre.
 Validate Marching Cubes Setup no lanza excepcion con referencias validas.
 Init Marching Cubes GPU no lanza excepcion si hay soporte compute.
-Extract Planet Surface no lanza excepcion si 06 esta listo.
+Extract Cartesian Planet Surface no lanza excepcion si 06 esta listo.
 Release Marching Cubes GPU no lanza excepcion.
 Release doble no lanza excepcion.
 Init -> Release -> Init funciona.
@@ -1004,8 +980,8 @@ Si overflowFlag se activa, el test comprueba que no hay escritura fuera de buffe
 Regla:
 
 ```text
-No hacer readback masivo.
-No intentar mallar el planeta completo en tests.
+No intentar generar un planeta completo gigante en tests automaticos.
+Los tests prueban el pipeline con receta pequeña.
 ```
 
 ## Metricas
@@ -1013,10 +989,12 @@ No intentar mallar el planeta completo en tests.
 Metricas iniciales:
 
 ```text
-surfaceRadialCubeCount.
-surfaceFaceResolution.
-cubeCount.
-maxPlanetSurfaceTriangles.
+chunkSize.
+cellSizeGrid.
+chunkCountCandidate.
+chunkCountProcessed.
+cellCountProcessed.
+temporaryOutputTriangleCapacity.
 maxPlanetSurfaceVertices.
 triangleCountAttempted.
 triangleCountWritten.
@@ -1028,12 +1006,11 @@ ownedGpuEstimatedBytes.
 ownedCpuEstimatedBytes.
 dispatchThreadGroupSize.
 dispatchGroupCount.
+lastChunkBuildMs.
 lastDispatchRequestMs.
 lastReadbackRequestMs.
-lastMeshBuildMs.
 lastReleaseMs.
 liveGraphicsBuffers.
-liveRuntimeMeshes.
 lastDiagnostic.
 ```
 
@@ -1066,9 +1043,8 @@ Reglas:
 ```text
 No crear arrays nuevos por frame.
 No usar LINQ en caminos calientes.
-No guardar todos los vertices de un planeta completo.
-Preasignar buffers CPU solo para readback acotado.
-Reutilizar arrays/listas de Mesh cuando sea razonable.
+No guardar densidades de todo el planeta.
+Preasignar buffers CPU solo para chunk origins y readback acotado.
 Liberar Mesh runtime explicitamente.
 ```
 
@@ -1076,6 +1052,7 @@ Datos CPU esperados:
 
 ```text
 Settings serializados.
+Lista de chunk origins candidatos.
 Estado/diagnostico.
 Array/lista acotada para vertices leidos.
 Indices lineales de Mesh.
@@ -1085,7 +1062,7 @@ Mesh runtime.
 Regla:
 
 ```text
-El tamaño CPU crece con maxPlanetSurfaceTriangles, no con el volumen del planeta.
+El tamaño CPU crece con chunkCount candidato y temporaryOutputTriangleCapacity de validacion, no con el volumen completo del planeta.
 ```
 
 ## Gestion de VRAM
@@ -1093,9 +1070,10 @@ El tamaño CPU crece con maxPlanetSurfaceTriangles, no con el volumen del planet
 Recursos GPU previstos:
 
 ```text
+GraphicsBuffer de chunk origins.
 GraphicsBuffer de vertices.
 GraphicsBuffer de estado/contador.
-GraphicsBuffer de parametros si aplica.
+GraphicsBuffer de tablas.
 Buffers de 06 referenciados, no owned.
 ```
 
@@ -1115,7 +1093,7 @@ No se crea buffer de densidades global.
 
 ```text
 Liberar buffers GPU propios.
-Liberar Mesh runtime.
+Liberar Mesh runtime si 07 posee una de validacion.
 Cancelar/ignorar readbacks pendientes de forma segura.
 Marcar handles como liberados.
 Limpiar referencias internas.
@@ -1138,8 +1116,8 @@ Riesgos principales:
 ```text
 Duplicar density(point) en 07.
 Crear un Marching Cubes CPU paralelo como validacion principal.
-Mallar el planeta completo por accidente.
-Confundir la superficie inicial con chunk final.
+Volver a introducir cubemap/cáscara radial como atajo.
+Confundir chunk candidato con chunk jugable final.
 Crear un buffer de densidades global.
 Crear vertices sin limite y romper memoria.
 Readback masivo o bloqueante.
@@ -1153,9 +1131,12 @@ Mitigaciones:
 ```text
 Include obligatorio de PlanetShapeDensity.hlsl.
 Ruta GPU como fuente real.
-Rango inicial de superficie documentado y expandido por receta antes del dispatch.
-maxPlanetSurfaceTriangles obligatorio.
+Chunks cartesianos de 64x64x64.
+Cell size fijo de 1x1x1.
+Lista de chunks candidatos documentada.
+temporaryOutputTriangleCapacity obligatorio.
 overflowFlag obligatorio.
+No exponer un resultado parcial como superficie valida.
 Readback acotado y solo para visualizacion actual.
 Flip de normal hacia fuera.
 Owner de recursos separado.
@@ -1175,21 +1156,19 @@ PlanetMarchingCubesTables.hlsl conserva solo constantes pequeñas de topologia.
 caseIndex es la mascara de 8 bits de las esquinas solidas del cubo.
 caseIndex = 0 y caseIndex = 255 generan 0 triangulos.
 El orden de esquinas/aristas documentado debe coincidir con la tabla.
-El estado GPU usa PlanetMarchingCubesStateGpu de 32 bytes.
 El resultado expuesto a 08 es PlanetMarchingCubesExtractionResult.
-El primer rango es la superficie del planeta sobre 6 caras de cubemap y una banda radial.
-El rango serializado inicial usa 6 x 16 x 16 x 1024 cubos.
-El rango efectivo puede crecer para cubrir picos por encima de `GridRadius` y depresiones por debajo.
-La cell logica sigue siendo 1x1x1.
+07 canonico usa chunks cartesianos de 64x64x64 celdas.
+La cell logica es 1x1x1.
 La extraccion inicial corre en GPU.
 La Mesh visual usa vertices no indexados.
 Los indices son lineales y se generan en CPU solo para la Mesh visual.
-Las normales son geometricas por triangulo.
+Las normales son geometricas por triangulo y salen del winding de triTable.
 El readback es acotado y solo para visualizacion actual.
 El pintado queda para 08.
 El pool global de tris queda para 09.
 El reparto de detalle queda para 10.
 La visibilidad queda para 11.
+El extractor cubemap/radial no forma parte del 07 canonico.
 ```
 
 ## Criterio de cierre
@@ -1201,10 +1180,12 @@ Este documento queda listo para implementar cuando aceptemos este contrato:
 07 no redefine el grid ni la cell logica.
 07 no reimplementa la forma del planeta.
 07 ejecuta Marching Cubes en GPU.
+07 usa chunks cartesianos reales de 64x64x64.
 07 genera vertices acotados para que 08 pinte una Mesh visual.
 07 registra y libera sus recursos.
-07 mide cubos, triangulos, vertices, overflow, memoria y tiempos.
+07 mide chunks, celdas, triangulos, vertices, overflow, memoria y tiempos.
 07 no define pintado final ni payload final.
+07 no usa cubemap/radial shell como atajo.
 ```
 
 El cierre real del bloque ocurre en:
@@ -1217,7 +1198,7 @@ Ese deadline valida conjuntamente:
 
 ```text
 Forma GPU.
-Marching Cubes.
+Marching Cubes cartesiano bruto.
 Pintado del resultado de Marching Cubes.
 Pool global, reparto de detalle y visibilidad quedan reservados para 09, 10 y 11.
 ```

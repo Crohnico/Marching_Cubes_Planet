@@ -1,41 +1,51 @@
 using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.MarchingCubes;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace MarchingCubesPlanet.Lab.Tests
 {
     public sealed class PlanetMarchingCubesSettingsTests
     {
         [Test]
-        public void DefaultSurfaceRangeMatchesPlanetSurface()
+        public void DefaultChunkRangeMatchesCanonicalCartesianGrid()
         {
-            PlanetMarchingCubesSurfaceRange range = PlanetMarchingCubesSurfaceRange.Default();
+            PlanetMarchingCubesChunkRange range = PlanetMarchingCubesChunkRange.Default();
 
-            Assert.AreEqual(-512, range.radialStartOffset);
-            Assert.AreEqual(1024, range.radialCubeCount);
-            Assert.AreEqual(16, range.faceResolution);
-            Assert.AreEqual(1f, range.cubeSizeGrid);
-            Assert.AreEqual(1572864L, range.CubeCount);
+            Assert.AreEqual(64, range.chunkSize);
+            Assert.AreEqual(1, range.cellSizeGrid);
+            Assert.AreEqual(4, range.safetyMargin);
+            Assert.AreEqual(0, range.maxCandidateChunks);
         }
 
         [Test]
-        public void SurfaceRangeRejectsNonUnitCubeSize()
+        public void ChunkRangeRejectsNonCanonicalChunkSize()
         {
-            PlanetMarchingCubesSurfaceRange range = PlanetMarchingCubesSurfaceRange.Default();
-            range.cubeSizeGrid = 2f;
+            PlanetMarchingCubesChunkRange range = PlanetMarchingCubesChunkRange.Default();
+            range.chunkSize = 32;
 
             Assert.IsFalse(range.Validate(out string message));
-            StringAssert.Contains("cubeSizeGrid", message);
+            StringAssert.Contains("chunkSize", message);
         }
 
         [Test]
-        public void SettingsValidateTriangleBudget()
+        public void ChunkRangeRejectsNonUnitCellSize()
+        {
+            PlanetMarchingCubesChunkRange range = PlanetMarchingCubesChunkRange.Default();
+            range.cellSizeGrid = 2;
+
+            Assert.IsFalse(range.Validate(out string message));
+            StringAssert.Contains("cellSizeGrid", message);
+        }
+
+        [Test]
+        public void SettingsValidateTemporaryOutputCapacity()
         {
             PlanetMarchingCubesSettings settings = PlanetMarchingCubesSettings.Default();
-            settings.maxPlanetSurfaceTriangles = 0;
+            settings.temporaryOutputTriangleCapacity = 0;
 
             Assert.IsFalse(settings.Validate(out string message));
-            StringAssert.Contains("maxPlanetSurfaceTriangles", message);
+            StringAssert.Contains("temporaryOutputTriangleCapacity", message);
         }
 
         [Test]
@@ -46,22 +56,66 @@ namespace MarchingCubesPlanet.Lab.Tests
             settings.EnsureDefaults();
 
             Assert.IsTrue(settings.Validate(out string message), message);
-            Assert.AreEqual(PlanetMarchingCubesSurfaceRange.Default().CubeCount, settings.surfaceRange.CubeCount);
-            Assert.AreEqual(1000000, settings.maxPlanetSurfaceTriangles);
+            Assert.AreEqual(64, settings.chunkRange.chunkSize);
+            Assert.AreEqual(1, settings.chunkRange.cellSizeGrid);
+            Assert.AreEqual(4, settings.chunkRange.safetyMargin);
+            Assert.AreEqual(1000000, settings.temporaryOutputTriangleCapacity);
         }
 
         [Test]
-        public void SurfaceRangeExpandsToCoverRecipeDisplacement()
+        public void ChunkRangeCalculatesShellFromRecipeDisplacement()
         {
             PlanetRecipe recipe = PlanetRecipe.Default();
             recipe.GridRadius = 2000;
-            PlanetMarchingCubesSettings settings = PlanetMarchingCubesSettings.Default();
 
-            settings.EnsureSurfaceRangeCoversRecipe(in recipe);
+            PlanetMarchingCubesChunkRange.CalculateSurfaceShell(
+                in recipe,
+                PlanetMarchingCubesChunkRange.DefaultSafetyMargin,
+                out float innerRadius,
+                out float outerRadius);
 
-            Assert.LessOrEqual(settings.surfaceRange.radialStartOffset, -1000);
-            Assert.GreaterOrEqual(settings.surfaceRange.RadialEndOffset, 1061);
-            Assert.AreEqual(1f, settings.surfaceRange.cubeSizeGrid);
+            Assert.That(innerRadius, Is.EqualTo(900f).Within(0.01f));
+            Assert.That(outerRadius, Is.EqualTo(3001f).Within(0.01f));
+        }
+
+        [Test]
+        public void ChunkRangeDetectsAabbShellIntersection()
+        {
+            Assert.IsTrue(PlanetMarchingCubesChunkRange.AabbIntersectsSphericalShell(
+                new Vector3(64f, -32f, -32f),
+                new Vector3(128f, 32f, 32f),
+                90f,
+                110f));
+
+            Assert.IsFalse(PlanetMarchingCubesChunkRange.AabbIntersectsSphericalShell(
+                new Vector3(256f, 256f, 256f),
+                new Vector3(320f, 320f, 320f),
+                90f,
+                110f));
+        }
+
+        [Test]
+        public void ChunkRangeBuildsCartesianChunkOrigins()
+        {
+            PlanetRecipe recipe = PlanetRecipe.Default();
+            recipe.GridRadius = 64;
+            recipe.MinLandElevation = 0.01f;
+            recipe.MaxLandElevation = 0.01f;
+            recipe.MinHeightModifier = 1f;
+            recipe.MaxHeightModifier = 1f;
+            recipe.OceanDepth = 0.01f;
+            recipe.MinimumOceanDepth = 0.01f;
+            recipe.SurfaceNoiseAmplitude = 0f;
+
+            PlanetMarchingCubesChunkRange range = PlanetMarchingCubesChunkRange.Default();
+            PlanetMarchingCubesChunkOrigin[] chunks = range.BuildCandidateChunks(in recipe, out PlanetMarchingCubesChunkBuildStats stats);
+
+            Assert.Greater(chunks.Length, 0);
+            Assert.AreEqual(chunks.Length, stats.CandidateChunkCount);
+            Assert.AreEqual((long)chunks.Length * 64L * 64L * 64L, stats.CandidateCellCount);
+            Assert.AreEqual(0, chunks[0].x % 64);
+            Assert.AreEqual(0, chunks[0].y % 64);
+            Assert.AreEqual(0, chunks[0].z % 64);
         }
 
         [Test]
@@ -69,6 +123,7 @@ namespace MarchingCubesPlanet.Lab.Tests
         {
             Assert.AreEqual(32, PlanetMarchingCubesVertex.Stride);
             Assert.AreEqual(32, PlanetMarchingCubesState.Stride);
+            Assert.AreEqual(16, PlanetMarchingCubesChunkOrigin.Stride);
         }
     }
 }

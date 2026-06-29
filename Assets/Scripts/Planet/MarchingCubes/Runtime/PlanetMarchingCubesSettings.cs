@@ -1,5 +1,4 @@
 using System;
-using MarchingCubesPlanet.Coordinates;
 using UnityEngine.Serialization;
 
 namespace MarchingCubesPlanet.MarchingCubes
@@ -7,55 +6,53 @@ namespace MarchingCubesPlanet.MarchingCubes
     [Serializable]
     public struct PlanetMarchingCubesSettings
     {
-        public const int DefaultMaxPlanetSurfaceTriangles = 1000000;
+        public const int DefaultTemporaryOutputTriangleCapacity = 1000000;
 
-        public PlanetMarchingCubesSurfaceRange surfaceRange;
+        [FormerlySerializedAs("surfaceRange")]
+        public PlanetMarchingCubesChunkRange chunkRange;
+        [FormerlySerializedAs("maxPlanetSurfaceTriangles")]
         [FormerlySerializedAs("maxValidationTriangles")]
-        public int maxPlanetSurfaceTriangles;
+        public int temporaryOutputTriangleCapacity;
 
         public static PlanetMarchingCubesSettings Default()
         {
             return new PlanetMarchingCubesSettings
             {
-                surfaceRange = PlanetMarchingCubesSurfaceRange.Default(),
-                maxPlanetSurfaceTriangles = DefaultMaxPlanetSurfaceTriangles
+                chunkRange = PlanetMarchingCubesChunkRange.Default(),
+                temporaryOutputTriangleCapacity = DefaultTemporaryOutputTriangleCapacity
             };
         }
 
-        public int MaxPlanetSurfaceVertices => maxPlanetSurfaceTriangles * 3;
+        public int TemporaryOutputVertexCapacity => temporaryOutputTriangleCapacity * 3;
 
-        public long EstimatedVertexBytes => (long)MaxPlanetSurfaceVertices * PlanetMarchingCubesVertex.Stride;
+        public long EstimatedVertexBytes => (long)TemporaryOutputVertexCapacity * PlanetMarchingCubesVertex.Stride;
 
         public void EnsureDefaults()
         {
             PlanetMarchingCubesSettings defaults = Default();
-            if (surfaceRange.radialCubeCount <= 0 || surfaceRange.faceResolution <= 0)
+            if (chunkRange.chunkSize <= 0 && chunkRange.cellSizeGrid <= 0 && chunkRange.safetyMargin == 0 && chunkRange.maxCandidateChunks == 0)
             {
-                surfaceRange = defaults.surfaceRange;
+                chunkRange = defaults.chunkRange;
             }
 
-            if (maxPlanetSurfaceTriangles <= 0)
-            {
-                maxPlanetSurfaceTriangles = defaults.maxPlanetSurfaceTriangles;
-            }
-        }
+            chunkRange.EnsureDefaults();
 
-        public void EnsureSurfaceRangeCoversRecipe(in PlanetRecipe recipe)
-        {
-            EnsureDefaults();
-            surfaceRange.ExpandToCover(in recipe);
+            if (temporaryOutputTriangleCapacity <= 0)
+            {
+                temporaryOutputTriangleCapacity = defaults.temporaryOutputTriangleCapacity;
+            }
         }
 
         public bool Validate(out string message)
         {
-            if (!surfaceRange.Validate(out message))
+            if (!chunkRange.Validate(out message))
             {
                 return false;
             }
 
-            if (maxPlanetSurfaceTriangles <= 0)
+            if (temporaryOutputTriangleCapacity <= 0)
             {
-                message = "maxPlanetSurfaceTriangles must be greater than zero.";
+                message = "temporaryOutputTriangleCapacity must be greater than zero.";
                 return false;
             }
 
@@ -65,9 +62,9 @@ namespace MarchingCubesPlanet.MarchingCubes
 
         public override string ToString()
         {
-            return surfaceRange +
-                   "\nmaxPlanetSurfaceTriangles=" + maxPlanetSurfaceTriangles +
-                   "\nmaxPlanetSurfaceVertices=" + MaxPlanetSurfaceVertices +
+            return chunkRange +
+                   "\ntemporaryOutputTriangleCapacity=" + temporaryOutputTriangleCapacity +
+                   "\ntemporaryOutputVertexCapacity=" + TemporaryOutputVertexCapacity +
                    "\nestimatedVertexBytes=" + EstimatedVertexBytes;
         }
     }

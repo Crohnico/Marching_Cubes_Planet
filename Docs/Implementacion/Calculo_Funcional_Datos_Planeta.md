@@ -81,16 +81,16 @@ density = radius - distance(position, center)
 
 Eso produce una esfera perfecta.
 
-Si hay deformacion, el radio efectivo cambia por direccion:
+Si hay deformacion, el radio efectivo cambia para el punto evaluado:
 
 ```text
-effectiveRadius(direction) = radius + surfaceOffset(direction)
+effectiveRadius(point) = radius + surfaceOffset(point)
 ```
 
 La superficie real aparece donde:
 
 ```text
-distance(position, center) == effectiveRadius(direction)
+distance(position, center) == effectiveRadius(position)
 ```
 
 Esto permite que el planeta tenga silueta irregular, masas de tierra, cuencas oceanicas y relieve sin guardar una malla fija como fuente de verdad.
@@ -160,11 +160,15 @@ t = elevationCurve(t)
 landElevation = lerp(minElevation, maxElevation, t)
 ```
 
-Despues se aplica un modificador por celda:
+Despues se aplica un modificador por celda sobre el offset ya mezclado con el borde continental:
 
 ```text
 heightModifier = randomRange(seed, cellIndex, minHeightModifier, maxHeightModifier)
-landOffset = radius * landElevation * heightModifier
+landOffset = radius * landElevation
+nearestSurfaceOffset = nearestBaseOffset * nearestHeightModifier
+secondSurfaceOffset = secondBaseOffset * secondHeightModifier
+boundaryOffset = (nearestSurfaceOffset + secondSurfaceOffset) / 2
+surfaceOffset = lerp(boundaryOffset, nearestSurfaceOffset, interiorBlend)
 ```
 
 En la version que nos gusta:
@@ -240,7 +244,9 @@ La idea es:
 ```text
 localPosition = position - center
 normalizedPosition = localPosition / radius
-noiseValue = coherentNoise(normalizedPosition * frequency * roughnessModifier)
+boundaryRoughness = (nearestRoughness + secondRoughness) / 2
+effectiveRoughness = lerp(boundaryRoughness, nearestRoughness, interiorBlend)
+noiseValue = coherentNoise(normalizedPosition * frequency * effectiveRoughness)
 offset += noiseValue * radius * amplitude
 ```
 
@@ -248,6 +254,7 @@ El modificador de rugosidad tambien cambia por celda Voronoi:
 
 ```text
 roughnessModifier = randomRange(seed, cellIndex, minRoughness, maxRoughness)
+effectiveRoughness = roughnessModifier mezclado con la segunda celda en borde Voronoi
 ```
 
 En la version que nos gusta:
@@ -275,7 +282,7 @@ surfaceOffset = baseOffset + fineOffset
 Y por tanto:
 
 ```text
-effectiveRadius(direction) = radius + surfaceOffset
+effectiveRadius(point) = radius + surfaceOffset(point)
 ```
 
 La forma del planeta es el conjunto de puntos cuya distancia al centro coincide con ese radio efectivo.
@@ -406,10 +413,10 @@ Luego se muestrea ese campo en celdas y Marching Cubes extrae la superficie.
 La parte visual que conviene recordar no es una clase, una cache o una ruta de datos. Es esta funcion:
 
 ```text
-effectiveRadius(direction) =
+effectiveRadius(point) =
     radius
     + voronoiContinentOffset(direction)
-    + coherentSurfaceNoise(direction)
+    + coherentSurfaceNoise(localPosition / radius)
 ```
 
 Todo lo demas puede cambiar.

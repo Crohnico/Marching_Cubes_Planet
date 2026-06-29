@@ -23,9 +23,9 @@ Docs/Implementacion/Calculo_Funcional_Datos_Planeta.md
 Contrato funcional:
 
 ```text
-direction -> surfaceOffset(direction)
-direction -> effectiveRadius(direction)
-point     -> density(point)
+point -> surfaceOffset(point)
+point -> effectiveRadius(point)
+point -> density(point)
 ```
 
 Formula base:
@@ -33,7 +33,7 @@ Formula base:
 ```text
 density(planetLocalGridPosition) =
     radius
-    + surfaceOffset(direction)
+    + surfaceOffset(planetLocalGridPosition)
     - distance(planetLocalGridPosition, center)
 ```
 
@@ -95,6 +95,17 @@ El planeta base es campo escalar implicito, no volumen materializado.
 09, 10 y 11 deciden despues pool global, reparto de detalle, camara, oclusion y frustum.
 ```
 
+Frontera obligatoria:
+
+```text
+Solo 06 cambia la formula de density(point).
+07 no sabe si density(point) viene de esfera pura, Voronoi, Perlin, cuevas o terraformado.
+07 siempre ejecuta el mismo algoritmo: celdas 1x1x1, 8 esquinas, caseIndex y triTable.
+08 siempre ejecuta el mismo algoritmo: convertir los triangulos completos de 07 en Mesh visible.
+Si una esfera pura falla, el bug esta en 07/08.
+Si una esfera pura funciona y una formula compleja falla, el bug esta en 06 o en la cobertura de chunks necesaria para esa formula.
+```
+
 ## Alcance de esta fase
 
 Entra:
@@ -108,8 +119,8 @@ Elevacion por celda de tierra.
 Profundidad oceanica.
 Mezcla de bordes continentales.
 Ruido fino inicial de superficie.
-surfaceOffset(direction).
-effectiveRadius(direction).
+surfaceOffset(point).
+effectiveRadius(point).
 density(point).
 Kernel GPU de evaluacion de puntos.
 Buffers GPU necesarios para parametros y celdas Voronoi.
@@ -343,12 +354,12 @@ Datos persistidos.
 
 ## Modelo funcional
 
-### surfaceOffset(direction)
+### surfaceOffset(point)
 
 Responsabilidad:
 
 ```text
-Calcular cuanto sube o baja la superficie en una direccion radial.
+Calcular cuanto sube o baja la superficie para un punto evaluado.
 ```
 
 Componentes:
@@ -365,23 +376,24 @@ Ruido fino.
 Regla:
 
 ```text
-surfaceOffset se calcula por direccion.
+La base continental se calcula por direccion.
+El ruido fino se calcula con `localPosition / radius`, igual que la formula funcional previa.
 No requiere materializar un volumen global.
 ```
 
-### effectiveRadius(direction)
+### effectiveRadius(point)
 
 Formula:
 
 ```text
-effectiveRadius(direction) =
-    radius + surfaceOffset(direction)
+effectiveRadius(point) =
+    radius + surfaceOffset(point)
 ```
 
 Responsabilidad:
 
 ```text
-Dar el radio real de superficie para esa direccion.
+Dar el radio real de superficie para el punto evaluado.
 ```
 
 ### density(point)
@@ -390,7 +402,7 @@ Formula:
 
 ```text
 density(point) =
-    effectiveRadius(direction) - distance(point, center)
+    effectiveRadius(point) - distance(point, center)
 ```
 
 Donde:
@@ -471,34 +483,34 @@ roughnessModifier
 Proceso:
 
 ```text
-1. Generar VoronoiDivision direcciones deterministas desde seed.
-2. Elegir ContinentCells indices deterministas.
+1. Generar VoronoiDivision direcciones aleatorias deterministas desde seed.
+2. Elegir ContinentCells indices con shuffle determinista desde seed.
 3. Marcar celdas tierra/oceano.
 4. Calcular offset base por celda.
 5. Calcular roughnessModifier por celda.
-6. Subir estos datos a GPU.
+6. Calcular heightModifier por celda.
+7. Subir estos datos a GPU.
 ```
 
 Distribucion de direcciones:
 
 ```text
-Fibonacci sphere determinista.
+Secuencia aleatoria determinista heredada del perfil funcional previo.
 ```
 
 Motivo:
 
 ```text
-Distribuye puntos de forma bastante uniforme sobre la esfera.
-Es barata.
-No necesita relajacion ni datos precalculados.
-Es estable por indice y facil de reproducir con seed.
+Replica la identidad procedural previa antes de optimizar distribucion.
+No necesita assets precalculados.
+Es estable por indice y reproducible con seed.
 ```
 
 Regla:
 
 ```text
-La distribucion base usa Fibonacci sphere.
-La seed puede rotar, permutar o desplazar la seleccion de celdas, pero no debe romper la uniformidad basica.
+La distribucion base usa la secuencia determinista previa.
+La seed cambia direcciones, seleccion de continentes y alturas.
 ```
 
 Decision inicial:
@@ -525,11 +537,15 @@ La preparacion CPU de parametros no convierte el planeta en datos volumetricos.
 Decision de elevacion inicial:
 
 ```text
-t = random01(seed, cellIndex)
+t = random01(secuenciaElevacion)
 t = smoothstep(0, 1, t)
 landElevation = lerp(minLandElevation, maxLandElevation, t)
+landOffset = radius * landElevation
 heightModifier = randomRange(seed, cellIndex, minHeightModifier, maxHeightModifier)
-landOffset = radius * landElevation * heightModifier
+nearestSurfaceOffset = nearestBaseOffset * nearestHeightModifier
+secondSurfaceOffset = secondBaseOffset * secondHeightModifier
+boundaryOffset = (nearestSurfaceOffset + secondSurfaceOffset) / 2
+surfaceOffset = lerp(boundaryOffset, nearestSurfaceOffset, interiorBlend)
 ```
 
 Decision de oceano inicial:
@@ -560,7 +576,7 @@ Decision no bloqueante:
 
 ```text
 Empezar con VoronoiDivision = 100 y ContinentCells = 84.
-Usar Fibonacci sphere como distribucion inicial.
+Usar la distribucion determinista heredada del perfil funcional previo.
 Mantener los parametros visibles en Inspector.
 Medir coste antes de aumentar complejidad.
 ```
@@ -573,7 +589,9 @@ Formula conceptual:
 
 ```text
 normalizedPosition = localPosition / radius
-noiseValue = coherentNoise(normalizedPosition * frequency * roughnessModifier)
+boundaryRoughness = (nearestRoughness + secondRoughness) / 2
+effectiveRoughness = lerp(boundaryRoughness, nearestRoughness, interiorBlend)
+noiseValue = coherentNoise(normalizedPosition * frequency * effectiveRoughness)
 offset += noiseValue * radius * amplitude
 ```
 
@@ -605,9 +623,9 @@ Salida normalizada esperada en rango aproximado [-1, 1].
 Reglas:
 
 ```text
-Perlin3D recibe direction normalizada, frecuencia, roughnessModifier y seed.
-El ruido de superficie no debe depender del radio de la muestra.
-Para una misma direccion radial, `surfaceOffset(direction)` debe ser estable.
+Perlin3D recibe posicion local normalizada por radio, frecuencia, roughness efectivo mezclado en borde Voronoi y seed.
+Esta regla replica la formula funcional previa: `normalizedPosition = localPosition / radius`.
+El ruido de superficie puede variar dentro de la banda radial evaluada por Marching Cubes.
 El seed entra como offset/hash determinista, no como dependencia de tiempo.
 Si Perlin3D resulta caro en Quest 3, se mide y se documenta antes de sustituirlo.
 ```
@@ -656,8 +674,8 @@ Contenido inicial:
 direction.xyz        -> direccion normalizada de la celda sobre la esfera.
 continentFlag        -> 1 si es continente, 0 si es oceano.
 baseOffset           -> offset radial base de esa celda, ya sea tierra u oceano.
-roughnessModifier    -> modificador de rugosidad para Perlin3D.
-cellIndexOrHash      -> id/hash determinista para debug o variantes futuras.
+roughnessModifier    -> modificador de rugosidad para Perlin3D, mezclado con la segunda celda en borde Voronoi.
+heightModifier       -> modificador de altura aplicado por celda antes de mezclar el borde Voronoi.
 padding              -> relleno para alinear.
 ```
 
@@ -671,7 +689,7 @@ float4 directionAndFlag:
 float4 offsetRoughnessHash:
     x = baseOffset.
     y = roughnessModifier.
-    z = cellIndexOrHash.
+    z = heightModifier.
     w = padding/reservado.
 ```
 
@@ -703,9 +721,10 @@ Responsabilidad:
 
 ```text
 Generar direcciones deterministas.
-Elegir celdas tierra.
+Elegir celdas tierra con shuffle determinista.
 Asignar offset base.
 Asignar roughness.
+Asignar heightModifier.
 Rellenar buffer CPU preasignado o array controlado.
 No crear recursos GPU.
 ```
@@ -1007,7 +1026,7 @@ Pruebas de sentido funcional:
 ```text
 density(center) se considera solido.
 density(point muy lejos) se considera aire.
-effectiveRadius(direction) queda dentro de rangos esperados.
+effectiveRadius(point) queda dentro de rangos esperados.
 surfaceOffset contiene valores negativos para oceano y positivos para tierra.
 La misma seed y parametros producen el mismo resumen de celdas.
 Otra seed produce otra distribucion.
@@ -1032,7 +1051,7 @@ ContinentCells <= VoronoiDivision.
 PlanetGpuShapeCellBuilder produce mismas celdas con misma seed.
 Cambiar seed cambia al menos parte de las celdas.
 El numero de celdas tierra coincide con ContinentCells.
-La distribucion Fibonacci genera direcciones normalizadas.
+La distribucion heredada genera direcciones normalizadas.
 El stride C# esperado para PlanetGpuShapeCell coincide con el documentado.
 El calculo de bytes estimados es correcto.
 Release simulado no deja handles vivos.
@@ -1142,7 +1161,7 @@ PlanetRecipe incorpora todos los parametros de forma.
 No existe una fuente paralela tipo ShapeSettings para definir la identidad del planeta.
 VoronoiDivision inicial = 100.
 ContinentCells inicial = 84.
-La distribucion inicial de direcciones Voronoi usa Fibonacci sphere.
+La distribucion inicial de direcciones Voronoi replica el perfil funcional previo.
 El ruido coherente inicial usa Perlin3D.
 Perlin3D inicial es procedural sin texturas, con hash determinista por seed.
 PlanetGpuShapeCell usa 2 float4 y stride de 32 bytes.

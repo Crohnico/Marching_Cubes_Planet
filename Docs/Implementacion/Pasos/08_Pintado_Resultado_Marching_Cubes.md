@@ -23,7 +23,17 @@ El objetivo es convertir la salida de 07 en una representacion visual clara, med
 Contrato funcional:
 
 ```text
-triangulos de 07 -> Mesh/material de validacion -> render visible -> metricas/release
+resultado completo de 07 -> Mesh/material de validacion -> render visible -> metricas/release
+```
+
+Regla central:
+
+```text
+08 no interpreta la formula de 06.
+08 no consulta density(point).
+08 no ejecuta Marching Cubes.
+08 no decide cuantos triangulos se conservan.
+08 pinta todos los triangulos validos que 07 expone o falla con diagnostico.
 ```
 
 ## Modelo mental
@@ -41,6 +51,16 @@ campo escalar -> cubos -> caseIndex -> triTable -> triangulos
 ```
 
 08 parte 1 pinta esos triangulos.
+
+08 parte 1 no puede pintar "los primeros N triangulos" como si eso fuese el planeta.
+
+Si el resultado de 07 no cabe en la Mesh temporal de validacion:
+
+```text
+08 bloquea el pintado.
+08 reporta capacidad insuficiente.
+08 no muestra una malla parcial.
+```
 
 09, 10 y 11, en documentos separados, definiran:
 
@@ -102,7 +122,8 @@ Terraformado.
 Regla:
 
 ```text
-08 parte 1 no descarta triangulos por presupuesto salvo limite de seguridad para no romper memoria.
+08 parte 1 no descarta triangulos por presupuesto.
+Si hay un limite de seguridad de Mesh temporal y el resultado no cabe, se bloquea el pintado con diagnostico.
 El presupuesto real queda para 09.
 La optimizacion interna de geometria queda para 10.
 La visibilidad/occlusion/frustum queda para 11.
@@ -234,6 +255,8 @@ Usar el shader/material MarchingCubesPlanet/Planet/Surface como material por def
 El material por defecto no debe ser un material de vertex color.
 El material de superficie debe ser opaco.
 Durante la validacion 06-08 se usa doble cara para no ocultar triangulos por winding/culling mientras se revisa la orientacion final.
+El material asset de mundo inicial es `Resources/PlanetWorld_Surface`, recuperado del antiguo `Planet Height Atlas`.
+El material asset de oceano inicial es `Resources/PlanetOcean`, recuperado del antiguo `Ocean`.
 ```
 
 Decision cerrada:
@@ -267,13 +290,15 @@ El modo recomendado para leer forma planetaria es HeightColor.
 Atlas inicial:
 
 ```text
+UV.x = 0.5 porque el atlas recuperado es una tira vertical de altura.
 UV.y = altura respecto al radio de la receta y al nivel de mar, no min/max de la mesh pintada.
-UV.x = indice de la celda `PlanetGpuShapeCell` asignada al triangulo.
-Cada triangulo usa una sola celda para evitar interpolacion suave entre biomas.
-Las celdas salen de la misma receta que 06: `VoronoiDivision`, `ContinentCells` y seed.
-Las columnas de continente usan arena, verde oscuro, verde, marron, gris y blanco nieve.
-Las columnas de oceano usan rosa bajo agua y arena humeda en costa.
-El shader fuerza `UV.x` al centro de la columna para que se lean celdas, no manchas suavizadas entre columnas.
+UV.y = 0.337 es el nivel de mar/costa heredado del `PlanetNoiseProfile` antiguo.
+UV.y 0.337..1.0 representa superficie emergida.
+UV.y 0.0..0.337 representa superficie bajo el agua.
+Cada triangulo usa una sola coordenada UV calculada en su centro para evitar interpolacion suave entre bandas de altura.
+La paleta base se decide por altura, no por flag continente/oceano de la celda.
+El gradiente inicial de abajo a arriba es rosa submarino, salmon, rojo/marron oscuro, arena, amarillo palido, verde claro, verde oscuro, marron, gris y blanco nieve.
+El material de superficie usa el `PlanetHeightAtlas.png` recuperado de la historia anterior al reinicio del proyecto.
 ```
 
 No objetivo:
@@ -284,14 +309,14 @@ Agua final.
 Atlas final de biomas.
 ```
 
-## Limite de seguridad
+## Capacidad temporal de Mesh
 
-08 parte 1 puede tener un limite de seguridad para no construir una Mesh demasiado grande.
+08 parte 1 puede tener una capacidad temporal de seguridad para no construir una Mesh demasiado grande.
 
 Decision inicial:
 
 ```text
-maxPaintedTriangles = 1000000
+meshTriangleCapacity = 1000000
 ```
 
 Regla:
@@ -299,7 +324,8 @@ Regla:
 ```text
 Este limite no es el presupuesto final del juego.
 Es un cortafuegos de validacion.
-Si 07 produce mas triangulos, 08 parte 1 puede truncar la Mesh visible y debe marcarlo como visualTruncated.
+Si 07 produce mas triangulos de los que caben, 08 parte 1 no pinta una malla parcial.
+08 debe fallar con diagnostico de capacidad insuficiente.
 El pool real de triangulos queda para 09.
 El reparto por distancia/camara queda para 10 y 11.
 ```
@@ -314,7 +340,7 @@ Responsabilidad:
 
 ```text
 Guardar modo de color.
-Guardar maxPaintedTriangles.
+Guardar meshTriangleCapacity.
 Guardar material de validacion si aplica.
 Validar limites.
 No contener buffers GPU.
@@ -331,7 +357,6 @@ Responsabilidad:
 Guardar triangleCountSource.
 Guardar triangleCountPainted.
 Guardar vertexCountPainted.
-Guardar visualTruncated.
 Guardar meshEstimatedBytes.
 Guardar diagnostico corto.
 ```
@@ -399,7 +424,7 @@ Flujo minimo:
 1. Validar que 07 genero triangulos.
 2. Validar settings de pintado.
 3. Leer vertices/normales/conteos de 07.
-4. Aplicar limite de seguridad maxPaintedTriangles si hace falta.
+4. Validar que la capacidad temporal de Mesh puede pintar todo el resultado.
 5. Construir Mesh runtime.
 6. Asignar material.
 7. Mostrar Mesh en PlanetImplementationLab.
@@ -422,9 +447,9 @@ Reglas:
 ```text
 No crear listas nuevas por frame.
 No usar LINQ en caminos calientes.
-No copiar mas triangulos que maxPaintedTriangles.
+No copiar una malla parcial.
 Reutilizar listas/arrays de Mesh si se repinta.
-No guardar todo el resultado del planeta.
+No guardar datos obsoletos tras regenerar 07.
 ```
 
 Datos CPU esperados:
@@ -439,7 +464,7 @@ Mesh runtime.
 Regla:
 
 ```text
-El tamaño CPU crece con maxPaintedTriangles, no con el volumen del planeta.
+El tamaño CPU crece con los triangulos expuestos por 07 para esta validacion, no con el volumen del planeta.
 ```
 
 ## Gestion de VRAM
@@ -546,7 +571,7 @@ Pruebas visuales:
 La Mesh pintada coincide con la zona extraida por 07.
 Las normales no parecen invertidas.
 Cambiar seed en 06 y regenerar 07 cambia el resultado pintado.
-Si maxPaintedTriangles trunca, el diagnostico lo muestra.
+Si la capacidad temporal de Mesh no alcanza, 08 bloquea el pintado y el diagnostico lo muestra.
 ```
 
 ## Tests automatizados
@@ -554,8 +579,8 @@ Si maxPaintedTriangles trunca, el diagnostico lo muestra.
 Tests EditMode esperados:
 
 ```text
-PlanetMarchingCubesPaintSettings valida maxPaintedTriangles > 0.
-PlanetMarchingCubesPaintResult calcula visualTruncated correctamente.
+PlanetMarchingCubesPaintSettings valida meshTriangleCapacity > 0.
+PlanetMarchingCubesPaintResult no marca truncado visual porque 08 no pinta parciales.
 El calculo de meshEstimatedBytes es correcto.
 El modo de color se valida.
 Release simulado no deja handles vivos.
@@ -589,8 +614,7 @@ Metricas iniciales:
 triangleCountSource.
 triangleCountPainted.
 vertexCountPainted.
-visualTruncated.
-maxPaintedTriangles.
+meshTriangleCapacity.
 meshEstimatedBytes.
 ownedCpuEstimatedBytes.
 ownedGpuEstimatedBytes.
@@ -618,11 +642,11 @@ Riesgos principales:
 
 ```text
 Confundir pintar con optimizar.
-Convertir maxPaintedTriangles en presupuesto final.
+Convertir meshTriangleCapacity en presupuesto final.
 Usar una isosfera preview en vez de la salida de 07.
 Regenerar Marching Cubes al cambiar color.
 Mantener Mesh vieja viva al repintar.
-Ocultar truncado visual sin diagnostico.
+Pintar una malla parcial sin diagnostico.
 Liberar recursos de 07 desde 08.
 ```
 
@@ -630,9 +654,9 @@ Mitigaciones:
 
 ```text
 Frontera clara: 07 extrae, 08 parte 1 pinta, 09 reparte slots, 10 adapta detalle, 11 filtra visibilidad.
-maxPaintedTriangles solo como cortafuegos.
+meshTriangleCapacity solo como cortafuegos.
 Owner de recursos separado.
-Diagnostico visualTruncated obligatorio.
+Diagnostico de capacidad insuficiente obligatorio.
 Release probado.
 Color modes solo cambian representacion visual.
 ```
@@ -648,7 +672,8 @@ No quedan decisiones abiertas para empezar la implementacion de 08 parte 1.
 Los vertex colors quedan reservados a modos de diagnostico.
 08 parte 1 usa MeshFilter + MeshRenderer.
 08 parte 1 mantiene vertices no indexados.
-maxPaintedTriangles es cortafuegos de validacion, no presupuesto final.
+meshTriangleCapacity es cortafuegos de validacion, no presupuesto final.
+08 no pinta parciales.
 El budget global de poligonaje queda para 09.
 BVH/reparto interno queda para 10.
 Oclusion/frustum queda para 11.

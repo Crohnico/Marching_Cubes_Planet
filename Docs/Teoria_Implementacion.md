@@ -514,8 +514,8 @@ Docs/Implementacion/Calculo_Funcional_Datos_Planeta.md
 Funciones a evaluar:
 
 ```text
-surfaceOffset(direction)
-effectiveRadius(direction)
+surfaceOffset(point)
+effectiveRadius(point)
 density(point)
 ```
 

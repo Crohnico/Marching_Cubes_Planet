@@ -17,14 +17,14 @@ namespace MarchingCubesPlanet.Shape
         public bool IsContinent => directionAndFlag.w >= 0.5f;
         public float BaseOffset => offsetRoughnessHash.x;
         public float RoughnessModifier => offsetRoughnessHash.y;
-        public float CellHash => offsetRoughnessHash.z;
+        public float HeightModifier => offsetRoughnessHash.z;
 
         public static PlanetGpuShapeCell Create(
             Vector3 direction,
             bool isContinent,
             float baseOffset,
             float roughnessModifier,
-            float cellHash)
+            float heightModifier)
         {
             Vector3 normalizedDirection = direction.sqrMagnitude > 0f ? direction.normalized : Vector3.up;
             return new PlanetGpuShapeCell
@@ -34,7 +34,7 @@ namespace MarchingCubesPlanet.Shape
                     normalizedDirection.y,
                     normalizedDirection.z,
                     isContinent ? 1f : 0f),
-                offsetRoughnessHash = new Vector4(baseOffset, roughnessModifier, cellHash, 0f)
+                offsetRoughnessHash = new Vector4(baseOffset, roughnessModifier, heightModifier, 0f)
             };
         }
     }

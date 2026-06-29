@@ -7,10 +7,11 @@ namespace MarchingCubesPlanet.MarchingCubes
     [Serializable]
     public struct PlanetMarchingCubesPaintSettings
     {
-        public const int DefaultMaxPaintedTriangles = 1000000;
+        public const int DefaultMeshTriangleCapacity = 1000000;
 
         public PlanetMarchingCubesPaintColorMode colorMode;
-        public int maxPaintedTriangles;
+        [FormerlySerializedAs("maxPaintedTriangles")]
+        public int meshTriangleCapacity;
         [FormerlySerializedAs("solidDebugColor")]
         public Color solidColor;
 
@@ -19,12 +20,12 @@ namespace MarchingCubesPlanet.MarchingCubes
             return new PlanetMarchingCubesPaintSettings
             {
                 colorMode = PlanetMarchingCubesPaintColorMode.PlanetSurfaceAtlas,
-                maxPaintedTriangles = DefaultMaxPaintedTriangles,
+                meshTriangleCapacity = DefaultMeshTriangleCapacity,
                 solidColor = new Color(0.15f, 0.9f, 1f, 1f)
             };
         }
 
-        public int MaxPaintedVertices => maxPaintedTriangles * 3;
+        public int MeshVertexCapacity => meshTriangleCapacity * 3;
 
         public bool Validate(out string message)
         {
@@ -34,9 +35,9 @@ namespace MarchingCubesPlanet.MarchingCubes
                 return false;
             }
 
-            if (maxPaintedTriangles <= 0)
+            if (meshTriangleCapacity <= 0)
             {
-                message = "maxPaintedTriangles must be greater than zero.";
+                message = "meshTriangleCapacity must be greater than zero.";
                 return false;
             }
 
@@ -47,8 +48,8 @@ namespace MarchingCubesPlanet.MarchingCubes
         public override string ToString()
         {
             return "colorMode=" + colorMode +
-                   "\nmaxPaintedTriangles=" + maxPaintedTriangles +
-                   "\nmaxPaintedVertices=" + MaxPaintedVertices;
+                   "\nmeshTriangleCapacity=" + meshTriangleCapacity +
+                   "\nmeshVertexCapacity=" + MeshVertexCapacity;
         }
     }
 }

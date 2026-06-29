@@ -400,8 +400,8 @@ Debe concretar:
 
 ```text
 Parametros enviados a GPU.
-surfaceOffset(direction).
-effectiveRadius(direction).
+surfaceOffset(point).
+effectiveRadius(point).
 density(point).
 Debug de muestras.
 Determinismo por seed.
@@ -413,7 +413,7 @@ Decisiones cerradas:
 PlanetRecipe incorpora VoronoiDivision y ContinentCells.
 VoronoiDivision inicial = 100.
 ContinentCells inicial = 84.
-Direcciones Voronoi por Fibonacci sphere.
+Direcciones Voronoi por la secuencia determinista heredada del perfil funcional previo.
 Las celdas Voronoi se preparan en CPU y se suben a GPU.
 density(point) vive en HLSL compartido.
 07 sera la primera validacion visual fuerte.
@@ -421,7 +421,7 @@ density(point) vive en HLSL compartido.
 
 ## 07 - Marching Cubes
 
-Documento para convertir el campo de densidad en triangulos reales de Marching Cubes dentro de una malla de validacion acotada.
+Documento para convertir el campo de densidad en triangulos reales de Marching Cubes sobre chunks cartesianos brutos.
 
 Documento propio:
 
@@ -434,7 +434,7 @@ Debe concretar:
 ```text
 Tabla/casos de Marching Cubes.
 Muestreo del campo de densidad de 06.
-Volumen/rango inicial de muestreo sobre el grid de receta.
+Chunks cartesianos iniciales sobre el grid de receta.
 Buffers CPU/GPU necesarios.
 Extraccion de vertices.
 Extraccion de indices.
@@ -450,8 +450,8 @@ Decisiones cerradas:
 La extraccion inicial corre en GPU.
 07 incluye PlanetShapeDensity.hlsl y no reimplementa density(point).
 No se crea buffer de densidades global.
-El rango inicial es un patch de validacion radial +X.
-El rango inicial usa 1024 x 16 x 16 cubos.
+El rango inicial son chunks cartesianos candidatos que intersectan la banda posible de superficie.
+El chunk canonico de 07 usa 64 x 64 x 64 celdas.
 La cell logica sigue siendo 1x1x1.
 La salida inicial son vertices no indexados.
 La Mesh de validacion no es payload final.
@@ -467,7 +467,7 @@ Regla:
 07 no redefine el tamaño logico de cell.
 La micro cell logica ya esta definida como 1x1x1 en `03_Coordenadas_Y_Receta`.
 El radio logico del planeta viene de `PlanetRecipe.GridRadius`.
-07 solo decide que volumen/rango inicial de ese grid se muestrea para la primera extraccion.
+07 solo decide que chunks cartesianos de ese grid se muestrean para la primera extraccion.
 ```
 
 ## 08 - Pintado resultado Marching Cubes

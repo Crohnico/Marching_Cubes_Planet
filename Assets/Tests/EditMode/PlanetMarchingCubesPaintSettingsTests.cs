@@ -6,24 +6,24 @@ namespace MarchingCubesPlanet.Lab.Tests
     public sealed class PlanetMarchingCubesPaintSettingsTests
     {
         [Test]
-        public void DefaultPaintSettingsMatchPlanetSurfaceBudget()
+        public void DefaultPaintSettingsMatchPlanetSurfaceCapacity()
         {
             PlanetMarchingCubesPaintSettings settings = PlanetMarchingCubesPaintSettings.Default();
 
             Assert.AreEqual(PlanetMarchingCubesPaintColorMode.PlanetSurfaceAtlas, settings.colorMode);
-            Assert.AreEqual(1000000, settings.maxPaintedTriangles);
-            Assert.AreEqual(3000000, settings.MaxPaintedVertices);
+            Assert.AreEqual(1000000, settings.meshTriangleCapacity);
+            Assert.AreEqual(3000000, settings.MeshVertexCapacity);
             Assert.IsTrue(settings.Validate(out string message), message);
         }
 
         [Test]
-        public void PaintSettingsRejectInvalidTriangleBudget()
+        public void PaintSettingsRejectInvalidTriangleCapacity()
         {
             PlanetMarchingCubesPaintSettings settings = PlanetMarchingCubesPaintSettings.Default();
-            settings.maxPaintedTriangles = 0;
+            settings.meshTriangleCapacity = 0;
 
             Assert.IsFalse(settings.Validate(out string message));
-            StringAssert.Contains("maxPaintedTriangles", message);
+            StringAssert.Contains("meshTriangleCapacity", message);
         }
 
         [Test]
@@ -37,21 +37,19 @@ namespace MarchingCubesPlanet.Lab.Tests
         }
 
         [Test]
-        public void PaintResultReportsTruncatedVisual()
+        public void PaintResultReportsFullVisual()
         {
             PlanetMarchingCubesPaintResult result = new PlanetMarchingCubesPaintResult(
                 100,
-                25,
-                75,
-                true,
+                100,
+                300,
                 1024,
                 PlanetMarchingCubesPaintColorMode.HeightColor);
 
             Assert.IsTrue(result.HasVisibleMesh);
-            Assert.IsTrue(result.VisualTruncated);
             Assert.AreEqual(100, result.SourceTriangleCount);
-            Assert.AreEqual(25, result.PaintedTriangleCount);
-            Assert.AreEqual(75, result.PaintedVertexCount);
+            Assert.AreEqual(100, result.PaintedTriangleCount);
+            Assert.AreEqual(300, result.PaintedVertexCount);
             Assert.AreEqual(1024, result.MeshEstimatedBytes);
             Assert.AreEqual(PlanetMarchingCubesPaintColorMode.HeightColor, result.ColorMode);
         }

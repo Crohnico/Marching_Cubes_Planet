@@ -102,7 +102,11 @@ float PlanetShapeEvaluateDensity(float3 gridPosition, out float surfaceOffset, o
     float nearestOffset = 0.0;
     float secondOffset = 0.0;
     float nearestRoughness = 1.0;
+    float secondRoughness = 1.0;
+    float nearestHeightModifier = 1.0;
+    float secondHeightModifier = 1.0;
     float nearestFlag = 0.0;
+    float secondFlag = 0.0;
 
     [loop]
     for (uint i = 0u; i < cellCount; i++)
@@ -114,33 +118,45 @@ float PlanetShapeEvaluateDensity(float3 gridPosition, out float surfaceOffset, o
         {
             secondDot = nearestDot;
             secondOffset = nearestOffset;
+            secondRoughness = nearestRoughness;
+            secondHeightModifier = nearestHeightModifier;
+            secondFlag = nearestFlag;
             nearestDot = cellDot;
             nearestOffset = cell.offsetRoughnessHash.x;
             nearestRoughness = cell.offsetRoughnessHash.y;
+            nearestHeightModifier = cell.offsetRoughnessHash.z;
             nearestFlag = cell.directionAndFlag.w;
         }
         else if (cellDot > secondDot)
         {
             secondDot = cellDot;
             secondOffset = cell.offsetRoughnessHash.x;
+            secondRoughness = cell.offsetRoughnessHash.y;
+            secondHeightModifier = cell.offsetRoughnessHash.z;
+            secondFlag = cell.directionAndFlag.w;
         }
     }
 
     float edgeBlend = max(parameters.oceanBlend.z, 0.0001);
     float rawBlend = saturate((nearestDot - secondDot) / edgeBlend);
     float interiorBlend = smoothstep(0.0, 1.0, rawBlend);
-    float boundaryOffset = (nearestOffset + secondOffset) * 0.5;
-    surfaceOffset = lerp(boundaryOffset, nearestOffset, interiorBlend);
+    float nearestSurfaceOffset = nearestOffset * nearestHeightModifier;
+    float secondSurfaceOffset = secondOffset * secondHeightModifier;
+    float boundaryOffset = (nearestSurfaceOffset + secondSurfaceOffset) * 0.5;
+    float boundaryRoughness = (nearestRoughness + secondRoughness) * 0.5;
+    surfaceOffset = lerp(boundaryOffset, nearestSurfaceOffset, interiorBlend);
+    float roughness = lerp(boundaryRoughness, nearestRoughness, interiorBlend);
 
     float noiseAmplitude = parameters.noise.x;
     float noiseFrequency = parameters.noise.y;
     if (noiseAmplitude > 0.0 && noiseFrequency > 0.0)
     {
-        float noiseValue = PlanetShapePerlin3D(direction * noiseFrequency * nearestRoughness, seed);
+        float3 normalizedPosition = gridPosition / radius;
+        float noiseValue = PlanetShapePerlin3D(normalizedPosition * max(0.01, noiseFrequency) * roughness, seed);
         surfaceOffset += noiseValue * radius * noiseAmplitude;
     }
 
     effectiveRadius = radius + surfaceOffset;
-    continentFlag = nearestFlag;
+    continentFlag = lerp((nearestFlag + secondFlag) * 0.5, nearestFlag, interiorBlend);
     return effectiveRadius - distanceFromCenter - isoLevel;
 }

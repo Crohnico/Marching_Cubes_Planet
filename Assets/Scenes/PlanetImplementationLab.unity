@@ -3462,14 +3462,16 @@ MonoBehaviour:
   resourceRegistry: {fileID: 1146611496}
   bufferMode: 0
   settings:
-    surfaceRange:
-      radialStartOffset: -512
-      radialCubeCount: 1024
-      faceResolution: 16
-      cubeSizeGrid: 1
+    chunkRange:
+      chunkSize: 64
+      cellSizeGrid: 1
+      safetyMargin: 4
+      maxCandidateChunks: 0
     maxPlanetSurfaceTriangles: 65536
   supportsComputeShaders: 0
-  lastProcessedCubeCount: 0
+  lastCandidateChunkCount: 0
+  lastProcessedChunkCount: 0
+  lastProcessedCellCount: 0
   lastTriangleCountAttempted: 0
   lastTriangleCountWritten: 0
   lastVertexCountWritten: 0
@@ -6286,7 +6288,7 @@ Transform:
   m_GameObject: {fileID: 2000400000}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 9500}
+  m_LocalPosition: {x: 0, y: 0, z: 550}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -6305,8 +6307,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: MarchingCubesPlanet.Preview::MarchingCubesPlanet.Preview.PlanetRecipePayloadPreview
   recipe:
-    gridRadius: 2000
-    worldScale: 4
+    gridRadius: 500
+    worldScale: 1
     seed: 12345
     isoLevel: 0
     voronoiDivision: 100
@@ -6327,7 +6329,7 @@ MonoBehaviour:
     planetStellarCenter:
       x: 0
       y: 0
-      z: 9500
+      z: 550
     activeOrigin:
       x: 0
       y: 0
@@ -6576,8 +6578,8 @@ MonoBehaviour:
   derivedTriangleCount: 124820
   derivedVertexCount: 374460
   derivedIndexCount: 374460
-  derivedWorldRadius: 8000
-  derivedSurfaceRadius: 8000
+  derivedWorldRadius: 500
+  derivedSurfaceRadius: 500
   hasLiveMesh: 0
   lastDiagnostic: 
 --- !u!1 &2038297193

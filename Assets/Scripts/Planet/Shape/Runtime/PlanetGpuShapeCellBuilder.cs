@@ -6,7 +6,6 @@ namespace MarchingCubesPlanet.Shape
 {
     public static class PlanetGpuShapeCellBuilder
     {
-        private const float GoldenAngle = 2.39996322972865332f;
         private const uint HashMask24 = 0x00ffffffu;
 
         public static PlanetGpuShapeBuildSummary Build(in PlanetRecipe recipe, PlanetGpuShapeCell[] output)
@@ -32,21 +31,25 @@ namespace MarchingCubesPlanet.Shape
             float maxBaseOffset = float.NegativeInfinity;
             float minRoughness = float.PositiveInfinity;
             float maxRoughness = float.NegativeInfinity;
+            System.Random elevationRandom = new System.Random(MixSeed(recipe.Seed, 0x26cb5d35));
 
             for (int i = 0; i < cellCount; i++)
             {
-                Vector3 direction = FibonacciDirection(i, cellCount, recipe.Seed);
+                Vector3 direction = LegacyRandomUnitVector(recipe.Seed, i);
                 bool isContinent = continentFlags[i];
                 float baseOffset = isContinent
-                    ? EvaluateLandOffset(in recipe, i)
+                    ? EvaluateLandOffset(in recipe, elevationRandom)
                     : EvaluateOceanOffset(in recipe);
                 float roughness = Mathf.Lerp(
                     recipe.MinRoughness,
                     recipe.MaxRoughness,
-                    Hash01((uint)recipe.Seed, (uint)i, 0x51ed270bu));
-                uint hash = Hash((uint)recipe.Seed, (uint)i, 0xb5297a4du) & HashMask24;
+                    LegacyHash01(recipe.Seed, i, 0x9e3779b9u));
+                float heightModifier = Mathf.Lerp(
+                    recipe.MinHeightModifier,
+                    recipe.MaxHeightModifier,
+                    LegacyHash01(recipe.Seed, i, 0x85ebca6bu));
 
-                output[i] = PlanetGpuShapeCell.Create(direction, isContinent, baseOffset, roughness, hash);
+                output[i] = PlanetGpuShapeCell.Create(direction, isContinent, baseOffset, roughness, heightModifier);
 
                 minBaseOffset = Mathf.Min(minBaseOffset, baseOffset);
                 maxBaseOffset = Mathf.Max(maxBaseOffset, baseOffset);
@@ -67,33 +70,46 @@ namespace MarchingCubesPlanet.Shape
             };
         }
 
-        public static Vector3 FibonacciDirection(int index, int count, int seed)
+        public static Vector3 LegacyRandomUnitVector(int seed, int index)
         {
-            if (count <= 0)
+            if (index < 0)
             {
-                throw new ArgumentOutOfRangeException(nameof(count), "count must be greater than zero.");
+                throw new ArgumentOutOfRangeException(nameof(index), "index must be greater than or equal to zero.");
             }
 
-            float y = 1f - (index + 0.5f) * (2f / count);
-            float radius = Mathf.Sqrt(Mathf.Max(0f, 1f - y * y));
-            float seedRotation = (Hash((uint)seed, 0u, 0x68bc21ebu) & 1023u) / 1023f * Mathf.PI * 2f;
-            float theta = index * GoldenAngle + seedRotation;
-            return new Vector3(Mathf.Cos(theta) * radius, y, Mathf.Sin(theta) * radius);
+            System.Random random = new System.Random(MixSeed(seed, 0x4f1bbcdd));
+            double z = 0.0;
+            double angle = 0.0;
+            for (int i = 0; i <= index; i++)
+            {
+                z = random.NextDouble() * 2.0 - 1.0;
+                angle = random.NextDouble() * Math.PI * 2.0;
+            }
+
+            float zFloat = (float)z;
+            float horizontalRadius = Mathf.Sqrt(Mathf.Max(0f, 1f - zFloat * zFloat));
+            return new Vector3(
+                Mathf.Cos((float)angle) * horizontalRadius,
+                zFloat,
+                Mathf.Sin((float)angle) * horizontalRadius);
         }
 
         private static bool[] BuildContinentFlags(in PlanetRecipe recipe)
         {
             int count = recipe.VoronoiDivision;
-            uint[] keys = new uint[count];
             int[] indices = new int[count];
 
             for (int i = 0; i < count; i++)
             {
-                keys[i] = Hash((uint)recipe.Seed, (uint)i, 0x9e3779b9u);
                 indices[i] = i;
             }
 
-            Array.Sort(keys, indices);
+            System.Random landRandom = new System.Random(MixSeed(recipe.Seed, 0x13a5ba1d));
+            for (int i = indices.Length - 1; i > 0; i--)
+            {
+                int swapIndex = landRandom.Next(i + 1);
+                (indices[i], indices[swapIndex]) = (indices[swapIndex], indices[i]);
+            }
 
             bool[] flags = new bool[count];
             for (int i = 0; i < recipe.ContinentCells; i++)
@@ -104,15 +120,11 @@ namespace MarchingCubesPlanet.Shape
             return flags;
         }
 
-        private static float EvaluateLandOffset(in PlanetRecipe recipe, int cellIndex)
+        private static float EvaluateLandOffset(in PlanetRecipe recipe, System.Random elevationRandom)
         {
-            float t = Smooth01(Hash01((uint)recipe.Seed, (uint)cellIndex, 0x27d4eb2du));
+            float t = Smooth01((float)elevationRandom.NextDouble());
             float landElevation = Mathf.Lerp(recipe.MinLandElevation, recipe.MaxLandElevation, t);
-            float heightModifier = Mathf.Lerp(
-                recipe.MinHeightModifier,
-                recipe.MaxHeightModifier,
-                Hash01((uint)recipe.Seed, (uint)cellIndex, 0x165667b1u));
-            return recipe.GridRadius * landElevation * heightModifier;
+            return recipe.GridRadius * landElevation;
         }
 
         private static float EvaluateOceanOffset(in PlanetRecipe recipe)
@@ -127,21 +139,33 @@ namespace MarchingCubesPlanet.Shape
             return value * value * (3f - 2f * value);
         }
 
-        private static float Hash01(uint seed, uint index, uint salt)
+        private static float LegacyHash01(int seed, int index, uint salt)
         {
-            return (Hash(seed, index, salt) & HashMask24) / (float)HashMask24;
+            return (LegacyHash((uint)index ^ (uint)seed, salt) & HashMask24) / (float)HashMask24;
         }
 
-        private static uint Hash(uint seed, uint index, uint salt)
+        private static uint LegacyHash(uint value, uint salt)
         {
-            uint hash = seed ^ salt;
-            hash ^= index + 0x9e3779b9u + (hash << 6) + (hash >> 2);
+            uint hash = value + salt * 0x9e3779b9u;
             hash ^= hash >> 16;
             hash *= 0x7feb352du;
             hash ^= hash >> 15;
             hash *= 0x846ca68bu;
             hash ^= hash >> 16;
             return hash;
+        }
+
+        private static int MixSeed(int seed, int salt)
+        {
+            unchecked
+            {
+                int hash = seed;
+                hash = (hash * 397) ^ salt;
+                hash ^= hash << 13;
+                hash ^= hash >> 17;
+                hash ^= hash << 5;
+                return hash;
+            }
         }
     }
 }

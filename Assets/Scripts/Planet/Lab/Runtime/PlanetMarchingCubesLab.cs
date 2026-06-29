@@ -21,7 +21,9 @@ namespace MarchingCubesPlanet.Lab
 
         [Header("State")]
         [SerializeField] private bool supportsComputeShaders;
-        [SerializeField] private uint lastProcessedCubeCount;
+        [SerializeField] private uint lastCandidateChunkCount;
+        [SerializeField] private uint lastProcessedChunkCount;
+        [SerializeField] private uint lastProcessedCellCount;
         [SerializeField] private uint lastTriangleCountAttempted;
         [SerializeField] private uint lastTriangleCountWritten;
         [SerializeField] private uint lastVertexCountWritten;
@@ -35,6 +37,7 @@ namespace MarchingCubesPlanet.Lab
         private readonly PlanetMarchingCubesExtractor extractor = new PlanetMarchingCubesExtractor();
 
         private PlanetMarchingCubesExtractionResult lastResult = PlanetMarchingCubesExtractionResult.Empty;
+        private int chunkOriginBufferResourceId;
         private int vertexBufferResourceId;
         private int stateBufferResourceId;
         private int edgeTableBufferResourceId;
@@ -48,7 +51,9 @@ namespace MarchingCubesPlanet.Lab
         public PlanetLabDiagnostic LastDiagnostic => lastDiagnostic;
         public PlanetLabMetricsSnapshot LastSnapshot => lastSnapshot;
         public string LastAction => lastAction;
-        public uint LastProcessedCubeCount => lastProcessedCubeCount;
+        public uint LastCandidateChunkCount => lastCandidateChunkCount;
+        public uint LastProcessedChunkCount => lastProcessedChunkCount;
+        public uint LastProcessedCellCount => lastProcessedCellCount;
         public uint LastTriangleCountAttempted => lastTriangleCountAttempted;
         public uint LastTriangleCountWritten => lastTriangleCountWritten;
         public uint LastVertexCountWritten => lastVertexCountWritten;
@@ -93,8 +98,6 @@ namespace MarchingCubesPlanet.Lab
                 return false;
             }
 
-            settings.EnsureSurfaceRangeCoversRecipe(shapeLab.Recipe);
-
             if (!settings.Validate(out string settingsMessage))
             {
                 lastDiagnostic = PlanetLabDiagnostic.Warning(
@@ -136,11 +139,11 @@ namespace MarchingCubesPlanet.Lab
             CaptureMetrics("Reset Marching Cubes Demo Settings", 0);
         }
 
-        public void EnsurePlanetSurfaceTriangleBudget(int minimumTriangleBudget)
+        public void EnsureTemporaryOutputTriangleCapacity(int minimumTriangleCapacity)
         {
-            if (minimumTriangleBudget > settings.maxPlanetSurfaceTriangles)
+            if (minimumTriangleCapacity > settings.temporaryOutputTriangleCapacity)
             {
-                settings.maxPlanetSurfaceTriangles = minimumTriangleBudget;
+                settings.temporaryOutputTriangleCapacity = minimumTriangleCapacity;
             }
         }
 
@@ -155,18 +158,36 @@ namespace MarchingCubesPlanet.Lab
                 return;
             }
 
-            extractor.Initialize(
-                marchingCubesComputeShader,
-                shapeLab.Recipe,
-                settings,
-                shapeLab.ShapeEvaluator,
-                bufferMode);
+            try
+            {
+                extractor.Initialize(
+                    marchingCubesComputeShader,
+                    shapeLab.Recipe,
+                    settings,
+                    shapeLab.ShapeEvaluator,
+                    bufferMode);
+            }
+            catch (Exception exception)
+            {
+                stopwatch.Stop();
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "Marching Cubes GPU initialization failed",
+                    exception.Message,
+                    "Use a smaller GridRadius for the brute 07 validation or split the extraction into multiple jobs.",
+                    BuildSettingsMetrics());
+                lastAction = "Init Marching Cubes GPU failed.";
+                CaptureMetrics("Init Marching Cubes GPU Failed", stopwatch.Elapsed.TotalMilliseconds);
+                return;
+            }
+
             RegisterBuffers();
 
             stopwatch.Stop();
             lastDiagnostic = PlanetLabDiagnostic.Ok(
                 "Marching Cubes GPU initialized",
-                BuildSettingsMetrics() + "\nthreadGroupSizeX=" + extractor.ThreadGroupSizeX);
+                BuildSettingsMetrics() +
+                "\n" + extractor.ChunkBuildStats +
+                "\nthreadGroupSizeX=" + extractor.ThreadGroupSizeX);
             lastAction = "Init Marching Cubes GPU finished.";
             CaptureMetrics("Init Marching Cubes GPU", stopwatch.Elapsed.TotalMilliseconds);
         }
@@ -191,10 +212,10 @@ namespace MarchingCubesPlanet.Lab
 
             stopwatch.Stop();
             lastDiagnostic = PlanetLabDiagnostic.Ok(
-                "Planet surface extracted",
+                "Cartesian planet surface extracted",
                 BuildResultMetrics());
-            lastAction = "Extract Planet Surface finished.";
-            CaptureMetrics("Extract Planet Surface", stopwatch.Elapsed.TotalMilliseconds);
+            lastAction = "Extract Cartesian Planet Surface finished.";
+            CaptureMetrics("Extract Cartesian Planet Surface", stopwatch.Elapsed.TotalMilliseconds);
         }
 
         public void RunMarchingCubesSmokeTest()
@@ -218,7 +239,9 @@ namespace MarchingCubesPlanet.Lab
             stopwatch.Restart();
             extractor.Release();
             lastResult = PlanetMarchingCubesExtractionResult.Empty;
-            lastProcessedCubeCount = 0u;
+            lastCandidateChunkCount = 0u;
+            lastProcessedChunkCount = 0u;
+            lastProcessedCellCount = 0u;
             lastTriangleCountAttempted = 0u;
             lastTriangleCountWritten = 0u;
             lastVertexCountWritten = 0u;
@@ -228,6 +251,7 @@ namespace MarchingCubesPlanet.Lab
             MarkReleased(ref edgeTableBufferResourceId);
             MarkReleased(ref stateBufferResourceId);
             MarkReleased(ref vertexBufferResourceId);
+            MarkReleased(ref chunkOriginBufferResourceId);
 
             if (resourceRegistry != null)
             {
@@ -247,7 +271,9 @@ namespace MarchingCubesPlanet.Lab
         private void ApplyResultSummary(PlanetMarchingCubesExtractionResult result)
         {
             PlanetMarchingCubesState state = result.State;
-            lastProcessedCubeCount = state.processedCubeCount;
+            lastCandidateChunkCount = state.chunkCountCandidate;
+            lastProcessedChunkCount = state.chunkCountProcessed;
+            lastProcessedCellCount = state.cellCountProcessed;
             lastTriangleCountAttempted = state.triangleCountAttempted;
             lastTriangleCountWritten = state.triangleCountWritten;
             lastVertexCountWritten = state.vertexCountWritten;
@@ -257,6 +283,7 @@ namespace MarchingCubesPlanet.Lab
 
         private void RegisterBuffers()
         {
+            chunkOriginBufferResourceId = RegisterResource(extractor.ChunkOriginBuffer);
             vertexBufferResourceId = RegisterResource(extractor.VertexBuffer);
             stateBufferResourceId = RegisterResource(extractor.StateBuffer);
             edgeTableBufferResourceId = RegisterResource(extractor.EdgeTableBuffer);
@@ -313,13 +340,16 @@ namespace MarchingCubesPlanet.Lab
 
         private string BuildResultMetrics()
         {
-            return "processedCubeCount=" + lastProcessedCubeCount +
+            return "chunkCountCandidate=" + lastCandidateChunkCount +
+                   "\nchunkCountProcessed=" + lastProcessedChunkCount +
+                   "\ncellCountProcessed=" + lastProcessedCellCount +
                    "\ntriangleCountAttempted=" + lastTriangleCountAttempted +
                    "\ntriangleCountWritten=" + lastTriangleCountWritten +
                    "\nvertexCountWritten=" + lastVertexCountWritten +
                    "\nreadbackVertexCount=" + lastResult.VertexCount +
                    "\noverflow=" + lastOverflow +
                    "\ninvalidCase=" + lastInvalidCase +
+                   "\n" + extractor.ChunkBuildStats +
                    "\n" + BuildSettingsMetrics();
         }
 

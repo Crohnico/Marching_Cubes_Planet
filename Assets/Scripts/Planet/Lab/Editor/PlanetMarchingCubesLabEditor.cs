@@ -34,7 +34,7 @@ namespace MarchingCubesPlanet.Lab.Editor
                 MarkDirty(lab);
             }
 
-            if (GUILayout.Button("Extract Planet Surface"))
+            if (GUILayout.Button("Extract Cartesian Planet Surface"))
             {
                 lab.ExtractPlanetSurface();
                 MarkDirty(lab);
