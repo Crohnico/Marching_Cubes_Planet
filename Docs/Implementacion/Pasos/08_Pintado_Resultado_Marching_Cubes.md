@@ -85,7 +85,9 @@ Entra:
 
 ```text
 Construir Mesh de Unity desde los triangulos generados por 07.
+Construir Mesh visual de agua desde las zonas de esa superficie que quedan bajo el nivel de mar.
 Asignar material de validacion.
+Asignar material de oceano inicial.
 Pintar por color plano, normal, altura, caseIndex o dato diagnostico simple.
 Mostrar la mesh en PlanetImplementationLab.
 Registrar Mesh runtime y Material runtime si aplica.
@@ -106,6 +108,7 @@ Generar density(point).
 Ejecutar Marching Cubes.
 Consultar las 8 esquinas de cubo.
 Usar edgeTable/triTable.
+Generar volumen/simulacion final de agua.
 Optimizar por distancia de camara.
 BVH.
 Culling espacial.
@@ -216,10 +219,12 @@ Salida real:
 
 ```text
 Mesh runtime visible.
+Mesh runtime visible de agua si existen triangulos bajo el nivel de mar.
 Material runtime o material compartido asignado.
 GameObject/ResultView de validacion.
 Conteo de triangulos visibles.
 Conteo de vertices visibles.
+Conteo de triangulos/vertices de agua.
 Bytes estimados de Mesh.
 Diagnostico visual/metricas.
 ```
@@ -230,6 +235,7 @@ No debe producir:
 Nueva density(point).
 Nueva triangulacion Marching Cubes.
 Nuevo grid global.
+Volumen/simulacion final de agua.
 BVH.
 LOD.
 Payload final optimizado.
@@ -257,6 +263,9 @@ El material de superficie debe ser opaco.
 Durante la validacion 06-08 se usa doble cara para no ocultar triangulos por winding/culling mientras se revisa la orientacion final.
 El material asset de mundo inicial es `Resources/PlanetWorld_Surface`, recuperado del antiguo `Planet Height Atlas`.
 El material asset de oceano inicial es `Resources/PlanetOcean`, recuperado del antiguo `Ocean`.
+La mesh inicial de agua se deriva de la salida de 07: los triangulos bajo `GridRadius` se recortan contra el nivel de mar y se proyectan a `GridRadius`.
+08 no reevalua `density(point)` para generar agua.
+08 no genera volumen de agua ni simulacion; solo una lamina visual superior para cuencas bajo el nivel de mar.
 ```
 
 Decision cerrada:
@@ -357,7 +366,10 @@ Responsabilidad:
 Guardar triangleCountSource.
 Guardar triangleCountPainted.
 Guardar vertexCountPainted.
+Guardar waterTriangleCount.
+Guardar waterVertexCount.
 Guardar meshEstimatedBytes.
+Guardar waterMeshEstimatedBytes.
 Guardar diagnostico corto.
 ```
 
@@ -473,6 +485,7 @@ Recursos previstos:
 
 ```text
 Mesh runtime de validacion.
+Mesh runtime de agua si hay zonas bajo el nivel de mar.
 Material runtime solo si se instancia.
 ```
 
@@ -482,6 +495,7 @@ Estimacion inicial:
 vertexBytes = vertexCountPainted * (position + normal + color + uv)
 indexBytes = triangleCountPainted * 3 * indexStride
 meshEstimatedBytes = vertexBytes + indexBytes
+waterMeshEstimatedBytes usa la misma regla con waterVertexCount y waterTriangleCount
 ```
 
 Valores iniciales:
@@ -498,6 +512,7 @@ Reglas:
 
 ```text
 Registrar Mesh runtime.
+Registrar Mesh runtime de agua si existe.
 Registrar Material runtime si se instancia.
 No registrar como propios los buffers de 07.
 No mantener viva la Mesh anterior al repintar.
@@ -562,6 +577,8 @@ HeightColor permite leer silueta/relieve.
 Release Painted Mesh libera recursos propios.
 Release doble no rompe.
 Paint -> Release -> Paint funciona.
+Si hay superficie bajo `GridRadius`, Paint crea una mesh de agua con `PlanetOcean`.
+Release Painted Mesh libera tambien mesh/material de agua.
 Release All deja recursos propios de 08 parte 1 a cero.
 ```
 
@@ -614,8 +631,11 @@ Metricas iniciales:
 triangleCountSource.
 triangleCountPainted.
 vertexCountPainted.
+waterTriangleCount.
+waterVertexCount.
 meshTriangleCapacity.
 meshEstimatedBytes.
+waterMeshEstimatedBytes.
 ownedCpuEstimatedBytes.
 ownedGpuEstimatedBytes.
 liveRuntimeMeshes.

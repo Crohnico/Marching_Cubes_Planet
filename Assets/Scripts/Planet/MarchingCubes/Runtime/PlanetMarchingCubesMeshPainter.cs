@@ -11,19 +11,26 @@ namespace MarchingCubesPlanet.MarchingCubes
         private const string SurfaceShaderName = "MarchingCubesPlanet/Planet/Surface";
         private const string UrpUnlitShaderName = "Universal Render Pipeline/Unlit";
         private const string DefaultSurfaceMaterialResourceName = "PlanetWorld_Surface";
+        private const string DefaultOceanMaterialResourceName = "PlanetOcean";
         private const string SurfaceAtlasTexturePropertyName = "_PlanetSurfaceAtlas";
         private const string UseSurfaceAtlasPropertyName = "_UsePlanetSurfaceAtlas";
         private const int SurfaceAtlasResolution = 256;
         private const float LegacySeaLevelAtlasV = 0.337f;
 
         private Mesh runtimeMesh;
+        private Mesh runtimeWaterMesh;
         private Material runtimeMaterial;
+        private Material runtimeWaterMaterial;
         private Texture2D runtimeSurfaceAtlas;
+        private GameObject runtimeWaterObject;
 
         public Mesh RuntimeMesh => runtimeMesh;
+        public Mesh RuntimeWaterMesh => runtimeWaterMesh;
         public Material RuntimeMaterial => runtimeMaterial;
+        public Material RuntimeWaterMaterial => runtimeWaterMaterial;
         public Texture2D RuntimeSurfaceAtlas => runtimeSurfaceAtlas;
         public bool OwnsRuntimeMaterial => runtimeMaterial != null;
+        public bool OwnsRuntimeWaterMaterial => runtimeWaterMaterial != null;
         public bool OwnsRuntimeSurfaceAtlas => runtimeSurfaceAtlas != null;
         public long RuntimeSurfaceAtlasEstimatedBytes => runtimeSurfaceAtlas != null
             ? (long)runtimeSurfaceAtlas.width * runtimeSurfaceAtlas.height * 4L
@@ -74,6 +81,13 @@ namespace MarchingCubesPlanet.MarchingCubes
                     "The full 07 result does not fit in the 08 temporary Mesh capacity. Increase meshTriangleCapacity; 08 does not paint partial meshes.");
             }
 
+            int expectedWaterTriangleCount = CountWaterTriangles(source.Vertices, sourceVertexCount, recipe.GridRadius);
+            if (expectedWaterTriangleCount > settings.meshTriangleCapacity)
+            {
+                throw new InvalidOperationException(
+                    "The generated water surface does not fit in the 08 temporary Mesh capacity. Increase meshTriangleCapacity; 08 does not paint partial water meshes.");
+            }
+
             int paintedVertexCount = sourceVertexCount;
             int paintedTriangleCount = sourceTriangleCount;
             PlanetGpuShapeCell[] cells = new PlanetGpuShapeCell[recipe.VoronoiDivision];
@@ -103,20 +117,38 @@ namespace MarchingCubesPlanet.MarchingCubes
             meshFilter.sharedMesh = runtimeMesh;
             meshRenderer.sharedMaterial = ResolveMaterial(materialOverride, settings.colorMode, cells);
 
+            BuildWaterMesh(
+                meshFilter,
+                meshRenderer,
+                source.Vertices,
+                paintedVertexCount,
+                in recipe,
+                in placement,
+                settings,
+                out int waterVertexCount,
+                out int waterTriangleCount);
+
             long estimatedBytes = PlanetMarchingCubesPaintResult.CalculateMeshEstimatedBytes(
                 paintedVertexCount,
                 paintedTriangleCount);
+            long waterEstimatedBytes = PlanetMarchingCubesPaintResult.CalculateMeshEstimatedBytes(
+                waterVertexCount,
+                waterTriangleCount);
             return new PlanetMarchingCubesPaintResult(
                 sourceTriangleCount,
                 paintedTriangleCount,
                 paintedVertexCount,
                 estimatedBytes,
+                waterTriangleCount,
+                waterVertexCount,
+                waterEstimatedBytes,
                 settings.colorMode);
         }
 
         public void Release(MeshFilter meshFilter, MeshRenderer meshRenderer)
         {
             ReleaseMeshOnly(meshFilter);
+            ReleaseWater();
 
             if (runtimeMaterial != null)
             {
@@ -150,6 +182,27 @@ namespace MarchingCubesPlanet.MarchingCubes
 
             DestroyRuntimeObject(runtimeMesh);
             runtimeMesh = null;
+        }
+
+        private void ReleaseWater()
+        {
+            if (runtimeWaterMesh != null)
+            {
+                DestroyRuntimeObject(runtimeWaterMesh);
+                runtimeWaterMesh = null;
+            }
+
+            if (runtimeWaterMaterial != null)
+            {
+                DestroyRuntimeObject(runtimeWaterMaterial);
+                runtimeWaterMaterial = null;
+            }
+
+            if (runtimeWaterObject != null)
+            {
+                DestroyRuntimeObject(runtimeWaterObject);
+                runtimeWaterObject = null;
+            }
         }
 
         private static void BuildMesh(
@@ -239,6 +292,312 @@ namespace MarchingCubesPlanet.MarchingCubes
             mesh.RecalculateBounds();
         }
 
+        private void BuildWaterMesh(
+            MeshFilter surfaceMeshFilter,
+            MeshRenderer surfaceMeshRenderer,
+            PlanetMarchingCubesVertex[] sourceVertices,
+            int sourceVertexCount,
+            in PlanetRecipe recipe,
+            in PlanetPlacement placement,
+            PlanetMarchingCubesPaintSettings settings,
+            out int waterVertexCount,
+            out int waterTriangleCount)
+        {
+            waterVertexCount = 0;
+            waterTriangleCount = CountWaterTriangles(sourceVertices, sourceVertexCount, recipe.GridRadius);
+            if (waterTriangleCount <= 0)
+            {
+                return;
+            }
+
+            if (waterTriangleCount > settings.meshTriangleCapacity)
+            {
+                throw new InvalidOperationException(
+                    "The generated water surface does not fit in the 08 temporary Mesh capacity. Increase meshTriangleCapacity; 08 does not paint partial water meshes.");
+            }
+
+            MeshFilter waterMeshFilter = EnsureWaterRenderer(surfaceMeshFilter, surfaceMeshRenderer, out MeshRenderer waterMeshRenderer);
+            runtimeWaterMesh = new Mesh
+            {
+                name = "PlanetMarchingCubesPaint_WaterMesh_Runtime",
+                indexFormat = waterTriangleCount * 3 > ushort.MaxValue ? IndexFormat.UInt32 : IndexFormat.UInt16
+            };
+
+            waterVertexCount = waterTriangleCount * 3;
+            Vector3[] positions = new Vector3[waterVertexCount];
+            Vector3[] normals = new Vector3[waterVertexCount];
+            Vector2[] uvs = new Vector2[waterVertexCount];
+            Color32[] colors = new Color32[waterVertexCount];
+            int[] indices = new int[waterVertexCount];
+            FillWaterMeshData(
+                positions,
+                normals,
+                uvs,
+                colors,
+                indices,
+                sourceVertices,
+                sourceVertexCount,
+                recipe.GridRadius,
+                surfaceMeshFilter.transform,
+                in recipe,
+                in placement);
+
+            runtimeWaterMesh.Clear();
+            runtimeWaterMesh.vertices = positions;
+            runtimeWaterMesh.normals = normals;
+            runtimeWaterMesh.uv = uvs;
+            runtimeWaterMesh.colors32 = colors;
+            runtimeWaterMesh.SetIndices(indices, MeshTopology.Triangles, 0, true);
+            runtimeWaterMesh.RecalculateBounds();
+
+            waterMeshFilter.sharedMesh = runtimeWaterMesh;
+            waterMeshRenderer.sharedMaterial = ResolveWaterMaterial();
+        }
+
+        private static int CountWaterTriangles(PlanetMarchingCubesVertex[] sourceVertices, int sourceVertexCount, float seaRadius)
+        {
+            int triangleCount = 0;
+            for (int i = 0; i < sourceVertexCount; i += 3)
+            {
+                int underwaterCount = 0;
+                if (IsUnderSea(ReadGridPosition(sourceVertices[i]), seaRadius))
+                {
+                    underwaterCount++;
+                }
+
+                if (IsUnderSea(ReadGridPosition(sourceVertices[i + 1]), seaRadius))
+                {
+                    underwaterCount++;
+                }
+
+                if (IsUnderSea(ReadGridPosition(sourceVertices[i + 2]), seaRadius))
+                {
+                    underwaterCount++;
+                }
+
+                if (underwaterCount == 3 || underwaterCount == 1)
+                {
+                    triangleCount++;
+                }
+                else if (underwaterCount == 2)
+                {
+                    triangleCount += 2;
+                }
+            }
+
+            return triangleCount;
+        }
+
+        private static void FillWaterMeshData(
+            Vector3[] positions,
+            Vector3[] normals,
+            Vector2[] uvs,
+            Color32[] colors,
+            int[] indices,
+            PlanetMarchingCubesVertex[] sourceVertices,
+            int sourceVertexCount,
+            float seaRadius,
+            Transform targetTransform,
+            in PlanetRecipe recipe,
+            in PlanetPlacement placement)
+        {
+            Vector3[] clipped = new Vector3[4];
+            int vertexCursor = 0;
+            for (int i = 0; i < sourceVertexCount; i += 3)
+            {
+                Vector3 a = ReadGridPosition(sourceVertices[i]);
+                Vector3 b = ReadGridPosition(sourceVertices[i + 1]);
+                Vector3 c = ReadGridPosition(sourceVertices[i + 2]);
+                int clippedCount = ClipWaterTriangle(a, b, c, seaRadius, clipped);
+                if (clippedCount == 3)
+                {
+                    WriteWaterTriangle(
+                        positions,
+                        normals,
+                        uvs,
+                        colors,
+                        indices,
+                        ref vertexCursor,
+                        clipped[0],
+                        clipped[1],
+                        clipped[2],
+                        targetTransform,
+                        in recipe,
+                        in placement);
+                }
+                else if (clippedCount == 4)
+                {
+                    WriteWaterTriangle(
+                        positions,
+                        normals,
+                        uvs,
+                        colors,
+                        indices,
+                        ref vertexCursor,
+                        clipped[0],
+                        clipped[1],
+                        clipped[2],
+                        targetTransform,
+                        in recipe,
+                        in placement);
+                    WriteWaterTriangle(
+                        positions,
+                        normals,
+                        uvs,
+                        colors,
+                        indices,
+                        ref vertexCursor,
+                        clipped[0],
+                        clipped[2],
+                        clipped[3],
+                        targetTransform,
+                        in recipe,
+                        in placement);
+                }
+            }
+        }
+
+        private static int ClipWaterTriangle(Vector3 a, Vector3 b, Vector3 c, float seaRadius, Vector3[] clipped)
+        {
+            int count = 0;
+            ClipWaterEdge(a, b, seaRadius, clipped, ref count);
+            ClipWaterEdge(b, c, seaRadius, clipped, ref count);
+            ClipWaterEdge(c, a, seaRadius, clipped, ref count);
+            return count;
+        }
+
+        private static void ClipWaterEdge(Vector3 current, Vector3 next, float seaRadius, Vector3[] clipped, ref int count)
+        {
+            float currentDepth = seaRadius - current.magnitude;
+            float nextDepth = seaRadius - next.magnitude;
+            bool currentUnderwater = currentDepth > 0f;
+            bool nextUnderwater = nextDepth > 0f;
+
+            if (currentUnderwater)
+            {
+                clipped[count++] = ProjectToRadius(current, seaRadius);
+            }
+
+            if (currentUnderwater != nextUnderwater)
+            {
+                float denominator = currentDepth - nextDepth;
+                float t = Mathf.Abs(denominator) <= 0.000001f ? 0.5f : Mathf.Clamp01(currentDepth / denominator);
+                clipped[count++] = ProjectToRadius(Vector3.Lerp(current, next, t), seaRadius);
+            }
+        }
+
+        private static void WriteWaterTriangle(
+            Vector3[] positions,
+            Vector3[] normals,
+            Vector2[] uvs,
+            Color32[] colors,
+            int[] indices,
+            ref int vertexCursor,
+            Vector3 a,
+            Vector3 b,
+            Vector3 c,
+            Transform targetTransform,
+            in PlanetRecipe recipe,
+            in PlanetPlacement placement)
+        {
+            Vector3 center = (a + b + c) * 0.33333334f;
+            Vector3 normal = Vector3.Cross(b - a, c - a);
+            if (normal.sqrMagnitude <= 0.000001f)
+            {
+                normal = center.sqrMagnitude > 0.000001f ? center.normalized : Vector3.up;
+            }
+            else if (Vector3.Dot(normal, center) < 0f)
+            {
+                Vector3 swap = b;
+                b = c;
+                c = swap;
+                normal = -normal;
+            }
+
+            normal.Normalize();
+            WriteWaterVertex(positions, normals, uvs, colors, indices, vertexCursor, a, normal, targetTransform, in recipe, in placement);
+            vertexCursor++;
+            WriteWaterVertex(positions, normals, uvs, colors, indices, vertexCursor, b, normal, targetTransform, in recipe, in placement);
+            vertexCursor++;
+            WriteWaterVertex(positions, normals, uvs, colors, indices, vertexCursor, c, normal, targetTransform, in recipe, in placement);
+            vertexCursor++;
+        }
+
+        private static void WriteWaterVertex(
+            Vector3[] positions,
+            Vector3[] normals,
+            Vector2[] uvs,
+            Color32[] colors,
+            int[] indices,
+            int vertexIndex,
+            Vector3 gridPosition,
+            Vector3 gridNormal,
+            Transform targetTransform,
+            in PlanetRecipe recipe,
+            in PlanetPlacement placement)
+        {
+            Vector3 worldPosition = PlanetCoordinateConverter.GridToWorld(gridPosition, in recipe, in placement);
+            Vector3 worldNormal = placement.PlanetRotation * gridNormal;
+            positions[vertexIndex] = targetTransform != null ? targetTransform.InverseTransformPoint(worldPosition) : worldPosition;
+            normals[vertexIndex] = targetTransform != null ? targetTransform.InverseTransformDirection(worldNormal).normalized : worldNormal.normalized;
+            uvs[vertexIndex] = Vector2.zero;
+            colors[vertexIndex] = Color.white;
+            indices[vertexIndex] = vertexIndex;
+        }
+
+        private static bool IsUnderSea(Vector3 gridPosition, float seaRadius)
+        {
+            return gridPosition.magnitude < seaRadius;
+        }
+
+        private static Vector3 ProjectToRadius(Vector3 gridPosition, float radius)
+        {
+            if (gridPosition.sqrMagnitude <= 0.000001f)
+            {
+                return Vector3.up * radius;
+            }
+
+            return gridPosition.normalized * radius;
+        }
+
+        private MeshFilter EnsureWaterRenderer(MeshFilter surfaceMeshFilter, MeshRenderer surfaceMeshRenderer, out MeshRenderer waterMeshRenderer)
+        {
+            if (runtimeWaterObject == null)
+            {
+                runtimeWaterObject = new GameObject("PlanetMarchingCubesPaint_Water_Runtime");
+                if (surfaceMeshFilter != null)
+                {
+                    runtimeWaterObject.layer = surfaceMeshFilter.gameObject.layer;
+                    runtimeWaterObject.transform.SetParent(surfaceMeshFilter.transform, false);
+                }
+            }
+
+            Transform waterTransform = runtimeWaterObject.transform;
+            waterTransform.localPosition = Vector3.zero;
+            waterTransform.localRotation = Quaternion.identity;
+            waterTransform.localScale = Vector3.one;
+
+            MeshFilter waterMeshFilter = runtimeWaterObject.GetComponent<MeshFilter>();
+            if (waterMeshFilter == null)
+            {
+                waterMeshFilter = runtimeWaterObject.AddComponent<MeshFilter>();
+            }
+
+            waterMeshRenderer = runtimeWaterObject.GetComponent<MeshRenderer>();
+            if (waterMeshRenderer == null)
+            {
+                waterMeshRenderer = runtimeWaterObject.AddComponent<MeshRenderer>();
+            }
+
+            if (surfaceMeshRenderer != null)
+            {
+                waterMeshRenderer.shadowCastingMode = ShadowCastingMode.Off;
+                waterMeshRenderer.receiveShadows = surfaceMeshRenderer.receiveShadows;
+            }
+
+            return waterMeshFilter;
+        }
+
         private Material ResolveMaterial(Material materialOverride, PlanetMarchingCubesPaintColorMode colorMode, PlanetGpuShapeCell[] cells)
         {
             if (materialOverride != null)
@@ -281,6 +640,32 @@ namespace MarchingCubesPlanet.MarchingCubes
 
             ApplyMaterialProperties(runtimeMaterial, colorMode, cells);
             return runtimeMaterial;
+        }
+
+        private Material ResolveWaterMaterial()
+        {
+            Material defaultWaterMaterial = Resources.Load<Material>(DefaultOceanMaterialResourceName);
+            if (defaultWaterMaterial != null)
+            {
+                runtimeWaterMaterial = new Material(defaultWaterMaterial)
+                {
+                    name = "PlanetMarchingCubesPaint_WaterMaterial_Runtime"
+                };
+                return runtimeWaterMaterial;
+            }
+
+            Shader shader = Shader.Find(UrpUnlitShaderName);
+            if (shader == null)
+            {
+                throw new InvalidOperationException("No ocean material or fallback shader was found for PlanetMarchingCubesMeshPainter.");
+            }
+
+            runtimeWaterMaterial = new Material(shader)
+            {
+                name = "PlanetMarchingCubesPaint_WaterMaterial_Runtime",
+                color = new Color(0.08f, 0.42f, 0.72f, 0.78f)
+            };
+            return runtimeWaterMaterial;
         }
 
         private void ApplyMaterialProperties(Material material, PlanetMarchingCubesPaintColorMode colorMode, PlanetGpuShapeCell[] cells)

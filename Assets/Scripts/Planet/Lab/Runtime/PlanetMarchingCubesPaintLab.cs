@@ -27,7 +27,10 @@ namespace MarchingCubesPlanet.Lab
         [SerializeField] private int lastSourceTriangleCount;
         [SerializeField] private int lastPaintedTriangleCount;
         [SerializeField] private int lastPaintedVertexCount;
+        [SerializeField] private int lastWaterTriangleCount;
+        [SerializeField] private int lastWaterVertexCount;
         [SerializeField] private long lastMeshEstimatedBytes;
+        [SerializeField] private long lastWaterMeshEstimatedBytes;
         [SerializeField] private string lastAction;
         [SerializeField] private PlanetLabMetricsSnapshot lastSnapshot;
         [SerializeField] private PlanetLabDiagnostic lastDiagnostic;
@@ -40,7 +43,9 @@ namespace MarchingCubesPlanet.Lab
         private MeshFilter activeMeshFilter;
         private MeshRenderer activeMeshRenderer;
         private int meshResourceId;
+        private int waterMeshResourceId;
         private int materialResourceId;
+        private int waterMaterialResourceId;
         private int surfaceAtlasResourceId;
 
         public override string ModuleName => "Planet Marching Cubes Paint Lab";
@@ -54,7 +59,10 @@ namespace MarchingCubesPlanet.Lab
         public int LastSourceTriangleCount => lastSourceTriangleCount;
         public int LastPaintedTriangleCount => lastPaintedTriangleCount;
         public int LastPaintedVertexCount => lastPaintedVertexCount;
+        public int LastWaterTriangleCount => lastWaterTriangleCount;
+        public int LastWaterVertexCount => lastWaterVertexCount;
         public long LastMeshEstimatedBytes => lastMeshEstimatedBytes;
+        public long LastWaterMeshEstimatedBytes => lastWaterMeshEstimatedBytes;
 
         private void OnValidate()
         {
@@ -272,13 +280,18 @@ namespace MarchingCubesPlanet.Lab
             activeMeshFilter = null;
             activeMeshRenderer = null;
             MarkReleased(ref surfaceAtlasResourceId);
+            MarkReleased(ref waterMaterialResourceId);
             MarkReleased(ref materialResourceId);
+            MarkReleased(ref waterMeshResourceId);
             MarkReleased(ref meshResourceId);
             hasLiveMesh = false;
             lastSourceTriangleCount = 0;
             lastPaintedTriangleCount = 0;
             lastPaintedVertexCount = 0;
+            lastWaterTriangleCount = 0;
+            lastWaterVertexCount = 0;
             lastMeshEstimatedBytes = 0L;
+            lastWaterMeshEstimatedBytes = 0L;
 
             if (resourceRegistry != null)
             {
@@ -301,7 +314,10 @@ namespace MarchingCubesPlanet.Lab
             lastSourceTriangleCount = result.SourceTriangleCount;
             lastPaintedTriangleCount = result.PaintedTriangleCount;
             lastPaintedVertexCount = result.PaintedVertexCount;
+            lastWaterTriangleCount = result.WaterTriangleCount;
+            lastWaterVertexCount = result.WaterVertexCount;
             lastMeshEstimatedBytes = result.MeshEstimatedBytes;
+            lastWaterMeshEstimatedBytes = result.WaterMeshEstimatedBytes;
         }
 
         private void RegisterRuntimeResources()
@@ -323,10 +339,32 @@ namespace MarchingCubesPlanet.Lab
                     0);
             }
 
+            if (painter.RuntimeWaterMesh != null)
+            {
+                waterMeshResourceId = resourceRegistry.RegisterResource(
+                    "PlanetMarchingCubesPaint Water Mesh",
+                    PlanetLabResourceType.Mesh,
+                    OwnerName,
+                    lastWaterMeshEstimatedBytes,
+                    lastWaterVertexCount,
+                    0);
+            }
+
             if (painter.OwnsRuntimeMaterial)
             {
                 materialResourceId = resourceRegistry.RegisterResource(
                     "PlanetMarchingCubesPaint Material",
+                    PlanetLabResourceType.RuntimeMaterial,
+                    OwnerName,
+                    1,
+                    1,
+                    0);
+            }
+
+            if (painter.OwnsRuntimeWaterMaterial)
+            {
+                waterMaterialResourceId = resourceRegistry.RegisterResource(
+                    "PlanetMarchingCubesPaint Water Material",
                     PlanetLabResourceType.RuntimeMaterial,
                     OwnerName,
                     1,
@@ -365,7 +403,10 @@ namespace MarchingCubesPlanet.Lab
             return "sourceTriangleCount=" + lastSourceTriangleCount +
                    "\npaintedTriangleCount=" + lastPaintedTriangleCount +
                    "\npaintedVertexCount=" + lastPaintedVertexCount +
+                   "\nwaterTriangleCount=" + lastWaterTriangleCount +
+                   "\nwaterVertexCount=" + lastWaterVertexCount +
                    "\nmeshEstimatedBytes=" + lastMeshEstimatedBytes +
+                   "\nwaterMeshEstimatedBytes=" + lastWaterMeshEstimatedBytes +
                    "\n" + settings;
         }
 
