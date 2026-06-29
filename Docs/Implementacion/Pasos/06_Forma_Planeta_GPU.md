@@ -290,6 +290,7 @@ surfaceNoiseFrequency
 surfaceNoiseOctaves
 surfaceNoiseLacunarity
 surfaceNoisePersistence
+surfaceNoiseResponsePower
 minRoughness
 maxRoughness
 ```
@@ -313,6 +314,7 @@ surfaceNoiseFrequency = 7
 surfaceNoiseOctaves = 4
 surfaceNoiseLacunarity = 2
 surfaceNoisePersistence = 0.5
+surfaceNoiseResponsePower = 3.5
 roughnessModifier = 0.6..0.8
 ```
 
@@ -612,7 +614,8 @@ boundaryRoughness = (nearestRoughness + secondRoughness) / 2
 effectiveRoughness = lerp(boundaryRoughness, nearestRoughness, interiorBlend)
 noisePosition = normalizedPosition * frequency * effectiveRoughness
 noiseValue = fBmPerlin3D(noisePosition, octaves, lacunarity, persistence)
-offset += noiseValue * radius * amplitude
+shapedNoiseValue = sign(noiseValue) * abs(noiseValue) ^ responsePower
+offset += shapedNoiseValue * radius * amplitude
 ```
 
 Reglas:
@@ -621,6 +624,8 @@ Reglas:
 El ruido debe ser determinista por seed y parametros.
 El ruido no debe depender de WorldSpacePosition.
 El ruido no debe requerir textura global del planeta.
+El ruido no entra linealmente en altura: responsePower aplasta valores pequenos y medios.
+responsePower = 1 equivale al comportamiento lineal anterior.
 ```
 
 Decision inicial:
@@ -645,7 +650,7 @@ Reglas:
 
 ```text
 Perlin3D recibe posicion local normalizada por radio, frecuencia, roughness efectivo mezclado en borde Voronoi y seed.
-La receta controla SurfaceNoiseOctaves, SurfaceNoiseLacunarity y SurfaceNoisePersistence.
+La receta controla SurfaceNoiseOctaves, SurfaceNoiseLacunarity, SurfaceNoisePersistence y SurfaceNoiseResponsePower.
 Esta regla replica la formula funcional previa: `normalizedPosition = localPosition / radius`.
 El ruido de superficie puede variar dentro de la banda radial evaluada por Marching Cubes.
 El seed entra como offset/hash determinista, no como dependencia de tiempo.

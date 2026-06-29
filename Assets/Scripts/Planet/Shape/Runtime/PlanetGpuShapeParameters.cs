@@ -44,7 +44,7 @@ namespace MarchingCubesPlanet.Shape
                     recipe.SurfaceNoiseOctaves,
                     recipe.SurfaceNoiseLacunarity,
                     recipe.SurfaceNoisePersistence,
-                    0f),
+                    recipe.SurfaceNoiseResponsePower),
                 continentEdgeShape = new Vector4(
                     recipe.ContinentEdgeWidthMin,
                     recipe.ContinentEdgeWidthMax,

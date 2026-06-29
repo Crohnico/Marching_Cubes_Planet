@@ -534,6 +534,24 @@ MonoBehaviour:
   m_ChildScaleWidth: 0
   m_ChildScaleHeight: 0
   m_ReverseArrangement: 0
+--- !u!114 &223344556
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1231763935}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 893d3261334e4161b1c171dc047b5076, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: MarchingCubesPlanet.Lab::MarchingCubesPlanet.Lab.DebugMinimalLocomotion
+  approachSpeed: 900
+  interiorSpeed: 30
+  speedMode: 0
+  pitchDegreesPerSecond: 90
+  yawDegreesPerSecond: 90
+  inputDeadzone: 0.15
 --- !u!1 &289145796
 GameObject:
   m_ObjectHideFlags: 0
@@ -3255,9 +3273,10 @@ MonoBehaviour:
     surfaceNoiseOctaves: 4
     surfaceNoiseLacunarity: 2
     surfaceNoisePersistence: 0.5
+    surfaceNoiseResponsePower: 3.5
     minRoughness: 0.6
     maxRoughness: 0.8
-    recipeVersion: 4
+    recipeVersion: 5
   placement:
     planetStellarCenter:
       x: 0
@@ -3377,9 +3396,10 @@ MonoBehaviour:
     surfaceNoiseOctaves: 4
     surfaceNoiseLacunarity: 2
     surfaceNoisePersistence: 0.5
+    surfaceNoiseResponsePower: 3.5
     minRoughness: 0.6
     maxRoughness: 0.8
-    recipeVersion: 4
+    recipeVersion: 5
   bufferMode: 0
   debugSampleCount: 32
   supportsComputeShaders: 0
@@ -4593,8 +4613,9 @@ GameObject:
   m_Component:
   - component: {fileID: 1231763937}
   - component: {fileID: 1231763936}
+  - component: {fileID: 223344556}
   m_Layer: 0
-  m_Name: PlanetMinimalXrRig
+  m_Name: Player
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -6321,8 +6342,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: MarchingCubesPlanet.Preview::MarchingCubesPlanet.Preview.PlanetRecipePayloadPreview
   recipe:
-    gridRadius: 100
-    worldScale: 75
+    gridRadius: 130
+    worldScale: 62
     seed: 15666
     isoLevel: 0
     voronoiDivision: 80
@@ -6342,9 +6363,10 @@ MonoBehaviour:
     surfaceNoiseOctaves: 8
     surfaceNoiseLacunarity: 2.5
     surfaceNoisePersistence: 0.5
+    surfaceNoiseResponsePower: 1.22
     minRoughness: 0.6
     maxRoughness: 1.48
-    recipeVersion: 4
+    recipeVersion: 5
   placement:
     planetStellarCenter:
       x: 0
@@ -6598,8 +6620,8 @@ MonoBehaviour:
   derivedTriangleCount: 124820
   derivedVertexCount: 374460
   derivedIndexCount: 374460
-  derivedWorldRadius: 7500
-  derivedSurfaceRadius: 7500
+  derivedWorldRadius: 8060
+  derivedSurfaceRadius: 8060
   hasLiveMesh: 0
   lastDiagnostic: 
 --- !u!1 &2038297193

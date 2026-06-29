@@ -255,7 +255,8 @@ boundaryRoughness = (nearestRoughness + secondRoughness) / 2
 effectiveRoughness = lerp(boundaryRoughness, nearestRoughness, interiorBlend)
 noisePosition = normalizedPosition * frequency * effectiveRoughness
 noiseValue = fBmPerlin3D(noisePosition, octaves, lacunarity, persistence)
-offset += noiseValue * radius * amplitude
+shapedNoiseValue = sign(noiseValue) * abs(noiseValue) ^ responsePower
+offset += shapedNoiseValue * radius * amplitude
 ```
 
 Parametros de receta del ruido:
@@ -266,11 +267,14 @@ SurfaceNoiseFrequency
 SurfaceNoiseOctaves
 SurfaceNoiseLacunarity
 SurfaceNoisePersistence
+SurfaceNoiseResponsePower
 MinRoughness
 MaxRoughness
 ```
 
 `SurfaceNoiseOctaves`, `SurfaceNoiseLacunarity` y `SurfaceNoisePersistence` controlan cuantas capas de Perlin3D se suman y como cambia frecuencia/amplitud por capa. El resultado se normaliza por la suma de amplitudes para que aumentar octavas cambie el detalle sin disparar por si solo el desplazamiento radial maximo.
+
+`SurfaceNoiseResponsePower` controla la respuesta final del ruido antes de escalarlo por radio y amplitud. Con `1` el ruido es lineal. Con valores mayores, diferencias pequenas del Perlin generan diferencias de altura mucho mas suaves, y solo los valores cercanos a los extremos producen grandes montanas o hendiduras. Esto evita que una diferencia local pequena se convierta en metros de desnivel despues de aplicar `WorldScale`.
 
 El modificador de rugosidad tambien cambia por celda Voronoi:
 

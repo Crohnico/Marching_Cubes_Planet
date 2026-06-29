@@ -399,6 +399,7 @@ namespace MarchingCubesPlanet.Lab
                    "\nSurfaceNoiseOctaves=" + recipe.SurfaceNoiseOctaves +
                    "\nSurfaceNoiseLacunarity=" + recipe.SurfaceNoiseLacunarity +
                    "\nSurfaceNoisePersistence=" + recipe.SurfaceNoisePersistence +
+                   "\nSurfaceNoiseResponsePower=" + recipe.SurfaceNoiseResponsePower +
                    "\nRoughness=" + recipe.MinRoughness + ".." + recipe.MaxRoughness +
                    "\nPlanetStellarCenter=" + placement.PlanetStellarCenter +
                    "\nActiveOrigin=" + placement.ActiveOrigin +

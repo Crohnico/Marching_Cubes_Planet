@@ -9,6 +9,7 @@ namespace MarchingCubesPlanet.Coordinates
         public const int DefaultSurfaceNoiseOctaves = 4;
         public const float DefaultSurfaceNoiseLacunarity = 2f;
         public const float DefaultSurfaceNoisePersistence = 0.5f;
+        public const float DefaultSurfaceNoiseResponsePower = 3.5f;
         public const float DefaultContinentEdgeWidthMin = 0.65f;
         public const float DefaultContinentEdgeWidthMax = 1.75f;
         public const float DefaultContinentEdgeShiftStrength = 0.75f;
@@ -34,6 +35,7 @@ namespace MarchingCubesPlanet.Coordinates
         [SerializeField] private int surfaceNoiseOctaves;
         [SerializeField] private float surfaceNoiseLacunarity;
         [SerializeField] private float surfaceNoisePersistence;
+        [SerializeField] private float surfaceNoiseResponsePower;
         [SerializeField] private float minRoughness;
         [SerializeField] private float maxRoughness;
         [SerializeField] private int recipeVersion;
@@ -164,6 +166,12 @@ namespace MarchingCubesPlanet.Coordinates
             set => surfaceNoisePersistence = value;
         }
 
+        public float SurfaceNoiseResponsePower
+        {
+            get => surfaceNoiseResponsePower <= 0f ? DefaultSurfaceNoiseResponsePower : surfaceNoiseResponsePower;
+            set => surfaceNoiseResponsePower = value;
+        }
+
         public float MinRoughness
         {
             get => minRoughness;
@@ -203,6 +211,12 @@ namespace MarchingCubesPlanet.Coordinates
                 continentEdgeWidthMax = DefaultContinentEdgeWidthMax;
                 continentEdgeShiftStrength = DefaultContinentEdgeShiftStrength;
                 recipeVersion = 4;
+            }
+
+            if (recipeVersion < 5)
+            {
+                surfaceNoiseResponsePower = DefaultSurfaceNoiseResponsePower;
+                recipeVersion = 5;
             }
 
             if (surfaceNoiseOctaves <= 0)
@@ -246,9 +260,10 @@ namespace MarchingCubesPlanet.Coordinates
                 surfaceNoiseOctaves = DefaultSurfaceNoiseOctaves,
                 surfaceNoiseLacunarity = DefaultSurfaceNoiseLacunarity,
                 surfaceNoisePersistence = DefaultSurfaceNoisePersistence,
+                surfaceNoiseResponsePower = DefaultSurfaceNoiseResponsePower,
                 minRoughness = 0.6f,
                 maxRoughness = 0.8f,
-                recipeVersion = 4
+                recipeVersion = 5
             };
         }
     }

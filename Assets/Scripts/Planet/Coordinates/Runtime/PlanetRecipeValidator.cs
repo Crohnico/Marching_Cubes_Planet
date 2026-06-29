@@ -112,6 +112,12 @@ namespace MarchingCubesPlanet.Coordinates
                 return false;
             }
 
+            if (recipe.SurfaceNoiseResponsePower <= 0f || recipe.SurfaceNoiseResponsePower > 8f)
+            {
+                message = "SurfaceNoiseResponsePower must be greater than zero and lower than or equal to eight.";
+                return false;
+            }
+
             if (recipe.MinRoughness <= 0f || recipe.MaxRoughness < recipe.MinRoughness)
             {
                 message = "Roughness range is invalid.";

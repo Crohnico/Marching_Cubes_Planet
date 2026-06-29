@@ -22,6 +22,7 @@ namespace MarchingCubesPlanet.Lab.Tests
             Assert.AreEqual(4, recipe.SurfaceNoiseOctaves);
             Assert.AreEqual(2f, recipe.SurfaceNoiseLacunarity);
             Assert.AreEqual(0.5f, recipe.SurfaceNoisePersistence);
+            Assert.AreEqual(3.5f, recipe.SurfaceNoiseResponsePower);
             Assert.IsTrue(PlanetRecipeValidator.Validate(in recipe, out _));
         }
 
@@ -90,6 +91,12 @@ namespace MarchingCubesPlanet.Lab.Tests
 
             Assert.IsFalse(PlanetRecipeValidator.Validate(in recipe, out string persistenceMessage));
             StringAssert.Contains("SurfaceNoisePersistence", persistenceMessage);
+
+            recipe = PlanetRecipe.Default();
+            recipe.SurfaceNoiseResponsePower = 0f;
+
+            Assert.IsFalse(PlanetRecipeValidator.Validate(in recipe, out string responseMessage));
+            StringAssert.Contains("SurfaceNoiseResponsePower", responseMessage);
         }
 
         [Test]
@@ -114,12 +121,14 @@ namespace MarchingCubesPlanet.Lab.Tests
             recipe.SurfaceNoiseOctaves = 6;
             recipe.SurfaceNoiseLacunarity = 2.3f;
             recipe.SurfaceNoisePersistence = 0.42f;
+            recipe.SurfaceNoiseResponsePower = 2.7f;
 
             PlanetGpuShapeParameters parameters = PlanetGpuShapeParameters.FromRecipe(in recipe);
 
             Assert.AreEqual(6f, parameters.noiseFractal.x);
             Assert.AreEqual(2.3f, parameters.noiseFractal.y);
             Assert.AreEqual(0.42f, parameters.noiseFractal.z);
+            Assert.AreEqual(2.7f, parameters.noiseFractal.w);
         }
 
         [Test]

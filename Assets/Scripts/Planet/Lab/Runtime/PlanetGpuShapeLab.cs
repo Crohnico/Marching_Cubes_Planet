@@ -450,7 +450,8 @@ namespace MarchingCubesPlanet.Lab
                    "\nSurfaceNoiseFrequency=" + recipe.SurfaceNoiseFrequency +
                    "\nSurfaceNoiseOctaves=" + recipe.SurfaceNoiseOctaves +
                    "\nSurfaceNoiseLacunarity=" + recipe.SurfaceNoiseLacunarity +
-                   "\nSurfaceNoisePersistence=" + recipe.SurfaceNoisePersistence;
+                   "\nSurfaceNoisePersistence=" + recipe.SurfaceNoisePersistence +
+                   "\nSurfaceNoiseResponsePower=" + recipe.SurfaceNoiseResponsePower;
         }
 
         private void OnDisable()

@@ -217,6 +217,7 @@ float PlanetShapeEvaluateDensity(float3 gridPosition, out float surfaceOffset, o
         int noiseOctaves = clamp((int)round(parameters.noiseFractal.x), 1, 8);
         float noiseLacunarity = max(0.01, parameters.noiseFractal.y);
         float noisePersistence = clamp(parameters.noiseFractal.z, 0.01, 1.0);
+        float noiseResponsePower = clamp(parameters.noiseFractal.w, 0.01, 8.0);
         float3 noisePosition = normalizedPosition * max(0.01, noiseFrequency) * roughness;
         float noiseValue = PlanetShapeFbmPerlin3D(
             noisePosition,
@@ -224,7 +225,8 @@ float PlanetShapeEvaluateDensity(float3 gridPosition, out float surfaceOffset, o
             noiseOctaves,
             noiseLacunarity,
             noisePersistence);
-        surfaceOffset += noiseValue * radius * noiseAmplitude;
+        float shapedNoiseValue = sign(noiseValue) * pow(abs(noiseValue), noiseResponsePower);
+        surfaceOffset += shapedNoiseValue * radius * noiseAmplitude;
     }
 
     effectiveRadius = radius + surfaceOffset;
