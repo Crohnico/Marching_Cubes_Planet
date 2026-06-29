@@ -214,11 +214,10 @@ Estado del codigo existente antes de implementar 06:
 
 ```text
 PlanetRecipe ya existe en `Assets/Scripts/Planet/Coordinates/Runtime/PlanetRecipe.cs`.
-Actualmente contiene GridRadius, WorldScale, Seed, IsoLevel y RecipeVersion.
-06 debe ampliar PlanetRecipe con VoronoiDivision y ContinentCells.
-06 debe ampliar PlanetRecipeValidator con sus rangos.
-PlanetRecipe.Default debe inicializar VoronoiDivision = 100 y ContinentCells = 84.
-PlanetRecipeLab debe mostrar estos valores en diagnostico si forman parte de la receta.
+06 amplia PlanetRecipe con los parametros de forma: VoronoiDivision, ContinentCells, elevacion, oceano, ruido y roughness.
+PlanetRecipeValidator valida sus rangos.
+PlanetRecipe.Default inicializa VoronoiDivision = 100 y ContinentCells = 84.
+PlanetRecipeLab muestra estos valores en diagnostico si forman parte de la receta.
 ```
 
 Regla:
@@ -284,6 +283,9 @@ oceanDepth
 minimumOceanDepth
 surfaceNoiseAmplitude
 surfaceNoiseFrequency
+surfaceNoiseOctaves
+surfaceNoiseLacunarity
+surfaceNoisePersistence
 minRoughness
 maxRoughness
 ```
@@ -301,6 +303,9 @@ minimumOceanDepth = 3% del radio
 continentEdgeBlend = 0.16
 surfaceNoiseAmplitude = 30.8% del radio
 surfaceNoiseFrequency = 7
+surfaceNoiseOctaves = 4
+surfaceNoiseLacunarity = 2
+surfaceNoisePersistence = 0.5
 roughnessModifier = 0.6..0.8
 ```
 
@@ -538,7 +543,6 @@ Decision de elevacion inicial:
 
 ```text
 t = random01(secuenciaElevacion)
-t = smoothstep(0, 1, t)
 landElevation = lerp(minLandElevation, maxLandElevation, t)
 landOffset = radius * landElevation
 heightModifier = randomRange(seed, cellIndex, minHeightModifier, maxHeightModifier)
@@ -560,7 +564,7 @@ Decision de borde continental inicial:
 ```text
 dotDelta = nearestDot - secondNearestDot
 rawBlend = saturate(dotDelta / continentEdgeBlend)
-interiorBlend = smoothstep(0, 1, rawBlend)
+interiorBlend = rawBlend
 boundaryOffset = (nearestOffset + secondOffset) * 0.5
 offset = lerp(boundaryOffset, nearestOffset, interiorBlend)
 ```
@@ -568,7 +572,7 @@ offset = lerp(boundaryOffset, nearestOffset, interiorBlend)
 Regla:
 
 ```text
-Esta curva inicial viene del documento funcional.
+La mezcla inicial es lineal para no redondear en exceso el relieve.
 No queda bloqueada por arte final: se ajusta despues de ver 07 si hace falta.
 ```
 
@@ -591,7 +595,8 @@ Formula conceptual:
 normalizedPosition = localPosition / radius
 boundaryRoughness = (nearestRoughness + secondRoughness) / 2
 effectiveRoughness = lerp(boundaryRoughness, nearestRoughness, interiorBlend)
-noiseValue = coherentNoise(normalizedPosition * frequency * effectiveRoughness)
+noisePosition = normalizedPosition * frequency * effectiveRoughness
+noiseValue = fBmPerlin3D(noisePosition, octaves, lacunarity, persistence)
 offset += noiseValue * radius * amplitude
 ```
 
@@ -606,7 +611,7 @@ El ruido no debe requerir textura global del planeta.
 Decision inicial:
 
 ```text
-Perlin3D en GPU.
+fBm sobre Perlin3D en GPU.
 ```
 
 Implementacion inicial:
@@ -618,12 +623,14 @@ Gradientes derivados del hash.
 Fade quintico por eje: t * t * t * (t * (t * 6 - 15) + 10).
 Interpolacion trilineal de las 8 esquinas.
 Salida normalizada esperada en rango aproximado [-1, 1].
+fBm normalizado por suma de amplitudes para mantener el rango estable al cambiar octavas.
 ```
 
 Reglas:
 
 ```text
 Perlin3D recibe posicion local normalizada por radio, frecuencia, roughness efectivo mezclado en borde Voronoi y seed.
+La receta controla SurfaceNoiseOctaves, SurfaceNoiseLacunarity y SurfaceNoisePersistence.
 Esta regla replica la formula funcional previa: `normalizedPosition = localPosition / radius`.
 El ruido de superficie puede variar dentro de la banda radial evaluada por Marching Cubes.
 El seed entra como offset/hash determinista, no como dependencia de tiempo.
@@ -1162,8 +1169,9 @@ No existe una fuente paralela tipo ShapeSettings para definir la identidad del p
 VoronoiDivision inicial = 100.
 ContinentCells inicial = 84.
 La distribucion inicial de direcciones Voronoi replica el perfil funcional previo.
-El ruido coherente inicial usa Perlin3D.
+El ruido coherente inicial usa fBm sobre Perlin3D.
 Perlin3D inicial es procedural sin texturas, con hash determinista por seed.
+PlanetRecipe expone amplitud, frecuencia, octavas, lacunaridad y persistencia del ruido de superficie.
 PlanetGpuShapeCell usa 2 float4 y stride de 32 bytes.
 07 llama a density(point) desde HLSL compartido en su propio kernel.
 ```

@@ -4,6 +4,7 @@ struct PlanetShapeParameters
     float4 elevation;
     float4 oceanBlend;
     float4 noise;
+    float4 noiseFractal;
 };
 
 struct PlanetShapeCell
@@ -79,6 +80,26 @@ float PlanetShapePerlin3D(float3 position, uint seed)
     return saturate(lerp(y0, y1, fade.z) * 0.5 + 0.5) * 2.0 - 1.0;
 }
 
+float PlanetShapeFbmPerlin3D(float3 position, uint seed, int octaves, float lacunarity, float persistence)
+{
+    float value = 0.0;
+    float amplitude = 1.0;
+    float frequency = 1.0;
+    float amplitudeSum = 0.0;
+
+    [loop]
+    for (int octave = 0; octave < octaves; octave++)
+    {
+        uint octaveSeed = seed + (uint)octave * 0x9e3779b9u;
+        value += PlanetShapePerlin3D(position * frequency, octaveSeed) * amplitude;
+        amplitudeSum += amplitude;
+        frequency *= lacunarity;
+        amplitude *= persistence;
+    }
+
+    return amplitudeSum > 0.00001 ? value / amplitudeSum : 0.0;
+}
+
 float PlanetShapeEvaluateDensity(float3 gridPosition, out float surfaceOffset, out float effectiveRadius, out float continentFlag)
 {
     PlanetShapeParameters parameters = _PlanetShapeParameters[0];
@@ -139,7 +160,7 @@ float PlanetShapeEvaluateDensity(float3 gridPosition, out float surfaceOffset, o
 
     float edgeBlend = max(parameters.oceanBlend.z, 0.0001);
     float rawBlend = saturate((nearestDot - secondDot) / edgeBlend);
-    float interiorBlend = smoothstep(0.0, 1.0, rawBlend);
+    float interiorBlend = rawBlend;
     float nearestSurfaceOffset = nearestOffset * nearestHeightModifier;
     float secondSurfaceOffset = secondOffset * secondHeightModifier;
     float boundaryOffset = (nearestSurfaceOffset + secondSurfaceOffset) * 0.5;
@@ -152,7 +173,16 @@ float PlanetShapeEvaluateDensity(float3 gridPosition, out float surfaceOffset, o
     if (noiseAmplitude > 0.0 && noiseFrequency > 0.0)
     {
         float3 normalizedPosition = gridPosition / radius;
-        float noiseValue = PlanetShapePerlin3D(normalizedPosition * max(0.01, noiseFrequency) * roughness, seed);
+        int noiseOctaves = clamp((int)round(parameters.noiseFractal.x), 1, 8);
+        float noiseLacunarity = max(0.01, parameters.noiseFractal.y);
+        float noisePersistence = clamp(parameters.noiseFractal.z, 0.01, 1.0);
+        float3 noisePosition = normalizedPosition * max(0.01, noiseFrequency) * roughness;
+        float noiseValue = PlanetShapeFbmPerlin3D(
+            noisePosition,
+            seed,
+            noiseOctaves,
+            noiseLacunarity,
+            noisePersistence);
         surfaceOffset += noiseValue * radius * noiseAmplitude;
     }
 

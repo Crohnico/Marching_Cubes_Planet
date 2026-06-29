@@ -444,7 +444,10 @@ namespace MarchingCubesPlanet.Lab
                    "\nVoronoiDivision=" + recipe.VoronoiDivision +
                    "\nContinentCells=" + recipe.ContinentCells +
                    "\nSurfaceNoiseAmplitude=" + recipe.SurfaceNoiseAmplitude +
-                   "\nSurfaceNoiseFrequency=" + recipe.SurfaceNoiseFrequency;
+                   "\nSurfaceNoiseFrequency=" + recipe.SurfaceNoiseFrequency +
+                   "\nSurfaceNoiseOctaves=" + recipe.SurfaceNoiseOctaves +
+                   "\nSurfaceNoiseLacunarity=" + recipe.SurfaceNoiseLacunarity +
+                   "\nSurfaceNoisePersistence=" + recipe.SurfaceNoisePersistence;
         }
 
         private void OnDisable()

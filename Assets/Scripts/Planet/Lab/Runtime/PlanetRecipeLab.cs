@@ -394,6 +394,9 @@ namespace MarchingCubesPlanet.Lab
                    "\nMinimumOceanDepth=" + recipe.MinimumOceanDepth +
                    "\nSurfaceNoiseAmplitude=" + recipe.SurfaceNoiseAmplitude +
                    "\nSurfaceNoiseFrequency=" + recipe.SurfaceNoiseFrequency +
+                   "\nSurfaceNoiseOctaves=" + recipe.SurfaceNoiseOctaves +
+                   "\nSurfaceNoiseLacunarity=" + recipe.SurfaceNoiseLacunarity +
+                   "\nSurfaceNoisePersistence=" + recipe.SurfaceNoisePersistence +
                    "\nRoughness=" + recipe.MinRoughness + ".." + recipe.MaxRoughness +
                    "\nPlanetStellarCenter=" + placement.PlanetStellarCenter +
                    "\nActiveOrigin=" + placement.ActiveOrigin +

@@ -76,6 +76,24 @@ namespace MarchingCubesPlanet.Coordinates
                 return false;
             }
 
+            if (recipe.SurfaceNoiseOctaves < 1 || recipe.SurfaceNoiseOctaves > 8)
+            {
+                message = "SurfaceNoiseOctaves must be between 1 and 8.";
+                return false;
+            }
+
+            if (recipe.SurfaceNoiseLacunarity <= 0f)
+            {
+                message = "SurfaceNoiseLacunarity must be greater than zero.";
+                return false;
+            }
+
+            if (recipe.SurfaceNoisePersistence <= 0f || recipe.SurfaceNoisePersistence > 1f)
+            {
+                message = "SurfaceNoisePersistence must be greater than zero and lower than or equal to one.";
+                return false;
+            }
+
             if (recipe.MinRoughness <= 0f || recipe.MaxRoughness < recipe.MinRoughness)
             {
                 message = "Roughness range is invalid.";

@@ -122,7 +122,7 @@ namespace MarchingCubesPlanet.Shape
 
         private static float EvaluateLandOffset(in PlanetRecipe recipe, System.Random elevationRandom)
         {
-            float t = Smooth01((float)elevationRandom.NextDouble());
+            float t = (float)elevationRandom.NextDouble();
             float landElevation = Mathf.Lerp(recipe.MinLandElevation, recipe.MaxLandElevation, t);
             return recipe.GridRadius * landElevation;
         }
@@ -132,11 +132,6 @@ namespace MarchingCubesPlanet.Shape
             float oceanOffset = -recipe.GridRadius * recipe.OceanDepth;
             float minimumOceanOffset = -recipe.GridRadius * recipe.MinimumOceanDepth;
             return Mathf.Min(oceanOffset, minimumOceanOffset);
-        }
-
-        private static float Smooth01(float value)
-        {
-            return value * value * (3f - 2f * value);
         }
 
         private static float LegacyHash01(int seed, int index, uint salt)

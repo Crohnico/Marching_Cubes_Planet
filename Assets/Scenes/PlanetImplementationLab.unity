@@ -1695,8 +1695,8 @@ Camera:
   m_GameObject: {fileID: 629667603}
   m_Enabled: 1
   serializedVersion: 2
-  m_ClearFlags: 1
-  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
+  m_ClearFlags: 2
+  m_BackGroundColor: {r: 0, g: 0, b: 0, a: 0}
   m_projectionMatrixMode: 1
   m_GateFitMode: 2
   m_FOVAxisMode: 0
@@ -3249,6 +3249,9 @@ MonoBehaviour:
     minimumOceanDepth: 0.03
     surfaceNoiseAmplitude: 0.308
     surfaceNoiseFrequency: 7
+    surfaceNoiseOctaves: 4
+    surfaceNoiseLacunarity: 2
+    surfaceNoisePersistence: 0.5
     minRoughness: 0.6
     maxRoughness: 0.8
     recipeVersion: 2
@@ -3365,6 +3368,9 @@ MonoBehaviour:
     minimumOceanDepth: 0.03
     surfaceNoiseAmplitude: 0.308
     surfaceNoiseFrequency: 7
+    surfaceNoiseOctaves: 4
+    surfaceNoiseLacunarity: 2
+    surfaceNoisePersistence: 0.5
     minRoughness: 0.6
     maxRoughness: 0.8
     recipeVersion: 2
@@ -3467,7 +3473,7 @@ MonoBehaviour:
       cellSizeGrid: 1
       safetyMargin: 4
       maxCandidateChunks: 0
-    maxPlanetSurfaceTriangles: 65536
+    temporaryOutputTriangleCapacity: 65536
   supportsComputeShaders: 0
   lastCandidateChunkCount: 0
   lastProcessedChunkCount: 0
@@ -3567,13 +3573,12 @@ MonoBehaviour:
     planetRotation: {x: 0, y: 0, z: 0, w: 1}
   settings:
     colorMode: 3
-    maxPaintedTriangles: 65536
+    meshTriangleCapacity: 65536
     solidColor: {r: 0.15, g: 0.9, b: 1, a: 1}
   hasLiveMesh: 0
   lastSourceTriangleCount: 0
   lastPaintedTriangleCount: 0
   lastPaintedVertexCount: 0
-  lastVisualTruncated: 0
   lastMeshEstimatedBytes: 0
   lastAction: 
   lastSnapshot:
@@ -6288,7 +6293,7 @@ Transform:
   m_GameObject: {fileID: 2000400000}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 550}
+  m_LocalPosition: {x: 0, y: 0, z: 9500}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -6307,29 +6312,32 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: MarchingCubesPlanet.Preview::MarchingCubesPlanet.Preview.PlanetRecipePayloadPreview
   recipe:
-    gridRadius: 500
-    worldScale: 1
-    seed: 12345
+    gridRadius: 100
+    worldScale: 75
+    seed: 15666
     isoLevel: 0
-    voronoiDivision: 100
-    continentCells: 84
-    continentEdgeBlend: 0.16
-    minLandElevation: 0.015
-    maxLandElevation: 0.127
-    minHeightModifier: 0.3
-    maxHeightModifier: 1.5
+    voronoiDivision: 80
+    continentCells: 72
+    continentEdgeBlend: 0.5
+    minLandElevation: 0.1
+    maxLandElevation: 0.4
+    minHeightModifier: 0.1
+    maxHeightModifier: 0.4
     oceanDepth: 0.16
     minimumOceanDepth: 0.03
-    surfaceNoiseAmplitude: 0.308
-    surfaceNoiseFrequency: 7
+    surfaceNoiseAmplitude: 0.1
+    surfaceNoiseFrequency: 9
+    surfaceNoiseOctaves: 8
+    surfaceNoiseLacunarity: 2.5
+    surfaceNoisePersistence: 0.5
     minRoughness: 0.6
-    maxRoughness: 0.8
+    maxRoughness: 1.48
     recipeVersion: 2
   placement:
     planetStellarCenter:
       x: 0
       y: 0
-      z: 550
+      z: 9500
     activeOrigin:
       x: 0
       y: 0
@@ -6578,8 +6586,8 @@ MonoBehaviour:
   derivedTriangleCount: 124820
   derivedVertexCount: 374460
   derivedIndexCount: 374460
-  derivedWorldRadius: 500
-  derivedSurfaceRadius: 500
+  derivedWorldRadius: 7500
+  derivedSurfaceRadius: 7500
   hasLiveMesh: 0
   lastDiagnostic: 
 --- !u!1 &2038297193

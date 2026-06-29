@@ -213,7 +213,7 @@ Para suavizarlas se compara la cercania de la celda mas cercana y la segunda mas
 ```text
 dotDelta = nearestDot - secondNearestDot
 rawBlend = saturate(dotDelta / continentEdgeBlend)
-interiorBlend = blendCurve(rawBlend)
+interiorBlend = rawBlend
 ```
 
 Cuando `dotDelta` es pequeno, estamos cerca de una frontera. Cuando es grande, estamos dentro de una celda.
@@ -246,9 +246,24 @@ localPosition = position - center
 normalizedPosition = localPosition / radius
 boundaryRoughness = (nearestRoughness + secondRoughness) / 2
 effectiveRoughness = lerp(boundaryRoughness, nearestRoughness, interiorBlend)
-noiseValue = coherentNoise(normalizedPosition * frequency * effectiveRoughness)
+noisePosition = normalizedPosition * frequency * effectiveRoughness
+noiseValue = fBmPerlin3D(noisePosition, octaves, lacunarity, persistence)
 offset += noiseValue * radius * amplitude
 ```
+
+Parametros de receta del ruido:
+
+```text
+SurfaceNoiseAmplitude
+SurfaceNoiseFrequency
+SurfaceNoiseOctaves
+SurfaceNoiseLacunarity
+SurfaceNoisePersistence
+MinRoughness
+MaxRoughness
+```
+
+`SurfaceNoiseOctaves`, `SurfaceNoiseLacunarity` y `SurfaceNoisePersistence` controlan cuantas capas de Perlin3D se suman y como cambia frecuencia/amplitud por capa. El resultado se normaliza por la suma de amplitudes para que aumentar octavas cambie el detalle sin disparar por si solo el desplazamiento radial maximo.
 
 El modificador de rugosidad tambien cambia por celda Voronoi:
 
@@ -416,7 +431,7 @@ La parte visual que conviene recordar no es una clase, una cache o una ruta de d
 effectiveRadius(point) =
     radius
     + voronoiContinentOffset(direction)
-    + coherentSurfaceNoise(localPosition / radius)
+    + fBmPerlinSurfaceNoise(localPosition / radius)
 ```
 
 Todo lo demas puede cambiar.

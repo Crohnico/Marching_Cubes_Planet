@@ -312,6 +312,13 @@ innerRadius = GridRadius - maxInwardOffset - safetyMargin
 outerRadius = GridRadius + maxOutwardOffset + safetyMargin
 ```
 
+Nota:
+
+```text
+SurfaceNoiseOctaves, SurfaceNoiseLacunarity y SurfaceNoisePersistence cambian el detalle interno del ruido de 06.
+No amplian por si solas la banda radial de 07 porque el fBm de 06 se normaliza antes de aplicar SurfaceNoiseAmplitude.
+```
+
 Un chunk se considera candidato si su AABB cartesiano puede intersectar la cascara:
 
 ```text

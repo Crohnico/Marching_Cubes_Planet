@@ -16,6 +16,9 @@ namespace MarchingCubesPlanet.Lab.Tests
             Assert.AreEqual(84, recipe.ContinentCells);
             Assert.AreEqual(0.16f, recipe.ContinentEdgeBlend);
             Assert.AreEqual(7f, recipe.SurfaceNoiseFrequency);
+            Assert.AreEqual(4, recipe.SurfaceNoiseOctaves);
+            Assert.AreEqual(2f, recipe.SurfaceNoiseLacunarity);
+            Assert.AreEqual(0.5f, recipe.SurfaceNoisePersistence);
             Assert.IsTrue(PlanetRecipeValidator.Validate(in recipe, out _));
         }
 
@@ -40,6 +43,43 @@ namespace MarchingCubesPlanet.Lab.Tests
             Assert.AreEqual(recipe.ContinentCells, continentCount);
             Assert.AreEqual(recipe.ContinentCells, summary.continentCellCount);
             Assert.AreEqual(recipe.VoronoiDivision * PlanetGpuShapeCell.Stride, summary.estimatedBytes);
+        }
+
+        [Test]
+        public void RecipeRejectsInvalidSurfaceNoiseFractalValues()
+        {
+            PlanetRecipe recipe = PlanetRecipe.Default();
+            recipe.SurfaceNoiseOctaves = 9;
+
+            Assert.IsFalse(PlanetRecipeValidator.Validate(in recipe, out string octavesMessage));
+            StringAssert.Contains("SurfaceNoiseOctaves", octavesMessage);
+
+            recipe = PlanetRecipe.Default();
+            recipe.SurfaceNoiseLacunarity = 0f;
+
+            Assert.IsFalse(PlanetRecipeValidator.Validate(in recipe, out string lacunarityMessage));
+            StringAssert.Contains("SurfaceNoiseLacunarity", lacunarityMessage);
+
+            recipe = PlanetRecipe.Default();
+            recipe.SurfaceNoisePersistence = 1.1f;
+
+            Assert.IsFalse(PlanetRecipeValidator.Validate(in recipe, out string persistenceMessage));
+            StringAssert.Contains("SurfaceNoisePersistence", persistenceMessage);
+        }
+
+        [Test]
+        public void GpuParametersPackSurfaceNoiseFractalValues()
+        {
+            PlanetRecipe recipe = PlanetRecipe.Default();
+            recipe.SurfaceNoiseOctaves = 6;
+            recipe.SurfaceNoiseLacunarity = 2.3f;
+            recipe.SurfaceNoisePersistence = 0.42f;
+
+            PlanetGpuShapeParameters parameters = PlanetGpuShapeParameters.FromRecipe(in recipe);
+
+            Assert.AreEqual(6f, parameters.noiseFractal.x);
+            Assert.AreEqual(2.3f, parameters.noiseFractal.y);
+            Assert.AreEqual(0.42f, parameters.noiseFractal.z);
         }
 
         [Test]
@@ -75,7 +115,7 @@ namespace MarchingCubesPlanet.Lab.Tests
         public void CellStrideIsThirtyTwoBytes()
         {
             Assert.AreEqual(32, PlanetGpuShapeCell.Stride);
-            Assert.AreEqual(64, PlanetGpuShapeParameters.Stride);
+            Assert.AreEqual(80, PlanetGpuShapeParameters.Stride);
         }
     }
 }

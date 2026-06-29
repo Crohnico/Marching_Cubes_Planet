@@ -4,8 +4,12 @@ using UnityEngine;
 namespace MarchingCubesPlanet.Coordinates
 {
     [Serializable]
-    public struct PlanetRecipe
+    public struct PlanetRecipe : ISerializationCallbackReceiver
     {
+        public const int DefaultSurfaceNoiseOctaves = 4;
+        public const float DefaultSurfaceNoiseLacunarity = 2f;
+        public const float DefaultSurfaceNoisePersistence = 0.5f;
+
         [SerializeField] private int gridRadius;
         [SerializeField] private float worldScale;
         [SerializeField] private int seed;
@@ -21,6 +25,9 @@ namespace MarchingCubesPlanet.Coordinates
         [SerializeField] private float minimumOceanDepth;
         [SerializeField] private float surfaceNoiseAmplitude;
         [SerializeField] private float surfaceNoiseFrequency;
+        [SerializeField] private int surfaceNoiseOctaves;
+        [SerializeField] private float surfaceNoiseLacunarity;
+        [SerializeField] private float surfaceNoisePersistence;
         [SerializeField] private float minRoughness;
         [SerializeField] private float maxRoughness;
         [SerializeField] private int recipeVersion;
@@ -115,6 +122,24 @@ namespace MarchingCubesPlanet.Coordinates
             set => surfaceNoiseFrequency = value;
         }
 
+        public int SurfaceNoiseOctaves
+        {
+            get => surfaceNoiseOctaves <= 0 ? DefaultSurfaceNoiseOctaves : surfaceNoiseOctaves;
+            set => surfaceNoiseOctaves = value;
+        }
+
+        public float SurfaceNoiseLacunarity
+        {
+            get => surfaceNoiseLacunarity <= 0f ? DefaultSurfaceNoiseLacunarity : surfaceNoiseLacunarity;
+            set => surfaceNoiseLacunarity = value;
+        }
+
+        public float SurfaceNoisePersistence
+        {
+            get => surfaceNoisePersistence <= 0f ? DefaultSurfaceNoisePersistence : surfaceNoisePersistence;
+            set => surfaceNoisePersistence = value;
+        }
+
         public float MinRoughness
         {
             get => minRoughness;
@@ -142,6 +167,28 @@ namespace MarchingCubesPlanet.Coordinates
             return PlanetRecipeValidator.Validate(in this, out message);
         }
 
+        public void OnBeforeSerialize()
+        {
+        }
+
+        public void OnAfterDeserialize()
+        {
+            if (surfaceNoiseOctaves <= 0)
+            {
+                surfaceNoiseOctaves = DefaultSurfaceNoiseOctaves;
+            }
+
+            if (surfaceNoiseLacunarity <= 0f)
+            {
+                surfaceNoiseLacunarity = DefaultSurfaceNoiseLacunarity;
+            }
+
+            if (surfaceNoisePersistence <= 0f)
+            {
+                surfaceNoisePersistence = DefaultSurfaceNoisePersistence;
+            }
+        }
+
         public static PlanetRecipe Default()
         {
             return new PlanetRecipe
@@ -161,9 +208,12 @@ namespace MarchingCubesPlanet.Coordinates
                 minimumOceanDepth = 0.03f,
                 surfaceNoiseAmplitude = 0.308f,
                 surfaceNoiseFrequency = 7f,
+                surfaceNoiseOctaves = DefaultSurfaceNoiseOctaves,
+                surfaceNoiseLacunarity = DefaultSurfaceNoiseLacunarity,
+                surfaceNoisePersistence = DefaultSurfaceNoisePersistence,
                 minRoughness = 0.6f,
                 maxRoughness = 0.8f,
-                recipeVersion = 2
+                recipeVersion = 3
             };
         }
     }
