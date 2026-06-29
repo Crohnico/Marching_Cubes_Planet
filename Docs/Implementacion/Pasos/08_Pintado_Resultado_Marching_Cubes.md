@@ -301,9 +301,10 @@ Atlas inicial:
 ```text
 UV.x = 0.5 porque el atlas recuperado es una tira vertical de altura.
 UV.y = altura respecto al radio de la receta y al nivel de mar, no min/max de la mesh pintada.
-UV.y = 0.337 es el nivel de mar/costa heredado del `PlanetNoiseProfile` antiguo.
-UV.y 0.337..1.0 representa superficie emergida.
-UV.y 0.0..0.337 representa superficie bajo el agua.
+UV.y = 0.5 es el nivel de mar/costa para el atlas actual.
+UV.y 0.5..1.0 representa superficie emergida.
+UV.y 0.0..0.5 representa superficie bajo el agua.
+El tramo emergido usa una compresion del 60% del maximo teorico de altura de la receta para que marron, gris y nieve sean alcanzables visualmente.
 Cada triangulo usa una sola coordenada UV calculada en su centro para evitar interpolacion suave entre bandas de altura.
 La paleta base se decide por altura, no por flag continente/oceano de la celda.
 El gradiente inicial de abajo a arriba es rosa submarino, salmon, rojo/marron oscuro, arena, amarillo palido, verde claro, verde oscuro, marron, gris y blanco nieve.

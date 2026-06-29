@@ -1,5 +1,8 @@
+using System.Reflection;
+using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.MarchingCubes;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace MarchingCubesPlanet.Lab.Tests
 {
@@ -75,6 +78,44 @@ namespace MarchingCubesPlanet.Lab.Tests
             long estimate = PlanetMarchingCubesPaintResult.CalculateMeshEstimatedBytes(90000, 30000);
 
             Assert.AreEqual(90000 * 36L + 90000 * 4L, estimate);
+        }
+
+        [Test]
+        public void SurfaceAtlasUvUsesSeaLevelAtMiddleOfGradient()
+        {
+            PlanetRecipe recipe = PlanetRecipe.Default();
+
+            Vector2 seaLevelUv = EvaluateSurfaceAtlasUv(recipe.GridRadius, in recipe);
+
+            Assert.AreEqual(0.5f, seaLevelUv.x);
+            Assert.AreEqual(0.5f, seaLevelUv.y);
+        }
+
+        [Test]
+        public void SurfaceAtlasUvCompressesLandRangeForReadableHighColors()
+        {
+            PlanetRecipe recipe = PlanetRecipe.Default();
+            float theoreticalLandOffset =
+                recipe.GridRadius * recipe.MaxLandElevation * recipe.MaxHeightModifier +
+                recipe.GridRadius * recipe.SurfaceNoiseAmplitude;
+            float compressedLandOffset = theoreticalLandOffset * 0.6f;
+
+            Vector2 highLandUv = EvaluateSurfaceAtlasUv(recipe.GridRadius + compressedLandOffset, in recipe);
+            Vector2 halfLandUv = EvaluateSurfaceAtlasUv(recipe.GridRadius + compressedLandOffset * 0.5f, in recipe);
+
+            Assert.AreEqual(1f, highLandUv.y);
+            Assert.AreEqual(0.75f, halfLandUv.y);
+        }
+
+        private static Vector2 EvaluateSurfaceAtlasUv(float radius, in PlanetRecipe recipe)
+        {
+            MethodInfo method = typeof(PlanetMarchingCubesMeshPainter).GetMethod(
+                "EvaluateSurfaceAtlasUv",
+                BindingFlags.NonPublic | BindingFlags.Static);
+
+            Assert.IsNotNull(method);
+            object[] arguments = { radius, recipe };
+            return (Vector2)method.Invoke(null, arguments);
         }
     }
 }

@@ -414,8 +414,10 @@ landHeight01 => altura normalizada sobre el nivel base
 En la version que nos gusta, el corte visual entre agua y tierra estaba alrededor de:
 
 ```text
-seaLevel = 0.337 dentro del gradiente de altura
+seaLevel = 0.5 dentro del gradiente de altura
 ```
+
+El tramo `0.0..0.5` del gradiente queda reservado para superficie bajo agua y costa rosa. El tramo `0.5..1.0` queda reservado para tierra emergida. Para que las bandas altas aparezcan antes en planetas con mucha amplitud teorica, el pintado puede comprimir el maximo de altura usado por UV sin modificar la geometria ni la densidad.
 
 Lo importante no es el atlas ni el material usado, sino conservar el dato de altura relativa y si el punto pertenece a tierra, oceano o transicion.
 

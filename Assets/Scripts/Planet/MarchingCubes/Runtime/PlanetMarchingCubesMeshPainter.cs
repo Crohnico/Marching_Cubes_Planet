@@ -15,7 +15,8 @@ namespace MarchingCubesPlanet.MarchingCubes
         private const string SurfaceAtlasTexturePropertyName = "_PlanetSurfaceAtlas";
         private const string UseSurfaceAtlasPropertyName = "_UsePlanetSurfaceAtlas";
         private const int SurfaceAtlasResolution = 256;
-        private const float LegacySeaLevelAtlasV = 0.337f;
+        private const float SurfaceAtlasSeaLevelV = 0.5f;
+        private const float SurfaceAtlasLandRangeScale = 0.6f;
 
         private Mesh runtimeMesh;
         private Mesh runtimeWaterMesh;
@@ -795,17 +796,18 @@ namespace MarchingCubesPlanet.MarchingCubes
             float maxHeightAtlasOffset =
                 safeRadius * recipe.MaxLandElevation * recipe.MaxHeightModifier +
                 safeRadius * Mathf.Max(0f, recipe.SurfaceNoiseAmplitude);
+            maxHeightAtlasOffset *= SurfaceAtlasLandRangeScale;
 
             if (surfaceOffset <= 0f)
             {
                 float depthRange = Mathf.Max(0.0001f, -minHeightAtlasOffset);
                 float underwaterHeight = Mathf.Clamp01((surfaceOffset - minHeightAtlasOffset) / depthRange);
-                return new Vector2(0.5f, Mathf.Lerp(0f, LegacySeaLevelAtlasV, underwaterHeight));
+                return new Vector2(0.5f, Mathf.Lerp(0f, SurfaceAtlasSeaLevelV, underwaterHeight));
             }
 
             float landRange = Mathf.Max(0.0001f, maxHeightAtlasOffset);
             float landHeight = Mathf.Clamp01(surfaceOffset / landRange);
-            return new Vector2(0.5f, Mathf.Lerp(LegacySeaLevelAtlasV, 1f, landHeight));
+            return new Vector2(0.5f, Mathf.Lerp(SurfaceAtlasSeaLevelV, 1f, landHeight));
         }
 
         private static float EvaluateHeight01(float radius, float minRadius, float maxRadius)
