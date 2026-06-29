@@ -7,13 +7,14 @@ namespace MarchingCubesPlanet.Shape
     [StructLayout(LayoutKind.Sequential)]
     public struct PlanetGpuShapeParameters
     {
-        public const int Stride = 80;
+        public const int Stride = 96;
 
         public Vector4 radiusIsoSeedCellCount;
         public Vector4 elevation;
         public Vector4 oceanBlend;
         public Vector4 noise;
         public Vector4 noiseFractal;
+        public Vector4 continentEdgeShape;
 
         public static PlanetGpuShapeParameters FromRecipe(in PlanetRecipe recipe)
         {
@@ -43,6 +44,11 @@ namespace MarchingCubesPlanet.Shape
                     recipe.SurfaceNoiseOctaves,
                     recipe.SurfaceNoiseLacunarity,
                     recipe.SurfaceNoisePersistence,
+                    0f),
+                continentEdgeShape = new Vector4(
+                    recipe.ContinentEdgeWidthMin,
+                    recipe.ContinentEdgeWidthMax,
+                    recipe.ContinentEdgeShiftStrength,
                     0f)
             };
         }

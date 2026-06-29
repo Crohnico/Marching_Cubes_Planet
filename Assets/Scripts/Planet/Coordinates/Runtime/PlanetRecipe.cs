@@ -9,6 +9,9 @@ namespace MarchingCubesPlanet.Coordinates
         public const int DefaultSurfaceNoiseOctaves = 4;
         public const float DefaultSurfaceNoiseLacunarity = 2f;
         public const float DefaultSurfaceNoisePersistence = 0.5f;
+        public const float DefaultContinentEdgeWidthMin = 0.65f;
+        public const float DefaultContinentEdgeWidthMax = 1.75f;
+        public const float DefaultContinentEdgeShiftStrength = 0.75f;
 
         [SerializeField] private int gridRadius;
         [SerializeField] private float worldScale;
@@ -17,6 +20,9 @@ namespace MarchingCubesPlanet.Coordinates
         [SerializeField] private int voronoiDivision;
         [SerializeField] private int continentCells;
         [SerializeField] private float continentEdgeBlend;
+        [SerializeField] private float continentEdgeWidthMin;
+        [SerializeField] private float continentEdgeWidthMax;
+        [SerializeField] private float continentEdgeShiftStrength;
         [SerializeField] private float minLandElevation;
         [SerializeField] private float maxLandElevation;
         [SerializeField] private float minHeightModifier;
@@ -72,6 +78,24 @@ namespace MarchingCubesPlanet.Coordinates
         {
             get => continentEdgeBlend;
             set => continentEdgeBlend = value;
+        }
+
+        public float ContinentEdgeWidthMin
+        {
+            get => continentEdgeWidthMin;
+            set => continentEdgeWidthMin = value;
+        }
+
+        public float ContinentEdgeWidthMax
+        {
+            get => continentEdgeWidthMax;
+            set => continentEdgeWidthMax = value;
+        }
+
+        public float ContinentEdgeShiftStrength
+        {
+            get => continentEdgeShiftStrength;
+            set => continentEdgeShiftStrength = value;
         }
 
         public float MinLandElevation
@@ -173,6 +197,14 @@ namespace MarchingCubesPlanet.Coordinates
 
         public void OnAfterDeserialize()
         {
+            if (recipeVersion < 4)
+            {
+                continentEdgeWidthMin = DefaultContinentEdgeWidthMin;
+                continentEdgeWidthMax = DefaultContinentEdgeWidthMax;
+                continentEdgeShiftStrength = DefaultContinentEdgeShiftStrength;
+                recipeVersion = 4;
+            }
+
             if (surfaceNoiseOctaves <= 0)
             {
                 surfaceNoiseOctaves = DefaultSurfaceNoiseOctaves;
@@ -200,6 +232,9 @@ namespace MarchingCubesPlanet.Coordinates
                 voronoiDivision = 100,
                 continentCells = 84,
                 continentEdgeBlend = 0.16f,
+                continentEdgeWidthMin = DefaultContinentEdgeWidthMin,
+                continentEdgeWidthMax = DefaultContinentEdgeWidthMax,
+                continentEdgeShiftStrength = DefaultContinentEdgeShiftStrength,
                 minLandElevation = 0.015f,
                 maxLandElevation = 0.127f,
                 minHeightModifier = 0.3f,
@@ -213,7 +248,7 @@ namespace MarchingCubesPlanet.Coordinates
                 surfaceNoisePersistence = DefaultSurfaceNoisePersistence,
                 minRoughness = 0.6f,
                 maxRoughness = 0.8f,
-                recipeVersion = 3
+                recipeVersion = 4
             };
         }
     }

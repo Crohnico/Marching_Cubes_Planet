@@ -212,8 +212,13 @@ Para suavizarlas se compara la cercania de la celda mas cercana y la segunda mas
 
 ```text
 dotDelta = nearestDot - secondNearestDot
-rawBlend = saturate(dotDelta / continentEdgeBlend)
-interiorBlend = rawBlend
+edgeWidthFactor = random determinista por pareja Voronoi entre continentEdgeWidthMin y continentEdgeWidthMax
+edgeWidth = continentEdgeBlend * edgeWidthFactor
+edgeShift = random determinista por pareja Voronoi entre -continentEdgeBlend * continentEdgeShiftStrength y +continentEdgeBlend * continentEdgeShiftStrength
+firstCell, secondCell = pareja Voronoi ordenada por indice estable
+signedDotDelta = firstCellDot - secondCellDot
+edgeT = saturate((signedDotDelta - edgeShift) / edgeWidth + 0.5)
+firstCellBlend = smootherstep(edgeT)
 ```
 
 Cuando `dotDelta` es pequeno, estamos cerca de una frontera. Cuando es grande, estamos dentro de una celda.
@@ -221,19 +226,21 @@ Cuando `dotDelta` es pequeno, estamos cerca de una frontera. Cuando es grande, e
 El offset se mezcla asi:
 
 ```text
-nearestOffset = offset de la celda mas cercana
-secondOffset = offset de la segunda celda
-boundaryOffset = (nearestOffset + secondOffset) * 0.5
-offset = lerp(boundaryOffset, nearestOffset, interiorBlend)
+firstCellOffset = offset de la primera celda de la pareja ordenada
+secondCellOffset = offset de la segunda celda de la pareja ordenada
+offset = lerp(secondCellOffset, firstCellOffset, firstCellBlend)
 ```
 
 En la version que nos gusta:
 
 ```text
 continentEdgeBlend = 0.16
+continentEdgeWidthMin = 0.65
+continentEdgeWidthMax = 1.75
+continentEdgeShiftStrength = 0.75
 ```
 
-Esto crea transiciones continentales mas organicas. Las costas y cambios de altura no son cortes completamente matematicos.
+Esto crea transiciones continentales mas organicas. Las costas y cambios de altura no son cortes completamente matematicos ni estan centrados siempre en la frontera exacta de Voronoi.
 
 ## Ruido fino de superficie
 

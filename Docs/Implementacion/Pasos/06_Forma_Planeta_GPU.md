@@ -266,6 +266,7 @@ VoronoiDivision.
 ContinentCells.
 PlanetPlacement si se parte de puntos World/Stellar.
 Parametros de superficie.
+Parametros de mezcla de borde Voronoi.
 Debug sample count.
 ```
 
@@ -275,6 +276,9 @@ Parametros iniciales de forma:
 VoronoiDivision
 ContinentCells
 continentEdgeBlend
+continentEdgeWidthMin
+continentEdgeWidthMax
+continentEdgeShiftStrength
 minLandElevation
 maxLandElevation
 minHeightModifier
@@ -301,6 +305,9 @@ heightModifier = 0.3..1.5
 oceanDepth = 16% del radio
 minimumOceanDepth = 3% del radio
 continentEdgeBlend = 0.16
+continentEdgeWidthMin = 0.65
+continentEdgeWidthMax = 1.75
+continentEdgeShiftStrength = 0.75
 surfaceNoiseAmplitude = 30.8% del radio
 surfaceNoiseFrequency = 7
 surfaceNoiseOctaves = 4
@@ -563,17 +570,25 @@ Decision de borde continental inicial:
 
 ```text
 dotDelta = nearestDot - secondNearestDot
-rawBlend = saturate(dotDelta / continentEdgeBlend)
-interiorBlend = rawBlend
-boundaryOffset = (nearestOffset + secondOffset) * 0.5
-offset = lerp(boundaryOffset, nearestOffset, interiorBlend)
+edgeWidthFactor = random determinista por pareja Voronoi entre continentEdgeWidthMin y continentEdgeWidthMax
+edgeWidth = continentEdgeBlend * edgeWidthFactor
+edgeShift = random determinista por pareja Voronoi entre -continentEdgeBlend * continentEdgeShiftStrength y +continentEdgeBlend * continentEdgeShiftStrength
+firstCell, secondCell = pareja Voronoi ordenada por indice estable
+signedDotDelta = firstCellDot - secondCellDot
+edgeT = saturate((signedDotDelta - edgeShift) / edgeWidth + 0.5)
+firstCellBlend = smootherstep(edgeT)
+offset = lerp(secondCellOffset, firstCellOffset, firstCellBlend)
 ```
 
 Regla:
 
 ```text
-La mezcla inicial es lineal para no redondear en exceso el relieve.
-No queda bloqueada por arte final: se ajusta despues de ver 07 si hace falta.
+La mezcla pertenece a 06 porque forma parte de la funcion de densidad.
+07 y 08 no conocen Voronoi ni suavizado: solo consumen density(point).
+El borde no se centra siempre en la frontera matematica entre dos celdas.
+Cada pareja Voronoi tiene un ancho y un foco deterministas a partir de seed e indices de celda.
+Esto permite que el suavizado invada mas una region u otra sin reducir ni simplificar geometria.
+La mezcla se calcula con distancia firmada entre la pareja ordenada para mantener continuidad en la frontera.
 ```
 
 Decision no bloqueante:

@@ -46,6 +46,24 @@ namespace MarchingCubesPlanet.Coordinates
                 return false;
             }
 
+            if (recipe.ContinentEdgeWidthMin <= 0f)
+            {
+                message = "ContinentEdgeWidthMin must be greater than zero.";
+                return false;
+            }
+
+            if (recipe.ContinentEdgeWidthMax < recipe.ContinentEdgeWidthMin)
+            {
+                message = "ContinentEdgeWidthMax must be greater than or equal to ContinentEdgeWidthMin.";
+                return false;
+            }
+
+            if (recipe.ContinentEdgeShiftStrength < 0f || recipe.ContinentEdgeShiftStrength > 2f)
+            {
+                message = "ContinentEdgeShiftStrength must be between zero and two.";
+                return false;
+            }
+
             if (recipe.MinLandElevation < 0f || recipe.MaxLandElevation < recipe.MinLandElevation)
             {
                 message = "Land elevation range is invalid.";

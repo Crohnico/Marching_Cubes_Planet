@@ -443,6 +443,9 @@ namespace MarchingCubesPlanet.Lab
                    "\nIsoLevel=" + recipe.IsoLevel +
                    "\nVoronoiDivision=" + recipe.VoronoiDivision +
                    "\nContinentCells=" + recipe.ContinentCells +
+                   "\nContinentEdgeBlend=" + recipe.ContinentEdgeBlend +
+                   "\nContinentEdgeWidth=" + recipe.ContinentEdgeWidthMin + ".." + recipe.ContinentEdgeWidthMax +
+                   "\nContinentEdgeShiftStrength=" + recipe.ContinentEdgeShiftStrength +
                    "\nSurfaceNoiseAmplitude=" + recipe.SurfaceNoiseAmplitude +
                    "\nSurfaceNoiseFrequency=" + recipe.SurfaceNoiseFrequency +
                    "\nSurfaceNoiseOctaves=" + recipe.SurfaceNoiseOctaves +

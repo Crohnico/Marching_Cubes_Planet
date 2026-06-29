@@ -388,6 +388,8 @@ namespace MarchingCubesPlanet.Lab
                    "\nVoronoiDivision=" + recipe.VoronoiDivision +
                    "\nContinentCells=" + recipe.ContinentCells +
                    "\nContinentEdgeBlend=" + recipe.ContinentEdgeBlend +
+                   "\nContinentEdgeWidth=" + recipe.ContinentEdgeWidthMin + ".." + recipe.ContinentEdgeWidthMax +
+                   "\nContinentEdgeShiftStrength=" + recipe.ContinentEdgeShiftStrength +
                    "\nLandElevation=" + recipe.MinLandElevation + ".." + recipe.MaxLandElevation +
                    "\nHeightModifier=" + recipe.MinHeightModifier + ".." + recipe.MaxHeightModifier +
                    "\nOceanDepth=" + recipe.OceanDepth +

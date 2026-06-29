@@ -3241,6 +3241,9 @@ MonoBehaviour:
     voronoiDivision: 100
     continentCells: 84
     continentEdgeBlend: 0.16
+    continentEdgeWidthMin: 0.65
+    continentEdgeWidthMax: 1.75
+    continentEdgeShiftStrength: 0.75
     minLandElevation: 0.015
     maxLandElevation: 0.127
     minHeightModifier: 0.3
@@ -3254,7 +3257,7 @@ MonoBehaviour:
     surfaceNoisePersistence: 0.5
     minRoughness: 0.6
     maxRoughness: 0.8
-    recipeVersion: 2
+    recipeVersion: 4
   placement:
     planetStellarCenter:
       x: 0
@@ -3360,6 +3363,9 @@ MonoBehaviour:
     voronoiDivision: 100
     continentCells: 84
     continentEdgeBlend: 0.16
+    continentEdgeWidthMin: 0.65
+    continentEdgeWidthMax: 1.75
+    continentEdgeShiftStrength: 0.75
     minLandElevation: 0.015
     maxLandElevation: 0.127
     minHeightModifier: 0.3
@@ -3373,7 +3379,7 @@ MonoBehaviour:
     surfaceNoisePersistence: 0.5
     minRoughness: 0.6
     maxRoughness: 0.8
-    recipeVersion: 2
+    recipeVersion: 4
   bufferMode: 0
   debugSampleCount: 32
   supportsComputeShaders: 0
@@ -3579,7 +3585,10 @@ MonoBehaviour:
   lastSourceTriangleCount: 0
   lastPaintedTriangleCount: 0
   lastPaintedVertexCount: 0
+  lastWaterTriangleCount: 0
+  lastWaterVertexCount: 0
   lastMeshEstimatedBytes: 0
+  lastWaterMeshEstimatedBytes: 0
   lastAction: 
   lastSnapshot:
     operationName: 
@@ -6317,8 +6326,11 @@ MonoBehaviour:
     seed: 15666
     isoLevel: 0
     voronoiDivision: 80
-    continentCells: 72
-    continentEdgeBlend: 0.5
+    continentCells: 42
+    continentEdgeBlend: 0.05
+    continentEdgeWidthMin: 2
+    continentEdgeWidthMax: 5
+    continentEdgeShiftStrength: 0.1
     minLandElevation: 0.1
     maxLandElevation: 0.4
     minHeightModifier: 0.1
@@ -6332,7 +6344,7 @@ MonoBehaviour:
     surfaceNoisePersistence: 0.5
     minRoughness: 0.6
     maxRoughness: 1.48
-    recipeVersion: 2
+    recipeVersion: 4
   placement:
     planetStellarCenter:
       x: 0

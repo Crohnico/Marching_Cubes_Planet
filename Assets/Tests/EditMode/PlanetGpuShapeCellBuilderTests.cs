@@ -15,6 +15,9 @@ namespace MarchingCubesPlanet.Lab.Tests
             Assert.AreEqual(100, recipe.VoronoiDivision);
             Assert.AreEqual(84, recipe.ContinentCells);
             Assert.AreEqual(0.16f, recipe.ContinentEdgeBlend);
+            Assert.AreEqual(0.65f, recipe.ContinentEdgeWidthMin);
+            Assert.AreEqual(1.75f, recipe.ContinentEdgeWidthMax);
+            Assert.AreEqual(0.75f, recipe.ContinentEdgeShiftStrength);
             Assert.AreEqual(7f, recipe.SurfaceNoiseFrequency);
             Assert.AreEqual(4, recipe.SurfaceNoiseOctaves);
             Assert.AreEqual(2f, recipe.SurfaceNoiseLacunarity);
@@ -46,6 +49,28 @@ namespace MarchingCubesPlanet.Lab.Tests
         }
 
         [Test]
+        public void RecipeRejectsInvalidContinentEdgeShapeValues()
+        {
+            PlanetRecipe recipe = PlanetRecipe.Default();
+            recipe.ContinentEdgeWidthMin = 0f;
+
+            Assert.IsFalse(PlanetRecipeValidator.Validate(in recipe, out string minMessage));
+            StringAssert.Contains("ContinentEdgeWidthMin", minMessage);
+
+            recipe = PlanetRecipe.Default();
+            recipe.ContinentEdgeWidthMax = 0.5f;
+
+            Assert.IsFalse(PlanetRecipeValidator.Validate(in recipe, out string maxMessage));
+            StringAssert.Contains("ContinentEdgeWidthMax", maxMessage);
+
+            recipe = PlanetRecipe.Default();
+            recipe.ContinentEdgeShiftStrength = 2.1f;
+
+            Assert.IsFalse(PlanetRecipeValidator.Validate(in recipe, out string shiftMessage));
+            StringAssert.Contains("ContinentEdgeShiftStrength", shiftMessage);
+        }
+
+        [Test]
         public void RecipeRejectsInvalidSurfaceNoiseFractalValues()
         {
             PlanetRecipe recipe = PlanetRecipe.Default();
@@ -65,6 +90,21 @@ namespace MarchingCubesPlanet.Lab.Tests
 
             Assert.IsFalse(PlanetRecipeValidator.Validate(in recipe, out string persistenceMessage));
             StringAssert.Contains("SurfaceNoisePersistence", persistenceMessage);
+        }
+
+        [Test]
+        public void GpuParametersPackContinentEdgeShapeValues()
+        {
+            PlanetRecipe recipe = PlanetRecipe.Default();
+            recipe.ContinentEdgeWidthMin = 0.5f;
+            recipe.ContinentEdgeWidthMax = 1.8f;
+            recipe.ContinentEdgeShiftStrength = 0.9f;
+
+            PlanetGpuShapeParameters parameters = PlanetGpuShapeParameters.FromRecipe(in recipe);
+
+            Assert.AreEqual(0.5f, parameters.continentEdgeShape.x);
+            Assert.AreEqual(1.8f, parameters.continentEdgeShape.y);
+            Assert.AreEqual(0.9f, parameters.continentEdgeShape.z);
         }
 
         [Test]
@@ -115,7 +155,7 @@ namespace MarchingCubesPlanet.Lab.Tests
         public void CellStrideIsThirtyTwoBytes()
         {
             Assert.AreEqual(32, PlanetGpuShapeCell.Stride);
-            Assert.AreEqual(80, PlanetGpuShapeParameters.Stride);
+            Assert.AreEqual(96, PlanetGpuShapeParameters.Stride);
         }
     }
 }
