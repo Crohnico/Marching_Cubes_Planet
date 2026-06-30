@@ -300,6 +300,7 @@ Rango radial de superficie posible:
 ```text
 maxOutwardOffset =
     GridRadius * MaxLandElevation * MaxHeightModifier
+    + GridRadius * MountainBiomeHeight
     + GridRadius * SurfaceNoiseAmplitude
     + max(0, -IsoLevel)
 
@@ -317,6 +318,8 @@ Nota:
 ```text
 SurfaceNoiseOctaves, SurfaceNoiseLacunarity y SurfaceNoisePersistence cambian el detalle interno del ruido de 06.
 No amplian por si solas la banda radial de 07 porque el fBm de 06 se normaliza antes de aplicar SurfaceNoiseAmplitude.
+MountainBiomeCells, MountainBiomeMinPeaks, MountainBiomeMaxPeaks, MountainBiomePeakRadius, MountainBiomePeakSpread, MountainBiomeEdgeBlend y MountainBiomePeakFalloff cambian donde y como aparecen las montanas.
+No amplian por si solos la banda radial de 07 porque la cota maxima la pone MountainBiomeHeight.
 ```
 
 Un chunk se considera candidato si su AABB cartesiano puede intersectar la cascara:

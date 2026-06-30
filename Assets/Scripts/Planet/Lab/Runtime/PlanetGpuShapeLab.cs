@@ -451,7 +451,14 @@ namespace MarchingCubesPlanet.Lab
                    "\nSurfaceNoiseOctaves=" + recipe.SurfaceNoiseOctaves +
                    "\nSurfaceNoiseLacunarity=" + recipe.SurfaceNoiseLacunarity +
                    "\nSurfaceNoisePersistence=" + recipe.SurfaceNoisePersistence +
-                   "\nSurfaceNoiseResponsePower=" + recipe.SurfaceNoiseResponsePower;
+                   "\nSurfaceNoiseResponsePower=" + recipe.SurfaceNoiseResponsePower +
+                   "\nMountainBiomeCells=" + recipe.MountainBiomeCells +
+                   "\nMountainBiomePeaks=" + recipe.MountainBiomeMinPeaks + ".." + recipe.MountainBiomeMaxPeaks +
+                   "\nMountainBiomeHeight=" + recipe.MountainBiomeHeight +
+                   "\nMountainBiomePeakRadius=" + recipe.MountainBiomePeakRadius +
+                   "\nMountainBiomePeakSpread=" + recipe.MountainBiomePeakSpread +
+                   "\nMountainBiomeEdgeBlend=" + recipe.MountainBiomeEdgeBlend +
+                   "\nMountainBiomePeakFalloff=" + recipe.MountainBiomePeakFalloff;
         }
 
         private void OnDisable()

@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using MarchingCubesPlanet.Coordinates;
 using UnityEngine;
 
 namespace MarchingCubesPlanet.Shape
@@ -18,13 +19,15 @@ namespace MarchingCubesPlanet.Shape
         public float BaseOffset => offsetRoughnessHash.x;
         public float RoughnessModifier => offsetRoughnessHash.y;
         public float HeightModifier => offsetRoughnessHash.z;
+        public PlanetBiomeId BiomeId => (PlanetBiomeId)Mathf.RoundToInt(offsetRoughnessHash.w);
 
         public static PlanetGpuShapeCell Create(
             Vector3 direction,
             bool isContinent,
             float baseOffset,
             float roughnessModifier,
-            float heightModifier)
+            float heightModifier,
+            PlanetBiomeId biomeId)
         {
             Vector3 normalizedDirection = direction.sqrMagnitude > 0f ? direction.normalized : Vector3.up;
             return new PlanetGpuShapeCell
@@ -34,7 +37,7 @@ namespace MarchingCubesPlanet.Shape
                     normalizedDirection.y,
                     normalizedDirection.z,
                     isContinent ? 1f : 0f),
-                offsetRoughnessHash = new Vector4(baseOffset, roughnessModifier, heightModifier, 0f)
+                offsetRoughnessHash = new Vector4(baseOffset, roughnessModifier, heightModifier, (float)biomeId)
             };
         }
     }

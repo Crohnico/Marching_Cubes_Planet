@@ -400,6 +400,13 @@ namespace MarchingCubesPlanet.Lab
                    "\nSurfaceNoiseLacunarity=" + recipe.SurfaceNoiseLacunarity +
                    "\nSurfaceNoisePersistence=" + recipe.SurfaceNoisePersistence +
                    "\nSurfaceNoiseResponsePower=" + recipe.SurfaceNoiseResponsePower +
+                   "\nMountainBiomeCells=" + recipe.MountainBiomeCells +
+                   "\nMountainBiomePeaks=" + recipe.MountainBiomeMinPeaks + ".." + recipe.MountainBiomeMaxPeaks +
+                   "\nMountainBiomeHeight=" + recipe.MountainBiomeHeight +
+                   "\nMountainBiomePeakRadius=" + recipe.MountainBiomePeakRadius +
+                   "\nMountainBiomePeakSpread=" + recipe.MountainBiomePeakSpread +
+                   "\nMountainBiomeEdgeBlend=" + recipe.MountainBiomeEdgeBlend +
+                   "\nMountainBiomePeakFalloff=" + recipe.MountainBiomePeakFalloff +
                    "\nRoughness=" + recipe.MinRoughness + ".." + recipe.MaxRoughness +
                    "\nPlanetStellarCenter=" + placement.PlanetStellarCenter +
                    "\nActiveOrigin=" + placement.ActiveOrigin +

@@ -607,7 +607,8 @@ Decision de kernels/cache:
 10 puede usar kernels especializados si sampleStepGrid, layout por pagina, cancelacion o Transvoxel lo exigen.
 10 no reutiliza la Mesh/cache de salida de 07 como fuente runtime.
 La cache residente pertenece a 10.
-La key de cache inicial sera planetId + pageCoord + lodLevel + recipeVersion + shapeVersion.
+La key de cache inicial sera planetId + pageCoord + lodLevel + recipeHash + shapeHash.
+No se mantiene versionado historico de recetas durante prototipo; si cambia la receta, se invalida la cache y se reconstruye.
 ```
 
 Se reutiliza de 07:

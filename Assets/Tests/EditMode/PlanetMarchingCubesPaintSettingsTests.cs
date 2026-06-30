@@ -97,6 +97,7 @@ namespace MarchingCubesPlanet.Lab.Tests
             PlanetRecipe recipe = PlanetRecipe.Default();
             float theoreticalLandOffset =
                 recipe.GridRadius * recipe.MaxLandElevation * recipe.MaxHeightModifier +
+                recipe.GridRadius * recipe.MountainBiomeHeight +
                 recipe.GridRadius * recipe.SurfaceNoiseAmplitude;
             float compressedLandOffset = theoreticalLandOffset * 0.6f;
 

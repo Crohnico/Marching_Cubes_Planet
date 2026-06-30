@@ -27,6 +27,7 @@ namespace MarchingCubesPlanet.Shape
 
             int cellCount = recipe.VoronoiDivision;
             bool[] continentFlags = BuildContinentFlags(in recipe);
+            bool[] mountainBiomeFlags = BuildMountainBiomeFlags(in recipe, continentFlags);
             float minBaseOffset = float.PositiveInfinity;
             float maxBaseOffset = float.NegativeInfinity;
             float minRoughness = float.PositiveInfinity;
@@ -48,8 +49,11 @@ namespace MarchingCubesPlanet.Shape
                     recipe.MinHeightModifier,
                     recipe.MaxHeightModifier,
                     LegacyHash01(recipe.Seed, i, 0x85ebca6bu));
+                PlanetBiomeId biomeId = isContinent && mountainBiomeFlags[i]
+                    ? PlanetBiomeId.Mountain
+                    : PlanetBiomeId.Meadow;
 
-                output[i] = PlanetGpuShapeCell.Create(direction, isContinent, baseOffset, roughness, heightModifier);
+                output[i] = PlanetGpuShapeCell.Create(direction, isContinent, baseOffset, roughness, heightModifier, biomeId);
 
                 minBaseOffset = Mathf.Min(minBaseOffset, baseOffset);
                 maxBaseOffset = Mathf.Max(maxBaseOffset, baseOffset);
@@ -62,6 +66,7 @@ namespace MarchingCubesPlanet.Shape
                 cellCount = cellCount,
                 continentCellCount = recipe.ContinentCells,
                 oceanCellCount = cellCount - recipe.ContinentCells,
+                mountainBiomeCellCount = Mathf.Min(recipe.MountainBiomeCells, recipe.ContinentCells),
                 minBaseOffset = minBaseOffset,
                 maxBaseOffset = maxBaseOffset,
                 minRoughness = minRoughness,
@@ -115,6 +120,42 @@ namespace MarchingCubesPlanet.Shape
             for (int i = 0; i < recipe.ContinentCells; i++)
             {
                 flags[indices[i]] = true;
+            }
+
+            return flags;
+        }
+
+        private static bool[] BuildMountainBiomeFlags(in PlanetRecipe recipe, bool[] continentFlags)
+        {
+            int count = recipe.VoronoiDivision;
+            int mountainCount = Mathf.Min(recipe.MountainBiomeCells, recipe.ContinentCells);
+            bool[] flags = new bool[count];
+            if (mountainCount <= 0)
+            {
+                return flags;
+            }
+
+            int[] landIndices = new int[recipe.ContinentCells];
+            int landCount = 0;
+            for (int i = 0; i < count; i++)
+            {
+                if (continentFlags[i])
+                {
+                    landIndices[landCount] = i;
+                    landCount++;
+                }
+            }
+
+            System.Random mountainRandom = new System.Random(MixSeed(recipe.Seed, 0x2f6a4b1d));
+            for (int i = landCount - 1; i > 0; i--)
+            {
+                int swapIndex = mountainRandom.Next(i + 1);
+                (landIndices[i], landIndices[swapIndex]) = (landIndices[swapIndex], landIndices[i]);
+            }
+
+            for (int i = 0; i < mountainCount; i++)
+            {
+                flags[landIndices[i]] = true;
             }
 
             return flags;

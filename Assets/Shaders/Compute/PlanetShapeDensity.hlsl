@@ -6,6 +6,8 @@ struct PlanetShapeParameters
     float4 noise;
     float4 noiseFractal;
     float4 continentEdgeShape;
+    float4 biomeShape;
+    float4 mountainBiome;
 };
 
 struct PlanetShapeCell
@@ -16,6 +18,9 @@ struct PlanetShapeCell
 
 StructuredBuffer<PlanetShapeParameters> _PlanetShapeParameters;
 StructuredBuffer<PlanetShapeCell> _PlanetShapeCells;
+
+static const uint PlanetShapeBiomeMeadow = 0u;
+static const uint PlanetShapeBiomeMountain = 1u;
 
 uint PlanetShapeHash(uint seed, int3 cell, uint salt)
 {
@@ -56,6 +61,16 @@ float3 PlanetShapeGradient(uint hash)
         (hash & 2u) == 0u ? 1.0 : -1.0,
         (hash & 4u) == 0u ? 1.0 : -1.0);
     return normalize(gradient);
+}
+
+float3 PlanetShapeRandomUnitVector(uint seed, uint index, uint salt)
+{
+    uint zHash = PlanetShapeHashEdge(seed, index, index ^ 0x6d2b79f5u, salt);
+    uint angleHash = PlanetShapeHashEdge(seed, index, index ^ 0x9e3779b9u, salt ^ 0x85ebca6bu);
+    float z = PlanetShapeHash01(zHash) * 2.0 - 1.0;
+    float angle = PlanetShapeHash01(angleHash) * 6.28318530718;
+    float horizontalRadius = sqrt(max(0.0, 1.0 - z * z));
+    return float3(cos(angle) * horizontalRadius, z, sin(angle) * horizontalRadius);
 }
 
 float PlanetShapeFade(float t)
@@ -119,6 +134,88 @@ float PlanetShapeFbmPerlin3D(float3 position, uint seed, int octaves, float lacu
     return amplitudeSum > 0.00001 ? value / amplitudeSum : 0.0;
 }
 
+float PlanetShapeApplyMeadowBiome()
+{
+    return 0.0;
+}
+
+float PlanetShapeApplyMountainBiome(
+    float3 direction,
+    float3 cellDirection,
+    float radius,
+    uint seed,
+    uint cellIndex,
+    float dotDelta,
+    float4 biomeShape,
+    float4 mountainBiome)
+{
+    float height = max(0.0, biomeShape.x);
+    float peakRadius = max(0.0001, biomeShape.y);
+    float edgeBlend = max(0.0001, biomeShape.z);
+    float peakSpread = max(0.0, biomeShape.w);
+    int minPeaks = clamp((int)round(mountainBiome.x), 1, 4);
+    int maxPeaks = clamp((int)round(mountainBiome.y), minPeaks, 4);
+    float peakFalloff = clamp(mountainBiome.z, 0.0001, 16.0);
+
+    if (height <= 0.0)
+    {
+        return 0.0;
+    }
+
+    uint peakRange = (uint)(maxPeaks - minPeaks + 1);
+    uint safePeakRange = peakRange > 0u ? peakRange : 1u;
+    uint peakHash = PlanetShapeHashEdge(seed, cellIndex, cellIndex ^ 0x772533a5u, 0x12b9b0a1u);
+    int peakCount = minPeaks + (int)(peakHash % safePeakRange);
+    float edgeMask = PlanetShapeFade(saturate(max(0.0, dotDelta) / edgeBlend));
+    float mountainMask = 0.0;
+
+    [unroll]
+    for (int peak = 0; peak < 4; peak++)
+    {
+        if (peak < peakCount)
+        {
+            uint peakIndex = cellIndex * 4u + (uint)peak;
+            float3 randomDirection = PlanetShapeRandomUnitVector(seed, peakIndex, 0xc2b2ae35u);
+            float3 peakDirection = normalize(cellDirection + randomDirection * peakSpread);
+            uint radiusHash = PlanetShapeHashEdge(seed, peakIndex, cellIndex, 0x27d4eb2fu);
+            float localRadius = peakRadius * lerp(0.75, 1.35, PlanetShapeHash01(radiusHash));
+            float peakDistance = max(0.0, 1.0 - dot(direction, peakDirection));
+            float normalizedDistance = peakDistance / max(localRadius, 0.0001);
+            float peakMask = exp(-normalizedDistance * normalizedDistance * peakFalloff);
+            mountainMask = max(mountainMask, peakMask);
+        }
+    }
+
+    return radius * height * edgeMask * mountainMask;
+}
+
+float PlanetShapeApplyBiome(
+    uint biomeId,
+    float3 direction,
+    float3 cellDirection,
+    float radius,
+    uint seed,
+    uint cellIndex,
+    float dotDelta,
+    float4 biomeShape,
+    float4 mountainBiome)
+{
+    if (biomeId == PlanetShapeBiomeMountain)
+    {
+        return PlanetShapeApplyMountainBiome(
+            direction,
+            cellDirection,
+            radius,
+            seed,
+            cellIndex,
+            dotDelta,
+            biomeShape,
+            mountainBiome);
+    }
+
+    return PlanetShapeApplyMeadowBiome();
+}
+
 float PlanetShapeEvaluateDensity(float3 gridPosition, out float surfaceOffset, out float effectiveRadius, out float continentFlag)
 {
     PlanetShapeParameters parameters = _PlanetShapeParameters[0];
@@ -147,6 +244,8 @@ float PlanetShapeEvaluateDensity(float3 gridPosition, out float surfaceOffset, o
     float secondHeightModifier = 1.0;
     float nearestFlag = 0.0;
     float secondFlag = 0.0;
+    float nearestBiome = 0.0;
+    float3 nearestDirection = float3(0.0, 1.0, 0.0);
     uint nearestIndex = 0u;
     uint secondIndex = 0u;
 
@@ -165,10 +264,12 @@ float PlanetShapeEvaluateDensity(float3 gridPosition, out float surfaceOffset, o
             secondFlag = nearestFlag;
             secondIndex = nearestIndex;
             nearestDot = cellDot;
+            nearestDirection = cell.directionAndFlag.xyz;
             nearestOffset = cell.offsetRoughnessHash.x;
             nearestRoughness = cell.offsetRoughnessHash.y;
             nearestHeightModifier = cell.offsetRoughnessHash.z;
             nearestFlag = cell.directionAndFlag.w;
+            nearestBiome = cell.offsetRoughnessHash.w;
             nearestIndex = i;
         }
         else if (cellDot > secondDot)
@@ -208,12 +309,24 @@ float PlanetShapeEvaluateDensity(float3 gridPosition, out float surfaceOffset, o
     float firstEdgeBlend = PlanetShapeFade(edgeT);
     surfaceOffset = lerp(secondEdgeSurfaceOffset, firstEdgeSurfaceOffset, firstEdgeBlend);
     float roughness = lerp(secondEdgeRoughness, firstEdgeRoughness, firstEdgeBlend);
+    float landMask = lerp(secondEdgeFlag, firstEdgeFlag, firstEdgeBlend);
+    float3 normalizedPosition = gridPosition / radius;
+    uint biomeId = (uint)round(nearestBiome);
+    surfaceOffset += PlanetShapeApplyBiome(
+        biomeId,
+        direction,
+        nearestDirection,
+        radius,
+        seed + 0x5bf03635u,
+        nearestIndex,
+        nearestDot - secondDot,
+        parameters.biomeShape,
+        parameters.mountainBiome) * landMask;
 
     float noiseAmplitude = parameters.noise.x;
     float noiseFrequency = parameters.noise.y;
     if (noiseAmplitude > 0.0 && noiseFrequency > 0.0)
     {
-        float3 normalizedPosition = gridPosition / radius;
         int noiseOctaves = clamp((int)round(parameters.noiseFractal.x), 1, 8);
         float noiseLacunarity = max(0.01, parameters.noiseFractal.y);
         float noisePersistence = clamp(parameters.noiseFractal.z, 0.01, 1.0);
@@ -230,6 +343,6 @@ float PlanetShapeEvaluateDensity(float3 gridPosition, out float surfaceOffset, o
     }
 
     effectiveRadius = radius + surfaceOffset;
-    continentFlag = lerp(secondEdgeFlag, firstEdgeFlag, firstEdgeBlend);
+    continentFlag = landMask;
     return effectiveRadius - distanceFromCenter - isoLevel;
 }

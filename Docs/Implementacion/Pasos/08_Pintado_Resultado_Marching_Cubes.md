@@ -314,6 +314,8 @@ UV.y = 0.5 es el nivel de mar/costa para el atlas actual.
 UV.y 0.5..1.0 representa superficie emergida.
 UV.y 0.0..0.5 representa superficie bajo el agua.
 El tramo emergido usa una compresion del 60% del maximo teorico de altura de la receta para que marron, gris y nieve sean alcanzables visualmente.
+El maximo teorico emergido incluye elevacion continental, MountainBiomeHeight y SurfaceNoiseAmplitude.
+El minimo teorico sumergido incluye profundidad oceanica y SurfaceNoiseAmplitude.
 Cada triangulo usa una sola coordenada UV calculada en su centro para evitar interpolacion suave entre bandas de altura.
 La paleta base se decide por altura, no por flag continente/oceano de la celda.
 El gradiente inicial de abajo a arriba es rosa submarino, salmon, rojo/marron oscuro, arena, amarillo palido, verde claro, verde oscuro, marron, gris y blanco nieve.

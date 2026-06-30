@@ -904,6 +904,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                 safeRadius * Mathf.Max(0f, recipe.SurfaceNoiseAmplitude);
             float maxHeightAtlasOffset =
                 safeRadius * recipe.MaxLandElevation * recipe.MaxHeightModifier +
+                safeRadius * Mathf.Max(0f, recipe.MountainBiomeHeight) +
                 safeRadius * Mathf.Max(0f, recipe.SurfaceNoiseAmplitude);
             maxHeightAtlasOffset *= SurfaceAtlasLandRangeScale;
 

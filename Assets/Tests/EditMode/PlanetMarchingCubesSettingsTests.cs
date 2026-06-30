@@ -74,8 +74,8 @@ namespace MarchingCubesPlanet.Lab.Tests
                 out float innerRadius,
                 out float outerRadius);
 
-            Assert.That(innerRadius, Is.EqualTo(900f).Within(0.01f));
-            Assert.That(outerRadius, Is.EqualTo(3001f).Within(0.01f));
+            Assert.That(innerRadius, Is.EqualTo(1356f).Within(0.01f));
+            Assert.That(outerRadius, Is.EqualTo(2905f).Within(0.01f));
         }
 
         [Test]

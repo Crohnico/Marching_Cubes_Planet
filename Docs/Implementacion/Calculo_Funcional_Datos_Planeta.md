@@ -244,7 +244,88 @@ Esto crea transiciones continentales mas organicas. Las costas y cambios de altu
 
 ## Ruido fino de superficie
 
-Despues de calcular el offset continental/oceanico, se suma ruido 3D coherente.
+Despues de calcular el offset continental/oceanico, la forma se separa en dos capas simples:
+
+```text
+biomeOffset -> modificacion por bioma aplicada sobre la celda Voronoi
+fineOffset  -> rugosidad pequena de superficie
+```
+
+Motivo:
+
+```text
+Subir solo el ruido fino aumenta rugosidad local, pero no garantiza montanas altas y limpias.
+Para acercarnos a una lectura tipo Astroneer, la receta necesita biomas que puedan levantar formas grandes sin convertir todo el planeta en nervio pequeno.
+```
+
+## Biomas iniciales
+
+La capa inicial de biomas vive sobre las mismas celdas Voronoi que ya definen tierra/oceano.
+
+Biomas actuales:
+
+```text
+Meadow   -> no modifica el terreno
+Mountain -> levanta 1..4 picos suaves dentro de la celda
+```
+
+Parametros de receta:
+
+```text
+MountainBiomeCells
+MountainBiomeMinPeaks
+MountainBiomeMaxPeaks
+MountainBiomeHeight
+MountainBiomePeakRadius
+MountainBiomePeakSpread
+MountainBiomeEdgeBlend
+MountainBiomePeakFalloff
+```
+
+Valores iniciales:
+
+```text
+MountainBiomeCells = 10
+MountainBiomeMinPeaks = 1
+MountainBiomeMaxPeaks = 4
+MountainBiomeHeight = 18% del radio
+MountainBiomePeakRadius = 0.055
+MountainBiomePeakSpread = 0.45
+MountainBiomeEdgeBlend = 0.18
+MountainBiomePeakFalloff = 2.25
+```
+
+Reglas:
+
+```text
+La mayoria de celdas continentales son Meadow.
+Mountain solo se asigna a celdas continentales.
+Cada celda Mountain elige deterministicamente 1..4 puntos internos.
+Los picos elevan alrededor con una curva gaussiana, como empujar la superficie desde detras.
+El aporte del bioma se desvanece hasta cero cerca del borde Voronoi.
+El borde de la celda debe terminar como empezo para evitar tajos duros entre biomas.
+```
+
+Formula conceptual:
+
+```text
+nearestCell, secondCell = sphericalVoronoi(direction)
+edgeMask = fade(saturate((nearestDot - secondDot) / MountainBiomeEdgeBlend))
+peakMask = max(gaussianDistanceToEachMountainPeak)
+biomeOffset = biome.apply(direction, nearestCell, edgeMask)
+```
+
+Lectura:
+
+```text
+Meadow permite conservar el mundo suave.
+Mountain aporta siluetas altas y localizadas sin dividir el planeta con cordilleras globales.
+El patron `biome.apply` deja abrir el sistema a mas biomas sin reescribir el campo completo.
+```
+
+## Ruido fino de superficie
+
+Despues de la macroforma se suma ruido 3D coherente de detalle.
 
 La idea es:
 
@@ -283,7 +364,7 @@ roughnessModifier = randomRange(seed, cellIndex, minRoughness, maxRoughness)
 effectiveRoughness = roughnessModifier mezclado con la segunda celda en borde Voronoi
 ```
 
-En la version que nos gusta:
+En la version anterior que recuperamos como referencia:
 
 ```text
 amplitude = 30.8% del radio
@@ -291,9 +372,20 @@ frequency = 7
 roughnessModifier = 0.6..0.8
 ```
 
-Este valor de amplitud es fuerte. Es una de las claves del aspecto: rompe bastante la esfera, crea montanas y crestas visibles, y hace que las masas de tierra no parezcan simples parches lisos.
+Ese valor de amplitud era fuerte y daba caracter, pero tambien mezclaba montana con rugosidad.
 
-Si en un reinicio se baja mucho esta amplitud, el planeta sera mas limpio y controlable, pero probablemente perdera parte del caracter visual actual.
+Decision actual:
+
+```text
+SurfaceNoiseAmplitude inicial = 8% del radio
+```
+
+Motivo:
+
+```text
+Las montanas grandes viven ahora en MountainBiomeHeight.
+SurfaceNoiseAmplitude queda para romper la superficie sin convertir todo en terreno nervioso.
+```
 
 ## Offset final de superficie
 
@@ -301,8 +393,9 @@ La deformacion final puede entenderse asi:
 
 ```text
 baseOffset = offset continental u oceanico mezclado por Voronoi
-fineOffset = ruido coherente 3D
-surfaceOffset = baseOffset + fineOffset
+biomeOffset = modificacion del bioma de la celda mas cercana
+fineOffset = ruido coherente 3D de detalle
+surfaceOffset = baseOffset + biomeOffset + fineOffset
 ```
 
 Y por tanto:
@@ -434,6 +527,7 @@ La deformacion principal sale de Voronoi esferico:
 - unas celdas son tierra y suben el radio;
 - otras son oceano y lo hunden;
 - los bordes se mezclan con la segunda celda mas cercana;
+- algunas celdas continentales aplican bioma Mountain con picos suaves internos;
 - encima se suma ruido 3D coherente para romper la suavidad.
 
 Luego se muestrea ese campo en celdas y Marching Cubes extrae la superficie.
@@ -444,6 +538,7 @@ La parte visual que conviene recordar no es una clase, una cache o una ruta de d
 effectiveRadius(point) =
     radius
     + voronoiContinentOffset(direction)
+    + biomeOffset(direction)
     + fBmPerlinSurfaceNoise(localPosition / radius)
 ```
 

@@ -3268,15 +3268,22 @@ MonoBehaviour:
     maxHeightModifier: 1.5
     oceanDepth: 0.16
     minimumOceanDepth: 0.03
-    surfaceNoiseAmplitude: 0.308
+    surfaceNoiseAmplitude: 0.08
     surfaceNoiseFrequency: 7
     surfaceNoiseOctaves: 4
     surfaceNoiseLacunarity: 2
     surfaceNoisePersistence: 0.5
     surfaceNoiseResponsePower: 3.5
+    mountainBiomeCells: 10
+    mountainBiomeMinPeaks: 1
+    mountainBiomeMaxPeaks: 4
+    mountainBiomeHeight: 0.18
+    mountainBiomePeakRadius: 0.055
+    mountainBiomePeakSpread: 0.45
+    mountainBiomeEdgeBlend: 0.18
+    mountainBiomePeakFalloff: 2.25
     minRoughness: 0.6
     maxRoughness: 0.8
-    recipeVersion: 5
   placement:
     planetStellarCenter:
       x: 0
@@ -3391,15 +3398,22 @@ MonoBehaviour:
     maxHeightModifier: 1.5
     oceanDepth: 0.16
     minimumOceanDepth: 0.03
-    surfaceNoiseAmplitude: 0.308
+    surfaceNoiseAmplitude: 0.08
     surfaceNoiseFrequency: 7
     surfaceNoiseOctaves: 4
     surfaceNoiseLacunarity: 2
     surfaceNoisePersistence: 0.5
     surfaceNoiseResponsePower: 3.5
+    mountainBiomeCells: 10
+    mountainBiomeMinPeaks: 1
+    mountainBiomeMaxPeaks: 4
+    mountainBiomeHeight: 0.18
+    mountainBiomePeakRadius: 0.055
+    mountainBiomePeakSpread: 0.45
+    mountainBiomeEdgeBlend: 0.18
+    mountainBiomePeakFalloff: 2.25
     minRoughness: 0.6
     maxRoughness: 0.8
-    recipeVersion: 5
   bufferMode: 0
   debugSampleCount: 32
   supportsComputeShaders: 0
@@ -3407,6 +3421,7 @@ MonoBehaviour:
     cellCount: 0
     continentCellCount: 0
     oceanCellCount: 0
+    mountainBiomeCellCount: 0
     minBaseOffset: 0
     maxBaseOffset: 0
     minRoughness: 0
@@ -6344,29 +6359,36 @@ MonoBehaviour:
   recipe:
     gridRadius: 130
     worldScale: 54
-    seed: 15666
+    seed: 21586
     isoLevel: 0
     voronoiDivision: 80
-    continentCells: 42
-    continentEdgeBlend: 0.05
-    continentEdgeWidthMin: 2
+    continentCells: 51
+    continentEdgeBlend: 0.2
+    continentEdgeWidthMin: 1
     continentEdgeWidthMax: 5
-    continentEdgeShiftStrength: 0.1
+    continentEdgeShiftStrength: 0.3
     minLandElevation: 0.1
-    maxLandElevation: 0.4
+    maxLandElevation: 0.2
     minHeightModifier: 0.1
-    maxHeightModifier: 0.4
+    maxHeightModifier: 0.2
     oceanDepth: 0.16
     minimumOceanDepth: 0.03
-    surfaceNoiseAmplitude: 0.1
+    surfaceNoiseAmplitude: 0.08
     surfaceNoiseFrequency: 9
     surfaceNoiseOctaves: 8
     surfaceNoiseLacunarity: 2.5
     surfaceNoisePersistence: 0.5
     surfaceNoiseResponsePower: 1.22
+    mountainBiomeCells: 20
+    mountainBiomeMinPeaks: 1
+    mountainBiomeMaxPeaks: 4
+    mountainBiomeHeight: 0.2
+    mountainBiomePeakRadius: 0.2
+    mountainBiomePeakSpread: 0.3
+    mountainBiomeEdgeBlend: 0.18
+    mountainBiomePeakFalloff: 2
     minRoughness: 0.6
     maxRoughness: 1.48
-    recipeVersion: 5
   placement:
     planetStellarCenter:
       x: 0

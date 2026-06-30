@@ -145,10 +145,12 @@ BuildDone:
             float safeRadius = Mathf.Max(0.0001f, recipe.GridRadius);
             float maxHeightModifier = Mathf.Max(0f, recipe.MaxHeightModifier);
             float maxNoiseOffset = safeRadius * Mathf.Max(0f, recipe.SurfaceNoiseAmplitude);
+            float maxMountainBiomeOffset = safeRadius * Mathf.Max(0f, recipe.MountainBiomeHeight);
             float outwardIsoOffset = Mathf.Max(0f, -recipe.IsoLevel);
             float inwardIsoOffset = Mathf.Max(0f, recipe.IsoLevel);
             float maxOutwardOffset =
                 safeRadius * Mathf.Max(0f, recipe.MaxLandElevation) * maxHeightModifier +
+                maxMountainBiomeOffset +
                 maxNoiseOffset +
                 outwardIsoOffset;
             float maxInwardOffset =

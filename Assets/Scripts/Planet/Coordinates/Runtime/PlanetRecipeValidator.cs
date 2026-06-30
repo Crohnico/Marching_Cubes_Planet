@@ -16,12 +16,6 @@ namespace MarchingCubesPlanet.Coordinates
                 return false;
             }
 
-            if (recipe.RecipeVersion <= 0)
-            {
-                message = "RecipeVersion must be greater than zero.";
-                return false;
-            }
-
             if (recipe.VoronoiDivision <= 0)
             {
                 message = "VoronoiDivision must be greater than zero.";
@@ -115,6 +109,60 @@ namespace MarchingCubesPlanet.Coordinates
             if (recipe.SurfaceNoiseResponsePower <= 0f || recipe.SurfaceNoiseResponsePower > 8f)
             {
                 message = "SurfaceNoiseResponsePower must be greater than zero and lower than or equal to eight.";
+                return false;
+            }
+
+            if (recipe.MountainBiomeCells < 0)
+            {
+                message = "MountainBiomeCells must be greater than or equal to zero.";
+                return false;
+            }
+
+            if (recipe.MountainBiomeCells > recipe.ContinentCells)
+            {
+                message = "MountainBiomeCells must be lower than or equal to ContinentCells.";
+                return false;
+            }
+
+            if (recipe.MountainBiomeMinPeaks < 1 || recipe.MountainBiomeMinPeaks > 4)
+            {
+                message = "MountainBiomeMinPeaks must be between 1 and 4.";
+                return false;
+            }
+
+            if (recipe.MountainBiomeMaxPeaks < recipe.MountainBiomeMinPeaks || recipe.MountainBiomeMaxPeaks > 4)
+            {
+                message = "MountainBiomeMaxPeaks must be greater than or equal to MountainBiomeMinPeaks and lower than or equal to 4.";
+                return false;
+            }
+
+            if (recipe.MountainBiomeHeight < 0f)
+            {
+                message = "MountainBiomeHeight must be greater than or equal to zero.";
+                return false;
+            }
+
+            if (recipe.MountainBiomePeakRadius <= 0f || recipe.MountainBiomePeakRadius > 1f)
+            {
+                message = "MountainBiomePeakRadius must be greater than zero and lower than or equal to one.";
+                return false;
+            }
+
+            if (recipe.MountainBiomePeakSpread < 0f || recipe.MountainBiomePeakSpread > 2f)
+            {
+                message = "MountainBiomePeakSpread must be between zero and two.";
+                return false;
+            }
+
+            if (recipe.MountainBiomeEdgeBlend <= 0f || recipe.MountainBiomeEdgeBlend > 1f)
+            {
+                message = "MountainBiomeEdgeBlend must be greater than zero and lower than or equal to one.";
+                return false;
+            }
+
+            if (recipe.MountainBiomePeakFalloff <= 0f || recipe.MountainBiomePeakFalloff > 16f)
+            {
+                message = "MountainBiomePeakFalloff must be greater than zero and lower than or equal to sixteen.";
                 return false;
             }
 

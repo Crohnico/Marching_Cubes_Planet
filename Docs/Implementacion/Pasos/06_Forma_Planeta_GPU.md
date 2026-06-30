@@ -119,6 +119,8 @@ Elevacion por celda de tierra.
 Profundidad oceanica.
 Mezcla de bordes continentales.
 Ruido fino inicial de superficie.
+Biomas iniciales Meadow/Mountain.
+Mountain aplica picos suaves internos por celda Voronoi.
 surfaceOffset(point).
 effectiveRadius(point).
 density(point).
@@ -291,6 +293,14 @@ surfaceNoiseOctaves
 surfaceNoiseLacunarity
 surfaceNoisePersistence
 surfaceNoiseResponsePower
+mountainBiomeCells
+mountainBiomeMinPeaks
+mountainBiomeMaxPeaks
+mountainBiomeHeight
+mountainBiomePeakRadius
+mountainBiomePeakSpread
+mountainBiomeEdgeBlend
+mountainBiomePeakFalloff
 minRoughness
 maxRoughness
 ```
@@ -309,12 +319,20 @@ continentEdgeBlend = 0.16
 continentEdgeWidthMin = 0.65
 continentEdgeWidthMax = 1.75
 continentEdgeShiftStrength = 0.75
-surfaceNoiseAmplitude = 30.8% del radio
+surfaceNoiseAmplitude = 8% del radio
 surfaceNoiseFrequency = 7
 surfaceNoiseOctaves = 4
 surfaceNoiseLacunarity = 2
 surfaceNoisePersistence = 0.5
 surfaceNoiseResponsePower = 3.5
+mountainBiomeCells = 10
+mountainBiomeMinPeaks = 1
+mountainBiomeMaxPeaks = 4
+mountainBiomeHeight = 18% del radio
+mountainBiomePeakRadius = 0.055
+mountainBiomePeakSpread = 0.45
+mountainBiomeEdgeBlend = 0.18
+mountainBiomePeakFalloff = 2.25
 roughnessModifier = 0.6..0.8
 ```
 
@@ -384,6 +402,7 @@ Clasificacion tierra/oceano.
 Elevacion por celda.
 Profundidad oceanica.
 Mezcla de borde continental.
+Biomas Meadow/Mountain.
 Ruido fino.
 ```
 
@@ -602,7 +621,58 @@ Mantener los parametros visibles en Inspector.
 Medir coste antes de aumentar complejidad.
 ```
 
+## Biomas
+
+Objetivo:
+
+```text
+Crear montanas altas y localizadas sin depender solo de ruido uniforme y sin cordilleras que partan el planeta.
+```
+
+Modelo:
+
+```text
+La celda Voronoi continental puede ser Meadow o Mountain.
+Meadow no modifica el offset.
+Mountain elige 1..4 puntos internos deterministas.
+Cada punto levanta una zona suave con mascara gaussiana.
+El aporte del bioma se desvanece a cero en el borde Voronoi.
+```
+
+Formula conceptual:
+
+```text
+nearestCell, secondCell = sphericalVoronoi(direction)
+edgeMask = fade(saturate((nearestDot - secondDot) / MountainBiomeEdgeBlend))
+peakMask = max(gaussianDistanceToEachPeak)
+surfaceOffset += biome.apply(nearestBiome, direction, nearestCell) * landMask
+```
+
+Reglas:
+
+```text
+El id de bioma viaja en PlanetGpuShapeCell.offsetRoughnessHash.w.
+Mountain solo se asigna a celdas continentales.
+MountainBiomeHeight define la cota maxima que debe considerar 07.
+El patron `biome.apply` debe permitir anadir biomas sin reescribir la densidad base.
+```
+
 ## Ruido fino
+
+Antes del ruido fino se aplica el bioma de la celda.
+
+Objetivo:
+
+```text
+Mantener la rugosidad pequena agradable sin usarla para crear toda la silueta montanosa.
+```
+
+Reglas:
+
+```text
+El ruido fino se aplica despues del offset continental/oceanico y despues del bioma.
+La amplitud del ruido fino no debe sustituir la altura de Mountain.
+```
 
 El ruido fino se aplica despues del offset continental/oceanico.
 
@@ -681,6 +751,45 @@ PlanetRecipe es la fuente de verdad de la forma.
 Los parametros de elevacion, oceano, ruido, VoronoiDivision y ContinentCells viven en PlanetRecipe.
 Si el Inspector muestra parametros de forma, edita PlanetRecipe.
 No existe un PlanetGpuShapeSettings paralelo que pueda contradecir a PlanetRecipe.
+```
+
+### PlanetGpuShapeParameters
+
+Dato compacto de parametros globales de forma enviado a GPU.
+
+Layout actual:
+
+```text
+float4 radiusIsoSeedCellCount
+float4 elevation
+float4 oceanBlend
+float4 noise
+float4 noiseFractal
+float4 continentEdgeShape
+float4 biomeShape:
+    x = mountainHeight.
+    y = mountainPeakRadius.
+    z = mountainEdgeBlend.
+    w = mountainPeakSpread.
+float4 mountainBiome:
+    x = minPeaks.
+    y = maxPeaks.
+    z = peakFalloff.
+    w = reserved.
+```
+
+Stride:
+
+```text
+128 bytes.
+```
+
+Regla:
+
+```text
+El layout C# y HLSL de PlanetGpuShapeParameters debe coincidir.
+Los parametros de Mountain viven aqui, no en PlanetGpuShapeCell, porque son globales de receta.
+El id de bioma por celda vive en PlanetGpuShapeCell.
 ```
 
 ### PlanetGpuShapeCell
@@ -1192,6 +1301,8 @@ La distribucion inicial de direcciones Voronoi replica el perfil funcional previ
 El ruido coherente inicial usa fBm sobre Perlin3D.
 Perlin3D inicial es procedural sin texturas, con hash determinista por seed.
 PlanetRecipe expone amplitud, frecuencia, octavas, lacunaridad y persistencia del ruido de superficie.
+PlanetRecipe expone MountainBiomeCells, MountainBiomeMinPeaks, MountainBiomeMaxPeaks, MountainBiomeHeight, MountainBiomePeakRadius, MountainBiomePeakSpread, MountainBiomeEdgeBlend y MountainBiomePeakFalloff.
+PlanetGpuShapeParameters usa 8 float4 y stride de 128 bytes.
 PlanetGpuShapeCell usa 2 float4 y stride de 32 bytes.
 07 llama a density(point) desde HLSL compartido en su propio kernel.
 ```

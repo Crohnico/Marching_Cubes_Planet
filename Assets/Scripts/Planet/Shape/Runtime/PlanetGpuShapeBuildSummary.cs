@@ -8,6 +8,7 @@ namespace MarchingCubesPlanet.Shape
         public int cellCount;
         public int continentCellCount;
         public int oceanCellCount;
+        public int mountainBiomeCellCount;
         public float minBaseOffset;
         public float maxBaseOffset;
         public float minRoughness;
@@ -19,6 +20,7 @@ namespace MarchingCubesPlanet.Shape
             return "cellCount=" + cellCount +
                    "\ncontinentCellCount=" + continentCellCount +
                    "\noceanCellCount=" + oceanCellCount +
+                   "\nmountainBiomeCellCount=" + mountainBiomeCellCount +
                    "\nminBaseOffset=" + minBaseOffset +
                    "\nmaxBaseOffset=" + maxBaseOffset +
                    "\nminRoughness=" + minRoughness +

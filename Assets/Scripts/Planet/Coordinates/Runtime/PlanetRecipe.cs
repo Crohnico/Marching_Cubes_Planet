@@ -10,6 +10,14 @@ namespace MarchingCubesPlanet.Coordinates
         public const float DefaultSurfaceNoiseLacunarity = 2f;
         public const float DefaultSurfaceNoisePersistence = 0.5f;
         public const float DefaultSurfaceNoiseResponsePower = 3.5f;
+        public const int DefaultMountainBiomeCells = 10;
+        public const int DefaultMountainBiomeMinPeaks = 1;
+        public const int DefaultMountainBiomeMaxPeaks = 4;
+        public const float DefaultMountainBiomeHeight = 0.18f;
+        public const float DefaultMountainBiomePeakRadius = 0.055f;
+        public const float DefaultMountainBiomePeakSpread = 0.45f;
+        public const float DefaultMountainBiomeEdgeBlend = 0.18f;
+        public const float DefaultMountainBiomePeakFalloff = 2.25f;
         public const float DefaultContinentEdgeWidthMin = 0.65f;
         public const float DefaultContinentEdgeWidthMax = 1.75f;
         public const float DefaultContinentEdgeShiftStrength = 0.75f;
@@ -36,9 +44,16 @@ namespace MarchingCubesPlanet.Coordinates
         [SerializeField] private float surfaceNoiseLacunarity;
         [SerializeField] private float surfaceNoisePersistence;
         [SerializeField] private float surfaceNoiseResponsePower;
+        [SerializeField] private int mountainBiomeCells;
+        [SerializeField] private int mountainBiomeMinPeaks;
+        [SerializeField] private int mountainBiomeMaxPeaks;
+        [SerializeField] private float mountainBiomeHeight;
+        [SerializeField] private float mountainBiomePeakRadius;
+        [SerializeField] private float mountainBiomePeakSpread;
+        [SerializeField] private float mountainBiomeEdgeBlend;
+        [SerializeField] private float mountainBiomePeakFalloff;
         [SerializeField] private float minRoughness;
         [SerializeField] private float maxRoughness;
-        [SerializeField] private int recipeVersion;
 
         public int GridRadius
         {
@@ -150,26 +165,74 @@ namespace MarchingCubesPlanet.Coordinates
 
         public int SurfaceNoiseOctaves
         {
-            get => surfaceNoiseOctaves <= 0 ? DefaultSurfaceNoiseOctaves : surfaceNoiseOctaves;
+            get => surfaceNoiseOctaves;
             set => surfaceNoiseOctaves = value;
         }
 
         public float SurfaceNoiseLacunarity
         {
-            get => surfaceNoiseLacunarity <= 0f ? DefaultSurfaceNoiseLacunarity : surfaceNoiseLacunarity;
+            get => surfaceNoiseLacunarity;
             set => surfaceNoiseLacunarity = value;
         }
 
         public float SurfaceNoisePersistence
         {
-            get => surfaceNoisePersistence <= 0f ? DefaultSurfaceNoisePersistence : surfaceNoisePersistence;
+            get => surfaceNoisePersistence;
             set => surfaceNoisePersistence = value;
         }
 
         public float SurfaceNoiseResponsePower
         {
-            get => surfaceNoiseResponsePower <= 0f ? DefaultSurfaceNoiseResponsePower : surfaceNoiseResponsePower;
+            get => surfaceNoiseResponsePower;
             set => surfaceNoiseResponsePower = value;
+        }
+
+        public int MountainBiomeCells
+        {
+            get => mountainBiomeCells;
+            set => mountainBiomeCells = value;
+        }
+
+        public int MountainBiomeMinPeaks
+        {
+            get => mountainBiomeMinPeaks;
+            set => mountainBiomeMinPeaks = value;
+        }
+
+        public int MountainBiomeMaxPeaks
+        {
+            get => mountainBiomeMaxPeaks;
+            set => mountainBiomeMaxPeaks = value;
+        }
+
+        public float MountainBiomeHeight
+        {
+            get => mountainBiomeHeight;
+            set => mountainBiomeHeight = value;
+        }
+
+        public float MountainBiomePeakRadius
+        {
+            get => mountainBiomePeakRadius;
+            set => mountainBiomePeakRadius = value;
+        }
+
+        public float MountainBiomePeakSpread
+        {
+            get => mountainBiomePeakSpread;
+            set => mountainBiomePeakSpread = value;
+        }
+
+        public float MountainBiomeEdgeBlend
+        {
+            get => mountainBiomeEdgeBlend;
+            set => mountainBiomeEdgeBlend = value;
+        }
+
+        public float MountainBiomePeakFalloff
+        {
+            get => mountainBiomePeakFalloff;
+            set => mountainBiomePeakFalloff = value;
         }
 
         public float MinRoughness
@@ -182,12 +245,6 @@ namespace MarchingCubesPlanet.Coordinates
         {
             get => maxRoughness;
             set => maxRoughness = value;
-        }
-
-        public int RecipeVersion
-        {
-            get => recipeVersion;
-            set => recipeVersion = value;
         }
 
         public int GridDiameter => gridRadius * 2;
@@ -205,18 +262,14 @@ namespace MarchingCubesPlanet.Coordinates
 
         public void OnAfterDeserialize()
         {
-            if (recipeVersion < 4)
+            if (continentEdgeWidthMin <= 0f)
             {
                 continentEdgeWidthMin = DefaultContinentEdgeWidthMin;
-                continentEdgeWidthMax = DefaultContinentEdgeWidthMax;
-                continentEdgeShiftStrength = DefaultContinentEdgeShiftStrength;
-                recipeVersion = 4;
             }
 
-            if (recipeVersion < 5)
+            if (continentEdgeWidthMax <= 0f || continentEdgeWidthMax < continentEdgeWidthMin)
             {
-                surfaceNoiseResponsePower = DefaultSurfaceNoiseResponsePower;
-                recipeVersion = 5;
+                continentEdgeWidthMax = DefaultContinentEdgeWidthMax;
             }
 
             if (surfaceNoiseOctaves <= 0)
@@ -232,6 +285,51 @@ namespace MarchingCubesPlanet.Coordinates
             if (surfaceNoisePersistence <= 0f)
             {
                 surfaceNoisePersistence = DefaultSurfaceNoisePersistence;
+            }
+
+            if (surfaceNoiseResponsePower <= 0f)
+            {
+                surfaceNoiseResponsePower = DefaultSurfaceNoiseResponsePower;
+            }
+
+            if (mountainBiomeMinPeaks <= 0)
+            {
+                mountainBiomeMinPeaks = DefaultMountainBiomeMinPeaks;
+            }
+
+            if (mountainBiomeMaxPeaks <= 0)
+            {
+                mountainBiomeMaxPeaks = DefaultMountainBiomeMaxPeaks;
+            }
+
+            if (mountainBiomeMaxPeaks < mountainBiomeMinPeaks)
+            {
+                mountainBiomeMaxPeaks = mountainBiomeMinPeaks;
+            }
+
+            if (mountainBiomePeakRadius <= 0f)
+            {
+                mountainBiomePeakRadius = DefaultMountainBiomePeakRadius;
+            }
+
+            if (mountainBiomePeakSpread <= 0f)
+            {
+                mountainBiomePeakSpread = DefaultMountainBiomePeakSpread;
+            }
+
+            if (mountainBiomeEdgeBlend <= 0f)
+            {
+                mountainBiomeEdgeBlend = DefaultMountainBiomeEdgeBlend;
+            }
+
+            if (mountainBiomePeakFalloff <= 0f)
+            {
+                mountainBiomePeakFalloff = DefaultMountainBiomePeakFalloff;
+            }
+
+            if (mountainBiomeHeight <= 0f && mountainBiomeCells > 0)
+            {
+                mountainBiomeHeight = DefaultMountainBiomeHeight;
             }
         }
 
@@ -255,15 +353,22 @@ namespace MarchingCubesPlanet.Coordinates
                 maxHeightModifier = 1.5f,
                 oceanDepth = 0.16f,
                 minimumOceanDepth = 0.03f,
-                surfaceNoiseAmplitude = 0.308f,
+                surfaceNoiseAmplitude = 0.08f,
                 surfaceNoiseFrequency = 7f,
                 surfaceNoiseOctaves = DefaultSurfaceNoiseOctaves,
                 surfaceNoiseLacunarity = DefaultSurfaceNoiseLacunarity,
                 surfaceNoisePersistence = DefaultSurfaceNoisePersistence,
                 surfaceNoiseResponsePower = DefaultSurfaceNoiseResponsePower,
+                mountainBiomeCells = DefaultMountainBiomeCells,
+                mountainBiomeMinPeaks = DefaultMountainBiomeMinPeaks,
+                mountainBiomeMaxPeaks = DefaultMountainBiomeMaxPeaks,
+                mountainBiomeHeight = DefaultMountainBiomeHeight,
+                mountainBiomePeakRadius = DefaultMountainBiomePeakRadius,
+                mountainBiomePeakSpread = DefaultMountainBiomePeakSpread,
+                mountainBiomeEdgeBlend = DefaultMountainBiomeEdgeBlend,
+                mountainBiomePeakFalloff = DefaultMountainBiomePeakFalloff,
                 minRoughness = 0.6f,
-                maxRoughness = 0.8f,
-                recipeVersion = 5
+                maxRoughness = 0.8f
             };
         }
     }
