@@ -41,7 +41,7 @@ No entra:
 
 ```text
 Pool global base.
-BVH de detalle interno.
+Reparto adaptativo de detalle interno.
 Cambiar poligonaje por distancia.
 Materiales.
 Colisiones.
@@ -84,4 +84,3 @@ Si la oclusion empieza por CPU, GPU o aproximacion por bounds.
 Frecuencia de actualizacion.
 Como se evita popping visible al liberar tris.
 ```
-

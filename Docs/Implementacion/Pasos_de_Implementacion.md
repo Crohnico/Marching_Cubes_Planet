@@ -457,7 +457,7 @@ La salida inicial son vertices no indexados.
 La Mesh de validacion no es payload final.
 08 pinta el resultado de 07.
 09 decide el pool global fijo de triangulos.
-10 decide reparto interno/BVH para geometria adaptable.
+10 decide reparto adaptativo de detalle para geometria planetaria.
 11 decide visibilidad, oclusion y frustum global.
 ```
 
@@ -498,7 +498,7 @@ Decisiones cerradas:
 08 parte 1 pinta la salida de 07.
 08 parte 1 no ejecuta Marching Cubes.
 08 parte 1 no optimiza por distancia de camara.
-08 parte 1 no define BVH.
+08 parte 1 no define reparto adaptativo de detalle.
 08 parte 1 usa Mesh runtime de validacion.
 08 parte 1 puede truncar solo por cortafuegos de validacion.
 El budget real de poligonaje empieza en 09 como pool global fijo.
@@ -533,9 +533,9 @@ Regla:
 09 solo reparte slots de triangulos del presupuesto global.
 ```
 
-## 10 - Reparto de geometria y detalle espacial
+## 10 - Reparto adaptativo de geometria planetaria
 
-Documento para optimizar donde se gastan los triangulos dentro de una geometria adaptable.
+Documento para decidir que paginas/chunks del planeta se generan con mas o menos resolucion antes de gastar triangulos.
 
 Documento propio:
 
@@ -546,19 +546,25 @@ Docs/Implementacion/Pasos/10_Reparto_Geometria_BVH.md
 Debe concretar:
 
 ```text
-BVH inicial o estructura espacial equivalente.
+Paginas/chunks LOD sobre el campo `density(point)`.
+Estructura tipo octree/clipmap centrada en player/camara.
+Transvoxel o transicion equivalente para coser LODs.
 Reparto por distancia.
 Reparto por direccion de mirada.
+Reparto por direccion de movimiento/lookahead.
 Mas detalle donde mira/esta el player.
 Menos detalle conforme se aleja.
-Relacion con terreno y geometria adaptable.
+Relacion con terreno planetario y Marching Cubes adaptativo.
 Metricas de calidad/coste.
+Ruta Mesh inicial y backend GPU-resident como paso final futuro.
 ```
 
 Regla:
 
 ```text
 10 consume un budget ya concedido por 09.
+10 no se disena como BVH de triangulos.
+10 no genera un planeta denso completo para simplificarlo despues.
 10 no tiene por que aplicarse a props; props pueden usar LODs naturales futuros.
 ```
 

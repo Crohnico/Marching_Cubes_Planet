@@ -151,14 +151,14 @@ No entra:
 Cambiar el poligonaje de una mesh.
 Reducir la geometria generada por 07.
 Robar presupuesto entre artistas distintos.
-BVH de detalle interno.
+Reparto adaptativo de detalle interno.
 Reparto por direccion de mirada.
 Oclusion.
 Frustum culling.
 LOD natural de props.
 Decidir cuando un prop debe repedir presupuesto por distancia.
 Decidir cuando el mundo debe recalcular poligonaje.
-Disparar actualizaciones por BVH, oclusion o frustum.
+Disparar actualizaciones por reparto adaptativo, oclusion o frustum.
 Generar triangulos.
 Marching Cubes.
 Materiales finales.
@@ -260,7 +260,7 @@ Ejemplos:
 
 ```text
 Props: pediran presupuesto al crearse o cuando otro sistema decida que su distancia/prioridad ha cambiado.
-Mundo/terreno: pedira presupuesto cuando 10 rehaga reparto/BVH o cuando 11 cambie visibilidad por frustum/oclusion.
+Mundo/terreno: pedira presupuesto cuando 10 rehaga reparto adaptativo de paginas LOD o cuando 11 cambie visibilidad por frustum/oclusion.
 Particulas/VFX: pediran presupuesto cuando nazcan, crezcan, mueran o cambie su prioridad externa.
 ```
 
@@ -920,7 +920,7 @@ Nueva geometria.
 Nueva triangulacion.
 Nuevos materiales finales.
 Nueva density(point).
-Nuevo BVH.
+Nueva estructura principal de LOD.
 ```
 
 ## Componentes/scripts previstos
@@ -1587,7 +1587,7 @@ Metricas diferidas a 10/11:
 
 ```text
 Calidad visual por reparto interno.
-Triangulos redistribuidos por BVH.
+Triangulos redistribuidos por paginas LOD adaptativas.
 Triangulos evitados por frustum.
 Triangulos evitados por oclusion.
 Coste de mirar/camara como prioridad avanzada.
@@ -1676,7 +1676,7 @@ El pool mantiene worstResidentBucket/worstResidentScore para rechazar peticiones
 La primera metrica de prioridad es distancia al player/camara.
 Los slots reclamados invalidan al owner anterior.
 Cada artista puede liberar, invalidar o sobrescribir los recursos visuales propios de sus slots.
-10 queda reservado para reparto interno/BVH.
+10 queda reservado para reparto adaptativo de detalle interno.
 11 queda reservado para visibilidad, oclusion y frustum.
 ```
 
