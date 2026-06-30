@@ -205,7 +205,7 @@ Este documento prepara directamente:
 ```text
 08_Pintado_Resultado_Marching_Cubes
 09_Pool_Global_Triangulos
-10_Reparto_Geometria_BVH
+10_Optimizacion_Adaptativa_Poligonaje
 11_Visibilidad_Oclusion_Frustum
 _deadline_06-08
 12_Proxy_Planeta_Lejano
@@ -1149,7 +1149,7 @@ Flip de normal hacia fuera.
 Owner de recursos separado.
 08 pinta la salida de 07.
 09 decide pool global.
-10 decide reparto interno/BVH.
+10 decide reparto adaptativo de paginas LOD.
 11 decide visibilidad/occlusion/frustum.
 ```
 

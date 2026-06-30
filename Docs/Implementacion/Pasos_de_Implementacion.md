@@ -215,7 +215,7 @@ _deadline_01-05
 07_Marching_Cubes
 08_Pintado_Resultado_Marching_Cubes
 09_Pool_Global_Triangulos
-10_Reparto_Geometria_BVH
+10_Optimizacion_Adaptativa_Poligonaje
 11_Visibilidad_Oclusion_Frustum
 _deadline_06-08
 12_Proxy_Planeta_Lejano
@@ -533,14 +533,14 @@ Regla:
 09 solo reparte slots de triangulos del presupuesto global.
 ```
 
-## 10 - Reparto adaptativo de geometria planetaria
+## 10 - Optimizacion adaptativa de poligonaje
 
 Documento para decidir que paginas/chunks del planeta se generan con mas o menos resolucion antes de gastar triangulos.
 
 Documento propio:
 
 ```text
-Docs/Implementacion/Pasos/10_Reparto_Geometria_BVH.md
+Docs/Implementacion/Pasos/10_Optimizacion_Adaptativa_Poligonaje.md
 ```
 
 Debe concretar:
@@ -562,7 +562,9 @@ Ruta Mesh inicial y backend GPU-resident como paso final futuro.
 Regla:
 
 ```text
-10 consume un budget ya concedido por 09.
+10 no consume ni recibe un budget concedido por 09 para decidir su reparto.
+10 publica su resultado a 09 como backend de dibujo gestionado.
+10 no cambia su LOD por una respuesta de 09.
 10 no se disena como BVH de triangulos.
 10 no genera un planeta denso completo para simplificarlo despues.
 10 no tiene por que aplicarse a props; props pueden usar LODs naturales futuros.

@@ -134,7 +134,7 @@ La fase debe dejar preparado un evaluador que pueda usarse por:
 ```text
 07_Marching_Cubes.
 09_Pool_Global_Triangulos.
-10_Reparto_Geometria_BVH.
+10_Optimizacion_Adaptativa_Poligonaje.
 11_Visibilidad_Oclusion_Frustum.
 12_Proxy_Planeta_Lejano.
 14_Chunks_Locales.
@@ -196,7 +196,7 @@ Este documento prepara directamente:
 07_Marching_Cubes
 08_Pintado_Resultado_Marching_Cubes
 09_Pool_Global_Triangulos
-10_Reparto_Geometria_BVH
+10_Optimizacion_Adaptativa_Poligonaje
 11_Visibilidad_Oclusion_Frustum
 _deadline_06-08
 ```

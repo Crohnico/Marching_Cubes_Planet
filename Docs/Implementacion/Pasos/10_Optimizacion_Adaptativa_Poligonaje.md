@@ -1,19 +1,33 @@
-# 10 - Reparto adaptativo de geometria planetaria
+# 10 - Optimizacion adaptativa de poligonaje
 
 ## Objetivo
 
-Definir el sistema que decide que zonas del planeta se generan con mas o menos resolucion antes de gastar triangulos.
+Definir el sistema que decide que zonas del planeta se generan con mas o menos resolucion dentro de la representacion virtual deseada del planeta.
 
-10 toma como base el presupuesto gestionado por 09 y lo convierte en una seleccion adaptativa de paginas/chunks de superficie.
+10 es independiente de 09.
+
+10 trabaja sobre la forma virtual del planeta y toma el control de como se divide, genera y publica la superficie adaptable.
+
+09 queda tratado como backend de publicacion/dibujo:
+
+```text
+10 decide su reparto.
+10 genera o prepara paginas.
+10 publica lotes de triangulos.
+09, por detras, decide si los pinta, los reclama, los sobrescribe o los descarta.
+10 no cambia su reparto por una respuesta de 09.
+```
 
 Contrato funcional:
 
 ```text
-budget gestionado por 09
+density(point) de 06
+-> extraccion/triangulacion de 07 adaptada por pagina
+-> reglas de pintado/formato de 08 aplicadas por pagina
 -> paginas LOD alrededor del player/camara
 -> Marching Cubes multiresolucion por pagina
 -> costura entre LODs con Transvoxel o transicion equivalente
--> publicacion de triangulos al artista Environment de 09
+-> Draw/SetMesh/publicacion hacia 09 como backend gestionado
 ```
 
 Decision central:
@@ -21,6 +35,7 @@ Decision central:
 ```text
 10 no se disena como BVH de triangulos.
 10 se disena como generacion adaptativa por paginas/chunks LOD sobre el campo density(point).
+10 no recibe autorizacion ni presupuesto de 09 para decidir su reparto.
 ```
 
 El nombre de archivo conserva `BVH` por continuidad con el indice historico, pero el contrato tecnico de este documento elimina BVH como arquitectura principal.
@@ -112,9 +127,9 @@ Marching Cubes con sampleStepGrid variable por pagina.
 Costura entre paginas de distinto LOD con Transvoxel o transicion equivalente.
 Cache/pool de paginas LOD con capacidad maxima.
 Cancelacion de paginas que dejan de ser prioritarias.
-Publicacion de triangulos generados al artista Environment de 09.
-Metricas de paginas pedidas, generadas, canceladas, degradadas y publicadas.
-Stress con presupuestos bajos/medios/altos del artista Environment.
+Publicacion de triangulos generados mediante la ruta de pintado/dibujo gestionada por 09.
+Metricas de paginas deseadas, generadas, canceladas, degradadas y enviadas a publicacion.
+Stress con diferentes calidades internas de 10 y diferentes backends de publicacion.
 ```
 
 ## Fuera de alcance
@@ -140,7 +155,7 @@ Gameplay.
 Regla:
 
 ```text
-Si una decision trata de cuantos tris totales caben en Environment, pertenece a 09.
+Si una decision trata de cuantos tris totales acaba pintando Environment, pertenece a 09.
 Si una decision trata de que paginas del planeta se generan y a que resolucion, pertenece a 10.
 Si una decision trata de no pedir/mantener paginas que la camara no puede ver, pertenece a 11.
 Si una decision trata de biomas y cambios de ruido por region, pertenece a un documento futuro de biomas/receta.
@@ -169,8 +184,8 @@ Relacion concreta:
 ```text
 06 aporta density(point).
 07 aporta Marching Cubes canonico sobre celdas cartesianas.
-08 aporta la ruta Mesh visible inicial.
-09 aporta presupuesto y artista Environment.
+08 aporta la ruta de pintado/formato visual inicial.
+09 aporta un backend gestionado de publicacion, equivalente conceptual a una herramienta `Draw` / `SetMesh`.
 10 decide paginas LOD y resolucion de muestreo.
 11 reducira prioridad o liberara lo no visible.
 ```
@@ -180,7 +195,7 @@ Regla de frontera:
 ```text
 10 no modifica density(point).
 10 no reimplementa la formula de planeta.
-10 no sustituye el pool de 09.
+10 no depende de una respuesta de 09.
 10 no asume visibilidad final de 11.
 ```
 
@@ -299,8 +314,9 @@ LOD 1 -> sampleStepGrid = 2
 LOD 2 -> sampleStepGrid = 4
 LOD 3 -> sampleStepGrid = 8
 LOD 4 -> sampleStepGrid = 16
-...
 ```
+
+En el perfil inicial `maxLodLevel = 4`.
 
 Regla importante:
 
@@ -362,8 +378,10 @@ Reglas:
 Las transiciones solo existen entre paginas vecinas con diferencia 1 de LOD.
 Si hay diferencia mayor, se fuerza refinamiento intermedio o se bloquea la combinacion.
 Las transition cells forman parte del resultado visual de 10.
-Las transition cells consumen presupuesto del artista Environment.
-Las transition cells se registran y liberan como recursos propios de la pagina o grupo de paginas.
+Las transition cells forman parte de la malla virtual deseada de 10.
+Las transition cells se envian a la misma ruta de publicacion que el resto de la pagina.
+09 puede pintarlas o descartarlas por su politica interna, pero 10 no recalcula su reparto por esa respuesta.
+Las transition cells se registran y liberan como recursos propios de la pagina o grupo de paginas hasta su publicacion.
 ```
 
 No objetivo:
@@ -378,6 +396,87 @@ Decision de implementacion:
 ```text
 Primero validar paginas LOD sin costura en escenas controladas.
 Despues introducir Transvoxel como cierre de calidad obligatorio antes de considerar 10 estable.
+```
+
+Tablas oficiales:
+
+```text
+Fuente: Eric Lengyel, Transvoxel Algorithm.
+Web: https://transvoxel.org/
+Repositorio: https://github.com/EricLengyel/Transvoxel
+Licencia: MIT.
+Referencia local: Docs/Referencias/Transvoxel/Transvoxel.cpp
+Licencia local: Docs/Referencias/Transvoxel/LICENSE
+```
+
+Regla:
+
+```text
+No generar tablas Transvoxel en runtime.
+No reinterpretar ni redisenar las tablas en esta fase.
+Usar las tablas oficiales como fuente canonica.
+Mantener la licencia MIT junto a cualquier copia sustancial de las tablas.
+```
+
+Tablas fuente que se usaran:
+
+```text
+regularCellClass[256]        -> byte
+regularCellData[16]          -> geometryCounts + vertexIndex[15]
+regularVertexData[256][12]   -> ushort
+transitionCellClass[512]     -> byte
+transitionCellData[56]       -> geometryCounts + vertexIndex[36]
+transitionCornerData[13]     -> byte
+transitionVertexData[512][12]-> ushort
+```
+
+Lectura de campos:
+
+```text
+geometryCounts high nibble -> vertex count.
+geometryCounts low nibble  -> triangle count.
+transitionCellClass bit alto -> invertir winding.
+transitionCellClass low 7 bits -> indice de clase.
+```
+
+Layout C# previsto:
+
+```text
+TransvoxelTables.cs generado desde la referencia local.
+byte[] para tablas de clase, counts e indices pequenos.
+ushort[] para tablas de vertices.
+Arrays planos, sin structs con padding implicito.
+Validacion de longitudes contra los tamanos oficiales.
+```
+
+Layout GPU/HLSL previsto:
+
+```text
+Subir tablas como arrays uint empaquetados.
+4 bytes por uint para datos byte.
+2 ushorts por uint para datos ushort.
+No depender de layout binario compartido entre struct C# y struct HLSL.
+Leer con helpers HLSL ReadPackedByte(index) y ReadPackedUShort(index).
+```
+
+Buffers GPU previstos:
+
+```text
+StructuredBuffer<uint> _RegularCellClassPacked;
+StructuredBuffer<uint> _RegularCellDataPacked;
+StructuredBuffer<uint> _RegularVertexDataPacked;
+StructuredBuffer<uint> _TransitionCellClassPacked;
+StructuredBuffer<uint> _TransitionCellDataPacked;
+StructuredBuffer<uint> _TransitionCornerDataPacked;
+StructuredBuffer<uint> _TransitionVertexDataPacked;
+```
+
+Regla de implementacion:
+
+```text
+La primera implementacion puede generar los arrays C# a partir de Transvoxel.cpp mediante herramienta/editor script.
+El runtime no parsea C++ ni ficheros externos.
+Los buffers GPU se crean una vez y se registran en 04/09 como recurso vivo.
 ```
 
 ## Criterio de prioridad
@@ -451,18 +550,20 @@ Un giro brusco cancela o baja prioridad de paginas obsoletas.
 Flujo minimo:
 
 ```text
-1. 09 inicializa el artista Environment.
-2. 10 recibe receta, placement y referencia player/camara.
-3. 10 calcula paginas candidatas alrededor del player/camara.
-4. 10 asigna un lodLevel a cada pagina candidata.
-5. 10 descarta o degrada paginas fuera de presupuesto estimado.
-6. 10 encola paginas nuevas o cambios de LOD.
-7. El scheduler procesa trabajo con presupuesto por frame.
-8. Cada pagina ejecuta Marching Cubes usando sampleStepGrid.
-9. Si hay borde con LOD distinto, se generan transition cells.
-10. La pagina publica sus triangulos al artista Environment de 09.
-11. Paginas obsoletas se liberan o degradan.
-12. Metricas y diagnostico quedan visibles en el Lab.
+1. 10 recibe receta, placement y referencia player/camara.
+2. 10 calcula paginas candidatas alrededor del player/camara.
+3. 10 asigna un lodLevel a cada pagina candidata.
+4. 10 decide su malla virtual deseada sin preguntar a 09.
+5. 10 encola paginas nuevas o cambios de LOD.
+6. El scheduler procesa trabajo con presupuesto de tiempo/trabajo por frame.
+7. Cada pagina ejecuta Marching Cubes usando sampleStepGrid.
+8. Si hay borde con LOD distinto, se generan transition cells.
+9. 10 aplica o delega en 08 el formato de pintado/material/datos visuales por pagina.
+10. 10 envia la pagina a 09 como operacion de publicacion/dibujo.
+11. 09 decide internamente que pinta, reclama o descarta.
+12. 10 no ajusta su reparto por la respuesta de 09.
+13. Paginas obsoletas se liberan o degradan por decision de 10/11, no por feedback de 09.
+14. Metricas y diagnostico quedan visibles en el Lab.
 ```
 
 Regla:
@@ -499,30 +600,107 @@ Regla:
 10 cambia donde y con que paso se muestrea esa funcion.
 ```
 
+Decision de kernels/cache:
+
+```text
+10 comparte la base HLSL/codigo comun de 07 cuando sea posible.
+10 puede usar kernels especializados si sampleStepGrid, layout por pagina, cancelacion o Transvoxel lo exigen.
+10 no reutiliza la Mesh/cache de salida de 07 como fuente runtime.
+La cache residente pertenece a 10.
+La key de cache inicial sera planetId + pageCoord + lodLevel + recipeVersion + shapeVersion.
+```
+
+Se reutiliza de 07:
+
+```text
+density(point).
+tablas Marching Cubes si aplican.
+estructura de dispatch base.
+AppendBuffer/conteo de triangulos.
+debug y validacion.
+release de buffers.
+```
+
+No se reutiliza de 07:
+
+```text
+Mesh de validacion.
+cache de chunk completo como verdad runtime.
+decision de bounds globales.
+estado residente.
+prioridad/cancelacion.
+Transvoxel.
+```
+
 Los vertices siguen quedando inicialmente en GridCoordinates y se convierten a WorldSpace para salida Mesh o publicacion.
+
+## Relacion con 08
+
+08 no conserva el control de pintar el planeta completo cuando entra 10.
+
+08 aporta:
+
+```text
+formato de Mesh inicial.
+materiales/modos de color.
+atlas/UV/altura.
+agua visual inicial si aplica.
+conversion de resultado geometrico a dato publicable.
+```
+
+10 toma el control del reparto y usa esa informacion de 08 por pagina.
+
+Flujo:
+
+```text
+10 decide pagina y LOD.
+10 extrae o pide extraer geometria adaptativa.
+10 usa la logica/formato de 08 para preparar el lote visible.
+10 envia el lote a publicacion.
+```
+
+Regla:
+
+```text
+08 no decide que paginas existen ni a que LOD.
+08 no consulta presupuesto de 09 para 10.
+08 no recupera el control global de pintado cuando 10 esta activo.
+```
 
 ## Relacion con 09
 
-09 es la autoridad del presupuesto visible.
+09 es el backend gestionado de publicacion/dibujo.
 
-10 no posee el presupuesto global.
+10 no recibe presupuesto de 09 para decidir su reparto.
+
+10 no espera respuesta de 09 para saber si su pagina existe conceptualmente.
+
+09 puede entenderse como una herramienta parecida a:
+
+```text
+ManagedDraw(datos)
+SetManagedMesh(datos)
+```
 
 Flujo:
 
 ```text
 10 decide que pagina generar.
 10 genera triangulos candidatos de esa pagina.
-10 pide publicar esos triangulos al artista Environment de 09.
-09 concede, reclama o deniega slots segun su politica.
-10 registra diagnostico de pagina publicada/parcial/denegada.
+10 prepara datos de pintado usando la ruta/formato de 08.
+10 llama a la ruta de publicacion gestionada por 09.
+09 decide por detras si lo pinta, lo sobrescribe, lo reclama o lo descarta.
 ```
 
 Regla:
 
 ```text
 10 no pinta saltandose 09.
-10 no aumenta el presupuesto de Environment.
+10 no pregunta a 09 si cabe.
+10 no degrada paginas porque 09 no las haya pintado.
+10 no aumenta ni reduce el presupuesto de Environment.
 10 no reclama triangulos de otros artistas.
+10 no usa granted/denied/reclaimed como entrada de calidad.
 ```
 
 ## Relacion con 11
@@ -578,7 +756,7 @@ Regla:
 Si density(point) cambia por bioma en el futuro, 10 seguira muestreando density(point).
 ```
 
-TBD futuro:
+Pendiente futuro:
 
 ```text
 Crear documento propio de Biomas antes de introducir reglas de bioma en codigo.
@@ -616,7 +794,24 @@ Regla de orden:
 
 ```text
 Primero hacer funcionar 09, 10 y 11 con Mesh runtime medible.
-Despues, como ultimo paso del bloque 09-10-11, evaluar migrar el backend visible a GPU-resident.
+Cuando 11 este terminado y el trabajo con triangulos este resuelto, cambiar el backend visible para que deje de escupir a Mesh y pinte desde GPU.
+```
+
+Momento de GPU-resident:
+
+```text
+09 resuelve el backend gestionado de triangulos.
+10 resuelve el reparto adaptativo de poligonaje.
+11 resuelve visibilidad, oclusion y frustum.
+Despues de 11, la geometria ya existe como flujo de triangulos correcto.
+El siguiente paso es cambiar la salida visible: de Mesh runtime a buffers/draw GPU-resident.
+```
+
+Decision:
+
+```text
+GPU-resident no es requisito para cerrar 10.
+GPU-resident queda como ultimo paso posterior a 11, reutilizando el flujo de triangulos ya validado.
 ```
 
 No se permite:
@@ -637,7 +832,6 @@ PlanetGpuShapeEvaluator o datos GPU de 06.
 Referencia player/camara.
 Forward de camara.
 Velocidad del player si existe.
-Presupuesto activo del artista Environment.
 Configuracion de LOD.
 Estado de paginas residentes.
 ```
@@ -658,6 +852,34 @@ cameraPriorityWeight.
 distancePriorityWeight.
 ```
 
+Valores iniciales de prueba:
+
+```text
+basePageSizeGrid = 64 cells.
+maxLodLevel = 4.
+distancePriorityWeight = 0.55.
+cameraPriorityWeight = 0.30.
+movementPriorityWeight = 0.15.
+LOD0 / alta resolucion: 0 m - 128 m aprox.
+LOD1: 128 m - 256 m aprox.
+LOD2: 256 m - 512 m aprox.
+LOD3: 512 m - 1500 m aprox.
+LOD4: 1500 m+ como geometria muy gruesa o candidato a proxy/impostor.
+```
+
+Notas:
+
+```text
+basePageSizeGrid vive en GridCoordinates.
+Los rangos LOD son distancia mundo aproximada desde player/camara, no GridCoordinates.
+maxLodLevel = 4 significa que 10 puede seleccionar LOD0, LOD1, LOD2, LOD3 y LOD4.
+Niveles por encima de LOD4 quedan fuera del primer perfil y se decidiran tras medir.
+Los pesos iniciales priorizan primero cercania, despues direccion de mirada y por ultimo movimiento/lookahead.
+El perfil inicial asume juego lento y movimiento con vehiculos, pero debe medirse.
+El radio de alta resolucion se mantiene corto; la precarga/lookahead puede crecer con la velocidad sin subir necesariamente LOD0.
+La distancia util al horizonte depende de la altura sobre superficie, especialmente en un planeta de radio visual aproximado de 4 km.
+```
+
 ## Datos de salida
 
 Salida real:
@@ -668,9 +890,9 @@ Pagina -> lodLevel actual.
 Pagina -> estado: Pending, Generating, Resident, Degrading, Releasing, Cancelled.
 Triangulos candidatos por pagina.
 Transition cells por borde si aplican.
-Requests de publicacion al artista Environment.
+Lotes enviados a publicacion gestionada.
 Metricas de pagina y de conjunto.
-Diagnostico de presupuesto/calidad.
+Diagnostico de calidad virtual y publicacion solicitada.
 ```
 
 No debe producir:
@@ -797,14 +1019,15 @@ Reportar coste y triangulos extra.
 
 ### PlanetSurfaceLodPublisher
 
-Wrapper entre 10 y 09.
+Wrapper de publicacion gestionada.
 
 Responsabilidad:
 
 ```text
 Preparar batches de triangulos por pagina.
-Enviar requests al artista Environment.
-Registrar si la pagina quedo publicada total, parcial o denegada.
+Enviar operaciones Draw/SetMesh al backend gestionado por 09.
+Registrar que se solicito publicacion.
+No interpretar granted/denied/reclaimed como decision de LOD.
 No saltarse PlanetTrianglePoolWriter.
 ```
 
@@ -878,7 +1101,7 @@ Buffers temporales de extraccion por pagina o lote.
 Buffers de estado de pagina.
 Buffers de vertices/triangulos candidatos si se generan en GPU.
 Buffers de transition cells.
-Recursos visuales gestionados por el artista Environment de 09.
+Recursos visuales gestionados por el backend de publicacion de 09.
 ```
 
 Reglas:
@@ -887,14 +1110,14 @@ Reglas:
 Cada recurso propio se registra con owner claro.
 Los buffers temporales se reutilizan.
 Los buffers de 06 no se registran como owned por 10.
-Los recursos visuales del artista Environment siguen siendo owned por 09.
+Los recursos visuales finales siguen siendo owned por 09.
 10 no crea RenderTextures salvo debug documentado.
 ```
 
 Ruta inicial:
 
 ```text
-Generar y publicar hacia Mesh runtime CPU gestionada por 09.
+Generar y publicar hacia Mesh runtime CPU gestionada por 09 como backend de dibujo.
 ```
 
 Ruta futura:
@@ -911,7 +1134,7 @@ Release debe:
 Cancelar trabajos pendientes.
 Liberar buffers propios de 10.
 Liberar paginas residentes propias.
-Pedir al artista Environment que libere lo publicado por 10 si aplica mediante owner/releaseGroup.
+Solicitar al backend de publicacion que libere lo publicado por 10 si aplica mediante owner/releaseGroup.
 Marcar handles como liberados.
 Limpiar referencias internas.
 Dejar contadores propios a cero.
@@ -923,7 +1146,7 @@ Regla:
 
 ```text
 10 no libera recursos de 06.
-10 no libera todo el artista Environment salvo que el Lab ejecute Release All global.
+10 no libera todo el backend/artista salvo que el Lab ejecute Release All global.
 ```
 
 ## Botones de Inspector
@@ -1017,7 +1240,7 @@ Tests PlayMode esperados:
 PlanetSurfaceLodLab existe en PlanetImplementationLab cuando se integre.
 Validate Surface LOD Setup no lanza excepcion.
 Init Surface LOD no lanza excepcion.
-Generate Near Pages no lanza excepcion con presupuesto de test.
+Generate Near Pages no lanza excepcion con configuracion de test.
 Release Surface LOD no lanza excepcion.
 Release doble no lanza excepcion.
 Init -> Release -> Init funciona.
@@ -1027,7 +1250,7 @@ Tests condicionados:
 
 ```text
 Si Compute Shader no esta disponible, la ruta GPU da diagnostico claro.
-Si el artista Environment de 09 no esta inicializado, 10 queda unavailable con diagnostico.
+Si el backend de publicacion de 09 no esta inicializado, 10 puede seguir calculando seleccion virtual pero queda sin salida visible gestionada y debe mostrar diagnostico.
 Si Transvoxel no esta implementado aun, las pruebas de costura quedan marcadas como pendiente bloqueante antes de cerrar 10.
 ```
 
@@ -1044,9 +1267,9 @@ releasedPageCount.
 pagesByLodLevel.
 trianglesGeneratedByLod.
 trianglesTransitionGenerated.
-trianglesRequestedToEnvironment.
-trianglesGrantedByEnvironment.
-trianglesDeniedByEnvironment.
+trianglesPreparedForPublish.
+trianglesSentToManagedDraw.
+publishCallsRequested.
 averagePageGenerationMs.
 maxPageGenerationMs.
 lastSelectionMs.
@@ -1082,7 +1305,7 @@ Romper la identidad de micro cell al usar sampleStepGrid alto.
 Crear grietas entre LODs.
 No respetar ratio 2:1 y complicar Transvoxel.
 Duplicar density(point).
-Saltar 09 y pintar directo.
+Saltar 09 y pintar directo en la ruta gestionada.
 Hacer readback masivo para cada pagina.
 Crear GC en seleccion o scheduler.
 Mantener paginas obsoletas vivas.
@@ -1097,7 +1320,7 @@ Paginas con limite duro.
 sampleStepGrid powers-of-two.
 Transvoxel para costuras.
 Versionado/cancelacion de trabajos.
-Publicacion obligatoria via artista Environment.
+Publicacion gestionada obligatoria via 09 para la ruta visible gestionada.
 Buffers/pools preasignados.
 Metricas por pagina y por LOD.
 Ruta Mesh inicial para depurar.
@@ -1114,32 +1337,57 @@ La estructura sera tipo octree/clipmap, no Sparse Voxel Octree global.
 La unidad runtime sera PlanetSurfaceLodPage.
 La micro cell logica sigue siendo 1x1x1.
 Los LOD visuales usan sampleStepGrid powers-of-two.
+maxLodLevel inicial sera 4.
 Los LOD vecinos deben diferir como maximo en 1 nivel cuando haya borde compartido.
 Transvoxel o transicion equivalente sera obligatorio para cerrar grietas entre LODs.
 10 mantiene Marching Cubes como extractor inicial.
 Dual Contouring queda como alternativa futura, no entra en esta fase.
 10 prioriza por distancia, mirada y movimiento/lookahead.
 10 no implementa oclusion/frustum global.
-10 publica al artista Environment de 09.
+10 envia Draw/SetMesh/publicacion gestionada a 09.
 10 no pinta directo saltandose 09.
+10 no recibe ni usa respuesta de 09 para decidir LOD.
 10 no modifica density(point).
 Biomas quedan fuera y requieren documento propio.
 La salida visible inicial sigue siendo Mesh runtime CPU gestionada por 09.
 La ruta GPU-resident queda como evaluacion final del bloque 09-10-11, despues de tener 09/10/11 funcionando con Mesh.
+Las tablas Transvoxel oficiales de Eric Lengyel quedan descargadas como referencia local en Docs/Referencias/Transvoxel.
+El layout inicial sera C# generado con arrays planos y GPU/HLSL con uints empaquetados.
+10 compartira base HLSL/codigo comun con 07, pero su cache residente sera propia por pagina, LOD y version.
 ```
 
-## TBD
+## Perfil inicial de prueba
 
 ```text
-Nombre final de archivo si se decide quitar `BVH` tambien de la ruta.
-Tamano inicial exacto de pagina en GridCoordinates.
-MaxLodLevel inicial.
-Rangos iniciales de distancia por LOD.
-Pesos exactos de distancia/mirada/movimiento.
-Formato exacto de tablas Transvoxel y layout C#/HLSL.
-Si la extraccion adaptativa comparte kernels con 07 o usa kernels separados.
-Cuando se considera suficiente la ruta Mesh para empezar backend GPU-resident.
+La primera prueba de 10 usara paginas base de 64 cells.
+La primera prueba de 10 usara maxLodLevel = 4.
+La primera prueba de 10 usara pesos de prioridad 0.55 distancia, 0.30 mirada y 0.15 movimiento/lookahead.
+La alta resolucion se probara alrededor del jugador/camara hasta unos 128 m.
+El detalle bajara progresivamente hasta unos 1.5 km.
+Por encima de 1.5 km se evaluara geometria muy gruesa, proxy o impostor segun coste visual.
+Estos valores no cierran el diseno final; sirven para medir coste, pop, costuras y sensacion de escala.
+```
+
+Motivo:
+
+```text
+64 cells encaja con el chunk canonico actual de 07.
+128 m aproxima una zona cercana manejable para alta resolucion sin intentar rehacer el planeta visible completo.
+1.5 km cubre vuelo bajo, laderas, vehiculos lentos y vistas elevadas iniciales sin prometer detalle fino hasta el horizonte.
+```
+
+## Pendientes de medicion/futuro
+
+```text
+Ajuste final de basePageSizeGrid y rangos LOD tras pruebas con jugador, vehiculos y altura sobre superficie.
+Ajuste final de pesos de prioridad tras medir popping, retraso de generacion y coste por frame.
 Documento futuro de Biomas.
+```
+
+Nombre final del documento:
+
+```text
+Docs/Implementacion/Pasos/10_Optimizacion_Adaptativa_Poligonaje.md
 ```
 
 Decision inicial no bloqueante:
@@ -1165,7 +1413,7 @@ El sistema usa sampleStepGrid powers-of-two para LOD visual.
 El sistema cose LODs con Transvoxel o transicion equivalente.
 El sistema prioriza distancia, mirada y movimiento.
 El sistema cancela trabajo obsoleto.
-El sistema publica a 09.
+El sistema envia publicacion gestionada a 09.
 El sistema mide paginas, tris, memoria, tiempos y releases.
 El sistema mantiene Mesh runtime como backend visible inicial.
 La migracion GPU-resident queda documentada como ultimo paso posterior a validar 09/10/11.

@@ -70,6 +70,15 @@ reparto interno de detalle para geometria adaptable.
 visibilidad, oclusion y frustum.
 ```
 
+Regla para cuando entre 10:
+
+```text
+08 deja de ser quien decide pintar el planeta completo.
+10 toma el control de paginas, LOD y publicacion adaptativa.
+10 puede reutilizar la informacion de pintado/formato de 08 para preparar cada pagina.
+09 sigue siendo backend gestionado de dibujo, no respuesta que 08/10 usen para recalcular geometria.
+```
+
 Regla:
 
 ```text
@@ -153,7 +162,7 @@ Este documento prepara directamente:
 
 ```text
 09_Pool_Global_Triangulos
-10_Reparto_Geometria_BVH
+10_Optimizacion_Adaptativa_Poligonaje
 11_Visibilidad_Oclusion_Frustum
 _deadline_06-08
 12_Proxy_Planeta_Lejano
@@ -696,7 +705,7 @@ Los vertex colors quedan reservados a modos de diagnostico.
 meshTriangleCapacity es cortafuegos de validacion, no presupuesto final.
 08 no pinta parciales.
 El budget global de poligonaje queda para 09.
-BVH/reparto interno queda para 10.
+Reparto adaptativo de detalle queda para 10.
 Oclusion/frustum queda para 11.
 ```
 

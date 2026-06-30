@@ -83,7 +83,7 @@ Un sistema dice:
 Oye, artista Environment, necesito publicar X tris en esta zona.
 ```
 
-09 responde:
+09 actua internamente:
 
 ```text
 internamente pinta X slots.
@@ -91,13 +91,13 @@ internamente reclama slots mas lejanos si necesita sitio.
 internamente deniega o deja sin pintar lo que no mejora el estado actual.
 ```
 
-El sistema que llama no usa esa respuesta para decidir gameplay ni para corregir su geometria.
+El sistema que llama no recibe una respuesta obligatoria ni usa el resultado interno de 09 para decidir gameplay, LOD o correccion de geometria.
 
 Contrato mental:
 
 ```text
 El caller dice: toma, pintame esta mesh/lote.
-El artista recibe la peticion.
+El artista recibe la peticion como una orden de dibujo gestionado.
 El artista procesa presupuesto, distancia y reclamacion.
 El artista pinta todos, algunos o ninguno.
 El caller principal no necesita saber si quedo visible.
@@ -156,7 +156,7 @@ Reparto por direccion de mirada.
 Oclusion.
 Frustum culling.
 LOD natural de props.
-Decidir cuando un prop debe repedir presupuesto por distancia.
+Decidir cuando un prop debe volver a publicar geometria por distancia.
 Decidir cuando el mundo debe recalcular poligonaje.
 Disparar actualizaciones por reparto adaptativo, oclusion o frustum.
 Generar triangulos.
@@ -175,7 +175,7 @@ Si una decision trata de pintar una Mesh de validacion sin presupuesto, pertenec
 Si una decision trata de conceder/reclamar slots de un artista, pertenece a 09.
 Si una decision trata de poner mas detalle en una zona de una geometria adaptable, pertenece a 10.
 Si una decision trata de no gastar tris en lo que no se ve, pertenece a 11.
-Si una decision trata de cuando volver a pedir presupuesto por distancia/visibilidad, no pertenece a 09.
+Si una decision trata de cuando volver a publicar geometria por distancia/visibilidad, no pertenece a 09.
 ```
 
 ## Relacion con 08, 10 y 11
@@ -194,7 +194,7 @@ Si una decision trata de cuando volver a pedir presupuesto por distancia/visibil
 08 quiere publicar/pintar triangulos.
 08 no escribe directo a una Mesh ilimitada.
 08 llama al wrapper del artista Environment de 09.
-09 decide que slots de Environment puede usar.
+09 decide internamente que slots de Environment usa.
 09 actualiza la representacion visible propia del artista con lo que decida pintar.
 08 no inspecciona que parte quedo visible como contrato de funcionamiento.
 ```
@@ -204,7 +204,7 @@ Cambio importante al entrar 09:
 ```text
 El cortafuegos local que antes limitaba el pintado/generacion deja de ser la autoridad.
 El generador/painter puede pedir publicar todos los triangulos que haya producido.
-El wrapper del artista decide cuantos entran realmente en su presupuesto.
+El wrapper/artista decide internamente cuantos entran realmente en su presupuesto.
 Si no hay hueco y la nueva peticion no mejora lo que ya existe, 09 deja esa parte sin pintar y lo registra como diagnostico interno.
 ```
 
@@ -222,7 +222,7 @@ Regla:
 ```text
 El generador genera.
 El painter pide publicar.
-El artista de 09 concede, reclama, deniega y pinta su salida visible.
+El artista de 09 acepta, reclama, deniega y pinta su salida visible internamente.
 El caller principal no cambia su flujo segun el resultado.
 ```
 
@@ -259,9 +259,9 @@ El planeta, agua, roca, prop o particula no poseen la verdad de visibilidad.
 Ejemplos:
 
 ```text
-Props: pediran presupuesto al crearse o cuando otro sistema decida que su distancia/prioridad ha cambiado.
-Mundo/terreno: pedira presupuesto cuando 10 rehaga reparto adaptativo de paginas LOD o cuando 11 cambie visibilidad por frustum/oclusion.
-Particulas/VFX: pediran presupuesto cuando nazcan, crezcan, mueran o cambie su prioridad externa.
+Props: publicaran geometria al crearse o cuando otro sistema decida que su distancia/prioridad ha cambiado.
+Mundo/terreno: publicara lotes cuando 10 rehaga reparto adaptativo de paginas LOD o cuando 11 cambie visibilidad por frustum/oclusion.
+Particulas/VFX: publicaran geometria cuando nazcan, crezcan, mueran o cambie su prioridad externa.
 ```
 
 Regla:
@@ -276,8 +276,10 @@ Regla:
 10:
 
 ```text
-Recibe un budget ya concedido por el artista correspondiente.
-Decide como repartir detalle dentro de geometria adaptable.
+No recibe un budget concedido por 09.
+Decide de forma independiente como repartir detalle dentro de la geometria planetaria virtual.
+Publica lo que decide mediante Draw(datos[]) o ruta equivalente del artista.
+No ajusta su reparto por si 09 pinto todo, parte o nada.
 No posee el millon de Environment ni ningun presupuesto de artista.
 ```
 
@@ -535,22 +537,32 @@ Recibir triangulos que un sistema quiere publicar.
 Llamar al artista correspondiente con Draw(datos[]).
 Pedir slots al PlanetTrianglePoolController de forma interna.
 Escribir o actualizar la representacion visible solo en slots concedidos.
-Guardar diagnostico si no caben.
+Guardar diagnostico interno si no caben.
 Invalidar triangulos cuyo slot fue reclamado.
 Ocultar al caller principal si se pinto todo, parte o nada.
 ```
 
-Uso desde 08:
+Uso desde 08 antes de 10:
 
 ```text
 08 recibe resultado de 07.
 08 crea batches de triangulos a publicar.
 08 llama a PlanetTrianglePoolWriter.
 PlanetTrianglePoolWriter llama a Draw(datos[]) del artista Environment.
-El artista decide internamente que slots concede/reclama/deniega.
+El artista decide internamente que slots acepta/reclama/deniega.
 El artista actualiza su salida visible.
 08 no gestiona el resultado como owner de una asignacion.
 08 no decide que hacer si solo entro una parte.
+```
+
+Uso desde 10:
+
+```text
+10 decide paginas, LOD y geometria virtual deseada.
+10 usa la informacion/formato de 08 para preparar lotes publicables.
+10 llama a PlanetTrianglePoolWriter como backend de Draw gestionado.
+El artista decide internamente que pinta.
+10 no recibe ni usa una respuesta de 09 para recalcular su reparto.
 ```
 
 Regla:
@@ -559,7 +571,7 @@ Regla:
 08 deja de ser el dueño ilimitado de todos los triangulos visibles.
 09 pasa a ser el dueño del presupuesto de slots.
 08 sigue siendo responsable de preparar el dato publicable.
-09 es responsable de convertir lo aceptado por el presupuesto en representacion visible.
+09 es responsable de convertir lo aceptado internamente por el presupuesto en representacion visible.
 09 sigue siendo responsable de saber que quedo realmente pintado.
 ```
 
@@ -888,7 +900,7 @@ Modo de request: allowPartial / allOrNothing.
 Salida publica:
 
 ```text
-DrawResult opcional.
+DrawResult opcional solo para Lab/debug.
 diagnostico opcional.
 Metricas consultables por artista.
 Metricas consultables por owner.
@@ -898,6 +910,7 @@ Regla:
 
 ```text
 El flujo normal puede ignorar el DrawResult.
+Los productores principales no deben depender de DrawResult para decidir geometria, LOD, gameplay ni persistencia.
 El planeta no necesita retener un handle para funcionar.
 Labs, tests y diagnostico si pueden leer que paso con la peticion.
 ```
@@ -1664,7 +1677,7 @@ El material del artista puede usar el shader/material actual de Mesh.
 GraphicsBuffer queda como backend visual futuro opcional, no como requisito de esta fase.
 09 no cambia el poligonaje de ninguna geometria.
 09 solo reparte slots dentro de cada artista.
-09 no decide cuando una geometria debe volver a pedir presupuesto.
+09 no decide cuando una geometria debe volver a publicar.
 09 se limita a Draw(datos[]): intenta pintar dentro del presupuesto y guarda diagnostico interno.
 El planeta/generador no necesita retener handles para saber si algo se pinto.
 El handle de asignacion es interno del artista: artistId, ownerId, allocationId, slotListOffset, slotCount, version.
