@@ -266,10 +266,9 @@ namespace MarchingCubesPlanet.Preview
 
         private Vector3 ResolvePriorityOriginWorld()
         {
-            PlanetTriangleDistanceReference distanceReference = FindFirstObjectByType<PlanetTriangleDistanceReference>();
-            if (distanceReference != null)
+            if (PlanetTrianglePoolRegistry.HasPlayerViewData)
             {
-                return distanceReference.Position;
+                return PlanetTrianglePoolRegistry.PlayerPositionWorld;
             }
 
             PlanetMinimalXrRig rig = FindFirstObjectByType<PlanetMinimalXrRig>();
@@ -580,7 +579,7 @@ namespace MarchingCubesPlanet.Preview
             AppendLine("09 denied", environmentMetrics.deniedTriangleCount.ToString());
             AppendLine("09 reclaimed", environmentMetrics.reclaimedTriangleCount.ToString());
             AppendLine("09 worst bucket", environmentMetrics.worstResidentBucket.ToString());
-            AppendLine("09 distance reference", PlanetTrianglePoolRegistry.HasDistanceReference ? "Player component" : "fallback world position");
+            AppendLine("09 player view", PlanetTrianglePoolRegistry.HasPlayerViewData ? "player/camera data" : "fallback world position");
             AppendLine("09 diagnostic", string.IsNullOrWhiteSpace(environmentMetrics.lastDiagnostic) ? "-" : environmentMetrics.lastDiagnostic);
         }
 

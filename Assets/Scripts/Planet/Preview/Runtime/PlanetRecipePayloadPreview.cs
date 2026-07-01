@@ -198,10 +198,9 @@ namespace MarchingCubesPlanet.Preview
 
         private Vector3 ResolvePriorityOriginWorld()
         {
-            PlanetTriangleDistanceReference distanceReference = FindFirstObjectByType<PlanetTriangleDistanceReference>();
-            if (distanceReference != null)
+            if (PlanetTrianglePoolRegistry.HasPlayerViewData)
             {
-                return distanceReference.Position;
+                return PlanetTrianglePoolRegistry.PlayerPositionWorld;
             }
 
             PlanetMinimalXrRig rig = FindFirstObjectByType<PlanetMinimalXrRig>();

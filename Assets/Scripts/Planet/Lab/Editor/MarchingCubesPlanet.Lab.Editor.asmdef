@@ -4,6 +4,7 @@
     "references": [
         "MarchingCubesPlanet.Lab",
         "MarchingCubesPlanet.Preview",
+        "MarchingCubesPlanet.TrianglePools",
         "Unity.ugui"
     ],
     "includePlatforms": [

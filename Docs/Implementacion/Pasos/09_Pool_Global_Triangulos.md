@@ -462,12 +462,23 @@ No es autoridad del runtime del planeta.
 No convierte a 09 en sistema de camara, player, vision o LOD.
 ```
 
+Referencia player/camara:
+
+```text
+PlanetPlayerViewReference vive en la camara del jugador o en el objeto que represente su vista.
+Su unica funcion es empujar a 09 un snapshot plano: playerPositionWorld, cameraForwardWorld y version.
+El push ocurre solo cuando hay movimiento, giro o vence un intervalo maximo configurado.
+09 guarda el ultimo snapshot para que 10 y los flujos de prueba tengan una fuente comun de posicion/mirada.
+09 no usa ese snapshot para decidir LOD, frustum, visibilidad ni regeneracion.
+El fallback de Lab no cuenta como player/camara real para 10.
+```
+
 Reglas:
 
 ```text
 La prioridad es un dato plano.
-No hay dependencia directa entre 09 y locomocion.
-No hay dependencia directa entre 09 y XR.
+09 puede guardar una senal plana de player/camara, pero no depende de locomocion ni XR.
+La camara empuja datos simples; 09 no consulta ni gobierna el rig.
 Si una request real llega sin prioridad valida, 09 debe fallar con diagnostico claro.
 Si una request de Lab llega sin prioridad valida, puede usar una referencia explicita de fallback configurada en Lab.
 Actualizar prioridades o requests no crea GC.
@@ -958,6 +969,7 @@ PlanetTrianglePoolRegistry
 PlanetTriangleBudget
 PlanetTrianglePoolController
 PlanetTrianglePoolWriter
+PlanetPlayerViewReference
 PlanetTrianglePriorityReferenceLab
 PlanetTriangleOwnerId
 PlanetTriangleArtistId
@@ -1038,6 +1050,33 @@ Resolver artistId -> PlanetTrianglePoolController.
 Permitir que un painter pida el writer/controller del artista que necesita.
 Evitar referencias sueltas a pools concretos por toda la escena.
 Exponer diagnostico de artistas activos.
+Exponer el ultimo snapshot plano de player/camara para productores que lo necesiten.
+Separar player/camara real de fallback de Lab.
+No calcular LOD, vision, frustum ni mirada.
+```
+
+### PlanetPlayerViewReference
+
+Componente runtime pequeno colocado en la camara del jugador.
+
+Responsabilidad:
+
+```text
+Leer posicion world desde la camara o un Transform positionSource.
+Leer forward world desde la camara o un Transform viewSource.
+Empujar el snapshot a PlanetTrianglePoolRegistry cuando cambie lo suficiente.
+Forzar un push inicial al activarse.
+No calcular priorityScore.
+No decidir paginas, LOD, frustum ni visibilidad.
+No depender del Lab.
+```
+
+Contrato:
+
+```text
+PlayerPositionWorld -> Vector3 world.
+PlayerForwardWorld -> Vector3 world normalizado.
+PlayerViewVersion -> int monotono por referencia activa.
 ```
 
 ### PlanetTrianglePoolWriter
@@ -1666,7 +1705,11 @@ El bootstrap se llama PlanetTrianglePoolBootstrap.
 El registry se llama PlanetTrianglePoolRegistry.
 La referencia de prioridad de Lab se llama PlanetTrianglePriorityReferenceLab.
 PlanetTrianglePriorityReferenceLab puede vivir en el Player de la escena solo para fabricar priorityScore de pruebas.
-09 recibe priorityScore como dato plano, no camara, XR Rig, Transform ni GameObject en GPU.
+La referencia runtime de player/camara se llama PlanetPlayerViewReference.
+PlanetPlayerViewReference vive preferentemente en la camara del jugador y empuja posicion, forward y version a PlanetTrianglePoolRegistry.
+PlanetTrianglePoolRegistry puede exponer ese snapshot plano a productores como 10.
+El snapshot de player/camara no convierte a 09 en sistema de LOD, frustum, vision ni mirada.
+Las requests de pintado a 09 reciben priorityScore como dato plano, no camara, XR Rig, Transform ni GameObject en GPU.
 meshId identifica la publicacion gestionada que el artista debe crear, actualizar o reemplazar.
 artistId es uint escrito a mano en el SO; 0 = Environment, 1 = Particles, 2 queda para el siguiente artista.
 ownerId es uint opcional para release/diagnostico; 0 = Anonymous/Untracked.

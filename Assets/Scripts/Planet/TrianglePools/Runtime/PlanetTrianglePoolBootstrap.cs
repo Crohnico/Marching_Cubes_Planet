@@ -6,6 +6,7 @@ namespace MarchingCubesPlanet.TrianglePools
     public sealed class PlanetTrianglePoolBootstrap : MonoBehaviour
     {
         [SerializeField] private PlanetTriangleBudgetProfile[] activeProfiles;
+        [SerializeField] private PlanetPlayerViewReference playerViewReference;
         [SerializeField] private PlanetTriangleDistanceReference distanceReference;
 
         private void Awake()
@@ -15,6 +16,17 @@ namespace MarchingCubesPlanet.TrianglePools
 
         public void Init()
         {
+            if (playerViewReference == null)
+            {
+                playerViewReference = FindFirstObjectByType<PlanetPlayerViewReference>();
+            }
+
+            if (playerViewReference != null)
+            {
+                PlanetTrianglePoolRegistry.RegisterPlayerViewReference(playerViewReference);
+                playerViewReference.ForcePush();
+            }
+
             if (distanceReference == null)
             {
                 distanceReference = FindFirstObjectByType<PlanetTriangleDistanceReference>();

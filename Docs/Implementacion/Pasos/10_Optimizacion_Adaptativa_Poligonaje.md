@@ -1114,6 +1114,16 @@ Configuracion de LOD.
 Estado de paginas residentes.
 ```
 
+Fuente inicial de player/camara:
+
+```text
+10 lee la posicion y el forward del jugador desde el snapshot plano expuesto por 09.
+Ese snapshot lo empuja PlanetPlayerViewReference desde la camara del jugador cuando hace falta.
+10 puede usar PlayerViewVersion para saber si la entrada cambio desde la ultima seleccion.
+10 no debe usar el fallback de Lab como senal runtime de player/camara.
+09 no decide nada con esa informacion; solo la conserva como dato compartido.
+```
+
 Configuracion inicial:
 
 ```text
@@ -1248,6 +1258,7 @@ Responsabilidad:
 Calcular paginas candidatas.
 Asignar lodLevel.
 Calcular score de prioridad.
+Leer playerPositionWorld y cameraForwardWorld como datos de entrada.
 Detectar paginas nuevas, obsoletas o con LOD incorrecto.
 No ejecutar Marching Cubes.
 No publicar triangulos.
@@ -1650,6 +1661,8 @@ La pagina estable anterior se mantiene hasta que la nueva version esta completa 
 10 mantiene Marching Cubes como extractor inicial.
 Dual Contouring queda como alternativa futura, no entra en esta fase.
 10 prioriza por distancia, mirada y movimiento/lookahead.
+10 usa el snapshot de player/camara empujado por PlanetPlayerViewReference como fuente inicial de posicion y forward.
+10 puede consultar ese snapshot a traves de PlanetTrianglePoolRegistry, pero 09 no participa en la decision de LOD.
 10 implementa frustum/interes local del planeta activo como parte de su seleccion de paginas.
 10 no implementa oclusion global reutilizable.
 10 envia Draw/SetMesh/publicacion gestionada con meshId y priorityScore a 09.
