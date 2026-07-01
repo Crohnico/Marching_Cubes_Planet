@@ -18,15 +18,9 @@ namespace MarchingCubesPlanet.Preview.Editor
             EditorGUILayout.LabelField("Derived Payload", EditorStyles.boldLabel);
             EditorGUILayout.LabelField("WorldRadius", preview.DerivedWorldRadius.ToString("0.###"));
             EditorGUILayout.LabelField("IsoLevel", preview.IsoLevel.ToString("0.###"));
-            EditorGUILayout.LabelField("surface radius", preview.DerivedSurfaceRadius.ToString("0.###"));
             EditorGUILayout.LabelField("PlanetWorldCenter", preview.TransformPlanetWorldCenter.ToString("0.###"));
             EditorGUILayout.LabelField("PlanetRotation", preview.TransformPlanetRotation.eulerAngles.ToString("0.###"));
-            EditorGUILayout.LabelField("color mode", preview.ColorMode.ToString());
             EditorGUILayout.LabelField("requested triangles", preview.RequestedTrianglePayload.ToString());
-            EditorGUILayout.LabelField("icosphere frequency", preview.DerivedGeodesicFrequency.ToString());
-            EditorGUILayout.LabelField("triangles", preview.DerivedTriangleCount.ToString());
-            EditorGUILayout.LabelField("vertices", preview.DerivedVertexCount.ToString());
-            EditorGUILayout.LabelField("indices", preview.DerivedIndexCount.ToString());
             EditorGUILayout.LabelField("mesh live", preview.HasLiveMesh ? "yes" : "no");
 
             EditorGUILayout.Space();
@@ -84,7 +78,7 @@ namespace MarchingCubesPlanet.Preview.Editor
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Commands", EditorStyles.boldLabel);
 
-            if (GUILayout.Button("Generate"))
+            if (GUILayout.Button("Generate Via 09"))
             {
                 Apply(preview, p => p.Generate());
             }

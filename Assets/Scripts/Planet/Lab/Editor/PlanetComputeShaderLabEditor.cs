@@ -41,24 +41,9 @@ namespace MarchingCubesPlanet.Lab.Editor
                 MarkDirty(lab);
             }
 
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Visible Output", EditorStyles.boldLabel);
-
             if (GUILayout.Button("Create RenderTexture Debug"))
             {
                 lab.CreateRenderTextureDebugTest();
-                MarkDirty(lab);
-            }
-
-            if (GUILayout.Button("Create Mesh Debug"))
-            {
-                lab.CreateMeshDebugTest();
-                MarkDirty(lab);
-            }
-
-            if (GUILayout.Button("Create Visible Output Debug"))
-            {
-                lab.CreateVisibleOutputDebugTest();
                 MarkDirty(lab);
             }
 

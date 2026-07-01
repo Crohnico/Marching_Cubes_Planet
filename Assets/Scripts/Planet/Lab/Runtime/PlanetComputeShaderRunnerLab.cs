@@ -36,21 +36,14 @@ namespace MarchingCubesPlanet.Lab
 
         private PlanetGpuBufferHandle activeBuffer;
         private RenderTexture outputTexture;
-        private Mesh debugMesh;
-        private Material debugMaterial;
-        private PlanetComputeLabResultView resultView;
         private uint dispatchIndex;
 
         private int bufferResourceId;
         private int outputTextureResourceId;
-        private int debugMeshResourceId;
-        private int debugMaterialResourceId;
 
         public override string ModuleName => "Compute Shader Lab";
         public override bool HasLiveResources => activeBuffer != null && activeBuffer.IsAlive ||
-                                                 outputTexture != null ||
-                                                 debugMesh != null ||
-                                                 debugMaterial != null;
+                                                 outputTexture != null;
 
         public PlanetLabDiagnostic LastDiagnostic => lastDiagnostic;
         public PlanetLabMetricsSnapshot LastSnapshot => lastSnapshot;
@@ -146,48 +139,6 @@ namespace MarchingCubesPlanet.Lab
 
             stopwatch.Stop();
             CaptureMetrics("Create RenderTexture Debug", stopwatch.Elapsed.TotalMilliseconds);
-        }
-
-        public void CreateMeshDebugTest()
-        {
-            stopwatch.Restart();
-            ReleaseModule();
-
-            if (!ValidateModule())
-            {
-                stopwatch.Stop();
-                return;
-            }
-
-            CreateResultView(settings);
-
-            stopwatch.Stop();
-            CaptureMetrics("Create Mesh Debug", stopwatch.Elapsed.TotalMilliseconds);
-        }
-
-        public void CreateVisibleOutputDebugTest()
-        {
-            stopwatch.Restart();
-            ReleaseModule();
-
-            if (!ValidateModule())
-            {
-                stopwatch.Stop();
-                return;
-            }
-
-            outputTexture = CreateOutputTexture(settings);
-            outputTextureResourceId = RegisterResource(
-                "Compute Debug RenderTexture",
-                PlanetLabResourceType.RenderTexture,
-                settings.EstimatedTextureBytes,
-                settings.outputTextureWidth * settings.outputTextureHeight,
-                PlanetComputeLabSettings.Argb32BytesPerPixel);
-
-            CreateResultView(settings);
-
-            stopwatch.Stop();
-            CaptureMetrics("Create Visible Output Debug", stopwatch.Elapsed.TotalMilliseconds);
         }
 
         public void DispatchOnce()
@@ -325,26 +276,6 @@ namespace MarchingCubesPlanet.Lab
                 MarkReleased(ref outputTextureResourceId);
             }
 
-            if (debugMesh != null)
-            {
-                DestroyUnityObject(debugMesh);
-                debugMesh = null;
-                MarkReleased(ref debugMeshResourceId);
-            }
-
-            if (debugMaterial != null)
-            {
-                DestroyUnityObject(debugMaterial);
-                debugMaterial = null;
-                MarkReleased(ref debugMaterialResourceId);
-            }
-
-            if (resultView != null)
-            {
-                DestroyUnityObject(resultView.gameObject);
-                resultView = null;
-            }
-
             if (resourceRegistry != null)
             {
                 resourceRegistry.RecalculateLiveTotals();
@@ -418,8 +349,6 @@ namespace MarchingCubesPlanet.Lab
                 requestedSettings.EstimatedTextureBytes,
                 requestedSettings.outputTextureWidth * requestedSettings.outputTextureHeight,
                 PlanetComputeLabSettings.Argb32BytesPerPixel);
-
-            CreateResultView(requestedSettings);
 
             stopwatch.Stop();
             CaptureMetrics("Create " + mode + " Test", stopwatch.Elapsed.TotalMilliseconds);
@@ -518,59 +447,6 @@ namespace MarchingCubesPlanet.Lab
 
             texture.Create();
             return texture;
-        }
-
-        private void CreateResultView(PlanetComputeLabSettings requestedSettings)
-        {
-            GameObject viewObject = new GameObject("PlanetComputeLabResultView");
-            viewObject.transform.SetParent(transform, false);
-            viewObject.transform.localPosition = new Vector3(0f, 1.25f, 3f);
-            viewObject.transform.localRotation = Quaternion.identity;
-            viewObject.transform.localScale = new Vector3(3f, 3f, 3f);
-
-            resultView = viewObject.AddComponent<PlanetComputeLabResultView>();
-            debugMesh = CreateDebugQuadMesh();
-            debugMeshResourceId = RegisterResource("Compute Debug Mesh", PlanetLabResourceType.Mesh, 104, 4, 0);
-
-            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
-            if (shader == null)
-            {
-                throw new InvalidOperationException("Universal Render Pipeline/Unlit shader was not found.");
-            }
-
-            debugMaterial = new Material(shader)
-            {
-                name = "Compute Debug Material"
-            };
-            debugMaterialResourceId = RegisterResource("Compute Debug Material", PlanetLabResourceType.RuntimeMaterial, 0, 1, 0);
-
-            resultView.Configure(debugMesh, debugMaterial, outputTexture);
-        }
-
-        private static Mesh CreateDebugQuadMesh()
-        {
-            Mesh mesh = new Mesh
-            {
-                name = "Compute Debug Quad Mesh"
-            };
-
-            mesh.vertices = new[]
-            {
-                new Vector3(-0.5f, -0.5f, 0f),
-                new Vector3(0.5f, -0.5f, 0f),
-                new Vector3(-0.5f, 0.5f, 0f),
-                new Vector3(0.5f, 0.5f, 0f)
-            };
-            mesh.uv = new[]
-            {
-                new Vector2(0f, 0f),
-                new Vector2(1f, 0f),
-                new Vector2(0f, 1f),
-                new Vector2(1f, 1f)
-            };
-            mesh.triangles = new[] { 0, 2, 1, 2, 3, 1 };
-            mesh.RecalculateBounds();
-            return mesh;
         }
 
         private int RegisterResource(

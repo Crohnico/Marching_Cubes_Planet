@@ -1,6 +1,7 @@
 using System;
 using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.Lab;
+using MarchingCubesPlanet.TrianglePools;
 using UnityEngine;
 
 namespace MarchingCubesPlanet.Preview
@@ -8,18 +9,12 @@ namespace MarchingCubesPlanet.Preview
     [DisallowMultipleComponent]
     public sealed class PlanetRecipePayloadPreview : MonoBehaviour
     {
-        private const string VertexColorShaderName = "MarchingCubesPlanet/Debug/Vertex Color";
-        private const string VertexColorMaterialResourcePath = "PlanetRecipePayloadPreview_VertexColorDebug";
-        private const string UrpUnlitShaderName = "Universal Render Pipeline/Unlit";
-
         [Header("Recipe")]
         [SerializeField] private PlanetRecipe recipe = PlanetRecipe.Default();
         [SerializeField] private PlanetPlacement placement = PlanetPlacement.Default();
 
-        [Header("Payload")]
+        [Header("09 Environment Budget")]
         [SerializeField] private int requestedTrianglePayload = 126000;
-        [SerializeField] private PlanetSpherePayloadColorMode colorMode = PlanetSpherePayloadColorMode.TrianglePalette;
-        [SerializeField] private Material materialOverride;
 
         [Header("Memory Diagnostics")]
         [SerializeField] private PlanetLabResourceRegistry resourceRegistry;
@@ -31,36 +26,29 @@ namespace MarchingCubesPlanet.Preview
         [SerializeField, TextArea] private string snapshotComparisonSummary;
 
         [Header("Runtime State")]
-        [SerializeField, HideInInspector] private int derivedGeodesicFrequency;
-        [SerializeField, HideInInspector] private int derivedTriangleCount;
-        [SerializeField, HideInInspector] private int derivedVertexCount;
-        [SerializeField, HideInInspector] private int derivedIndexCount;
         [SerializeField, HideInInspector] private float derivedWorldRadius;
-        [SerializeField, HideInInspector] private float derivedSurfaceRadius;
-        [SerializeField, HideInInspector] private bool hasLiveMesh;
         [SerializeField, TextArea] private string lastDiagnostic;
 
-        private Mesh runtimeMesh;
-        private Material runtimeMaterial;
         private MeshFilter meshFilter;
         private MeshRenderer meshRenderer;
-        private int meshResourceId;
-        private int materialResourceId;
 
         public PlanetRecipe Recipe => recipe;
         public PlanetPlacement Placement => placement;
         public float IsoLevel => recipe.IsoLevel;
         public int RequestedTrianglePayload => requestedTrianglePayload;
-        public PlanetSpherePayloadColorMode ColorMode => colorMode;
-        public int DerivedGeodesicFrequency => derivedGeodesicFrequency;
-        public int DerivedTriangleCount => derivedTriangleCount;
-        public int DerivedVertexCount => derivedVertexCount;
-        public int DerivedIndexCount => derivedIndexCount;
         public float DerivedWorldRadius => derivedWorldRadius;
-        public float DerivedSurfaceRadius => derivedSurfaceRadius;
         public Vector3 TransformPlanetWorldCenter => transform.position;
         public Quaternion TransformPlanetRotation => transform.rotation;
-        public bool HasLiveMesh => hasLiveMesh;
+
+        public bool HasLiveMesh
+        {
+            get
+            {
+                CacheRendererComponents();
+                return meshFilter != null && meshFilter.sharedMesh != null;
+            }
+        }
+
         public string LastDiagnostic => lastDiagnostic;
         public PlanetMemorySnapshot BeforeSnapshot => beforeSnapshot;
         public PlanetMemorySnapshot AfterSnapshot => afterSnapshot;
@@ -71,7 +59,7 @@ namespace MarchingCubesPlanet.Preview
 
         private void OnValidate()
         {
-            requestedTrianglePayload = Mathf.Max(PlanetSpherePayloadMeshBuilder.BaseIcosahedronTriangleCount, requestedTrianglePayload);
+            requestedTrianglePayload = Mathf.Max(1, requestedTrianglePayload);
             RefreshDerivedValues();
         }
 
@@ -121,12 +109,12 @@ namespace MarchingCubesPlanet.Preview
             recipe = PlanetRecipe.Default();
             SyncPlacementFromTransform();
             SetRequestedTrianglePayload(126000);
-            lastDiagnostic = "Demo recipe reset. PlanetPlacement was synced from Transform.position.";
+            lastDiagnostic = "Demo recipe reset for managed 09 generation. PlanetPlacement was synced from Transform.position.";
         }
 
         public void SetRequestedTrianglePayload(int value)
         {
-            requestedTrianglePayload = Mathf.Max(PlanetSpherePayloadMeshBuilder.BaseIcosahedronTriangleCount, value);
+            requestedTrianglePayload = Mathf.Max(1, value);
             RefreshDerivedValues();
         }
 
@@ -143,40 +131,18 @@ namespace MarchingCubesPlanet.Preview
 
             try
             {
-                Release();
-                EnsureRendererComponents();
-
-                runtimeMesh = new Mesh();
-                PlanetSpherePayloadBuildResult result = PlanetSpherePayloadMeshBuilder.Build(
-                    runtimeMesh,
-                    in recipe,
-                    derivedGeodesicFrequency,
-                    colorMode);
-
-                meshFilter.sharedMesh = runtimeMesh;
-                meshRenderer.sharedMaterial = ResolveMaterial();
-
-                transform.localScale = Vector3.one;
-
-                derivedVertexCount = result.VertexCount;
-                derivedTriangleCount = result.TriangleCount;
-                derivedIndexCount = result.IndexCount;
-                hasLiveMesh = true;
-                RegisterRuntimeResources();
-                lastDiagnostic = "Generated payload isosphere: requestedTriangles=" + requestedTrianglePayload +
-                                 ", geodesicFrequency=" + derivedGeodesicFrequency +
-                                 ", triangles=" + derivedTriangleCount +
-                                 ", vertices=" + derivedVertexCount +
-                                 ", colorMode=" + colorMode +
-                                 ", WorldRadius=" + derivedWorldRadius +
-                                 ", SurfaceRadius=" + derivedSurfaceRadius +
-                                 ", IsoLevel=" + recipe.IsoLevel +
-                                 ", center=" + placement.PlanetWorldCenter +
-                                 ", rotation=" + placement.PlanetRotation.eulerAngles + ".";
+                PlanetRecipePayloadPreviewGenerationFlow flow = ResolveGenerationFlow();
+                flow.GenerateFromPreview(this, ResolvePriorityOriginWorld());
+                lastDiagnostic = flow.LastDiagnostic;
             }
             catch (Exception exception)
             {
-                Release();
+                PlanetRecipePayloadPreviewGenerationFlow flow = FindFirstObjectByType<PlanetRecipePayloadPreviewGenerationFlow>();
+                if (flow != null)
+                {
+                    flow.Release();
+                }
+
                 lastDiagnostic = "Generate failed: " + exception.Message;
                 throw;
             }
@@ -209,133 +175,60 @@ namespace MarchingCubesPlanet.Preview
 
         public void Release()
         {
-            CacheRendererComponents();
-
-            if (meshFilter != null && meshFilter.sharedMesh == runtimeMesh)
+            PlanetRecipePayloadPreviewGenerationFlow flow = FindFirstObjectByType<PlanetRecipePayloadPreviewGenerationFlow>();
+            if (flow != null)
             {
-                meshFilter.sharedMesh = null;
+                flow.Release();
             }
 
-            DestroyRuntimeObject(runtimeMesh);
-            runtimeMesh = null;
-            MarkReleased(ref meshResourceId);
-
-            if (runtimeMaterial != null)
-            {
-                if (meshRenderer != null && meshRenderer.sharedMaterial == runtimeMaterial)
-                {
-                    meshRenderer.sharedMaterial = null;
-                }
-
-                DestroyRuntimeObject(runtimeMaterial);
-                runtimeMaterial = null;
-                MarkReleased(ref materialResourceId);
-            }
-
-            hasLiveMesh = false;
             RefreshDerivedValues();
-            lastDiagnostic = "Payload preview released.";
+            lastDiagnostic = "Managed 09 preview released.";
+        }
+
+        private PlanetRecipePayloadPreviewGenerationFlow ResolveGenerationFlow()
+        {
+            PlanetRecipePayloadPreviewGenerationFlow flow = FindFirstObjectByType<PlanetRecipePayloadPreviewGenerationFlow>();
+            if (flow != null)
+            {
+                return flow;
+            }
+
+            return gameObject.AddComponent<PlanetRecipePayloadPreviewGenerationFlow>();
+        }
+
+        private Vector3 ResolvePriorityOriginWorld()
+        {
+            PlanetTriangleDistanceReference distanceReference = FindFirstObjectByType<PlanetTriangleDistanceReference>();
+            if (distanceReference != null)
+            {
+                return distanceReference.Position;
+            }
+
+            PlanetMinimalXrRig rig = FindFirstObjectByType<PlanetMinimalXrRig>();
+            if (rig != null && rig.Head != null)
+            {
+                return rig.Head.position;
+            }
+
+            Camera mainCamera = Camera.main;
+            if (mainCamera != null)
+            {
+                return mainCamera.transform.position;
+            }
+
+            return transform.position;
         }
 
         private void RefreshDerivedValues()
         {
             SyncPlacementFromTransform();
             derivedWorldRadius = recipe.WorldRadius;
-            derivedSurfaceRadius = PlanetSpherePayloadMeshBuilder.CalculateSurfaceRadius(in recipe);
-            derivedGeodesicFrequency = PlanetSpherePayloadMeshBuilder.CalculateGeodesicFrequencyForPayload(requestedTrianglePayload);
-            derivedTriangleCount = PlanetSpherePayloadMeshBuilder.CalculateTriangleCount(derivedGeodesicFrequency);
-            derivedVertexCount = PlanetSpherePayloadMeshBuilder.CalculateVertexCount(derivedGeodesicFrequency, colorMode);
-            derivedIndexCount = PlanetSpherePayloadMeshBuilder.CalculateIndexCount(derivedGeodesicFrequency);
         }
 
         private void SyncPlacementFromTransform()
         {
             placement.PlanetWorldCenter = transform.position;
             placement.PlanetRotation = transform.rotation;
-        }
-
-        private Material ResolveMaterial()
-        {
-            if (materialOverride != null)
-            {
-                return materialOverride;
-            }
-
-            if (colorMode != PlanetSpherePayloadColorMode.None)
-            {
-                Material vertexColorMaterial = Resources.Load<Material>(VertexColorMaterialResourcePath);
-                if (vertexColorMaterial != null)
-                {
-                    return vertexColorMaterial;
-                }
-            }
-
-            Shader shader = colorMode == PlanetSpherePayloadColorMode.None ? null : Shader.Find(VertexColorShaderName);
-            if (shader == null)
-            {
-                shader = Shader.Find(UrpUnlitShaderName);
-            }
-
-            if (shader == null)
-            {
-                throw new InvalidOperationException("No debug material shader was found for PlanetRecipePayloadPreview.");
-            }
-
-            runtimeMaterial = new Material(shader)
-            {
-                name = "PlanetRecipePayloadPreview_Material_Runtime"
-            };
-
-            if (shader.name == UrpUnlitShaderName)
-            {
-                runtimeMaterial.color = Color.white;
-            }
-
-            return runtimeMaterial;
-        }
-
-        private void RegisterRuntimeResources()
-        {
-            PlanetLabResourceRegistry registry = ResolveResourceRegistry(true);
-            if (registry == null)
-            {
-                return;
-            }
-
-            if (runtimeMesh != null)
-            {
-                meshResourceId = registry.RegisterResource(
-                    "PlanetRecipePayloadPreview Mesh",
-                    PlanetLabResourceType.Mesh,
-                    "PlanetRecipePayloadPreview",
-                    EstimateMeshBytes(),
-                    derivedVertexCount,
-                    0);
-            }
-
-            if (runtimeMaterial != null)
-            {
-                materialResourceId = registry.RegisterResource(
-                    "PlanetRecipePayloadPreview Material",
-                    PlanetLabResourceType.RuntimeMaterial,
-                    "PlanetRecipePayloadPreview",
-                    1,
-                    1,
-                    0);
-            }
-        }
-
-        private long EstimateMeshBytes()
-        {
-            long vertexBytes = derivedVertexCount * 24L;
-            if (colorMode != PlanetSpherePayloadColorMode.None)
-            {
-                vertexBytes += derivedVertexCount * 4L;
-            }
-
-            int indexStride = derivedVertexCount > ushort.MaxValue ? 4 : 2;
-            long indexBytes = derivedIndexCount * (long)indexStride;
-            return vertexBytes + indexBytes;
         }
 
         private PlanetMemorySnapshot CaptureMemorySnapshot(string operationName)
@@ -385,7 +278,7 @@ namespace MarchingCubesPlanet.Preview
 
             if (resourceRegistry == null && updateDiagnostic)
             {
-                lastDiagnostic = "Memory snapshot cannot see PayloadPreview resources: PlanetLabResourceRegistry was not found in the scene.";
+                lastDiagnostic = "Memory snapshot cannot see managed 09 preview resources: PlanetLabResourceRegistry was not found in the scene.";
             }
 
             return resourceRegistry;
@@ -397,17 +290,6 @@ namespace MarchingCubesPlanet.Preview
             {
                 memoryLab = FindFirstObjectByType<PlanetMemoryLab>();
             }
-        }
-
-        private void MarkReleased(ref int resourceId)
-        {
-            PlanetLabResourceRegistry registry = ResolveResourceRegistry(false);
-            if (registry != null && resourceId != 0)
-            {
-                registry.MarkReleased(resourceId);
-            }
-
-            resourceId = 0;
         }
 
         private static string BuildComparisonSummary(PlanetMemorySnapshotComparison comparison, PlanetMemoryBudget budget)
@@ -477,23 +359,6 @@ namespace MarchingCubesPlanet.Preview
             if (meshRenderer == null)
             {
                 meshRenderer = GetComponent<MeshRenderer>();
-            }
-        }
-
-        private static void DestroyRuntimeObject(UnityEngine.Object target)
-        {
-            if (target == null)
-            {
-                return;
-            }
-
-            if (Application.isPlaying)
-            {
-                Destroy(target);
-            }
-            else
-            {
-                DestroyImmediate(target);
             }
         }
     }

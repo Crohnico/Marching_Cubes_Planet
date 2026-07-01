@@ -101,15 +101,9 @@ namespace MarchingCubesPlanet.Preview
             builder.Clear();
             AppendLine("Requested triangles", preview.RequestedTrianglePayload.ToString());
             AppendLine("09 Environment budget", PlanetTrianglePoolRegistry.Environment.TotalTriangleBudget.ToString());
-            AppendLine("Color mode", preview.ColorMode.ToString());
-            AppendLine("Triangles", preview.DerivedTriangleCount.ToString());
-            AppendLine("Vertices", preview.DerivedVertexCount.ToString());
-            AppendLine("Indices", preview.DerivedIndexCount.ToString());
-            AppendLine("Icosphere frequency", preview.DerivedGeodesicFrequency.ToString());
             AppendLine("GridRadius", preview.Recipe.GridRadius.ToString());
             AppendLine("WorldScale", preview.Recipe.WorldScale.ToString("0.###"));
             AppendLine("WorldRadius", preview.DerivedWorldRadius.ToString("0.###"));
-            AppendLine("SurfaceRadius", preview.DerivedSurfaceRadius.ToString("0.###"));
             AppendLine("IsoLevel", preview.IsoLevel.ToString("0.###"));
             AppendLine("Mesh live", preview.HasLiveMesh ? "yes" : "no");
             builder.AppendLine();
@@ -244,7 +238,6 @@ namespace MarchingCubesPlanet.Preview
             {
                 PlanetRecipePayloadPreviewGenerationFlow flow = ResolveGenerationFlow();
                 flow.GenerateFromPreview(preview, ResolvePriorityOriginWorld());
-                preview.Release();
                 lastPanelDiagnostic = flow.LastDiagnostic;
             }
             catch (Exception exception)
@@ -267,8 +260,6 @@ namespace MarchingCubesPlanet.Preview
                 return;
             }
 
-            PlanetRecipePayloadPreviewGenerationFlow flow = ResolveGenerationFlow();
-            flow.Release();
             preview.Release();
             Refresh();
         }
