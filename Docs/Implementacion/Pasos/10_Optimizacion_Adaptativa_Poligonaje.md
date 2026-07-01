@@ -238,11 +238,17 @@ Referencias que guian la decision:
 Transvoxel Algorithm:
 https://transvoxel.org/
 
+Lengyel, Voxel-Based Terrain for Real-Time Virtual Simulations:
+https://transvoxel.org/Lengyel-VoxelTerrain.pdf
+
 Geometry Clipmaps:
 https://hhoppe.com/geomclipmap.pdf
 
 CDLOD:
 https://github.com/fstrugar/CDLOD
+
+Unity LOD transitions:
+https://docs.unity3d.com/Manual/LevelOfDetail.html
 
 Dual Contouring of Hermite Data:
 https://www.cs.rice.edu/~jwarren/papers/dualcontour.pdf
@@ -253,6 +259,8 @@ Lectura aplicada:
 ```text
 Transvoxel encaja directamente con Marching Cubes multiresolucion y costura entre LODs.
 Geometry Clipmaps y CDLOD refuerzan la idea de anillos/niveles centrados en observador.
+Geometry Clipmaps refuerza la actualizacion incremental con presupuesto fijo y degradacion elegante cuando el observador se mueve rapido.
+Unity LOD cross-fade confirma que suavizar por doble render puede eliminar pop, pero implica renderizar LOD actual y siguiente durante la transicion.
 Dual Contouring adaptativo queda como alternativa futura si se decide abandonar Marching Cubes.
 ```
 
@@ -604,6 +612,235 @@ Regla:
 ```text
 10 no bloquea el frame esperando generar todo lo deseado.
 10 trabaja con cola, prioridad y cancelacion.
+```
+
+## Cambio de LOD no perceptible
+
+El cambio de LOD no debe ser un cambio atomico visible.
+
+Regla central:
+
+```text
+La resolucion deseada puede cambiar instantaneamente.
+La geometria visible solo cambia cuando la alternativa ya esta lista, completa y publicable.
+```
+
+10 separa tres conceptos:
+
+```text
+desiredLod -> lo que 10 querria tener segun distancia/mirada/movimiento.
+residentLod -> lo que existe en cache o esta generandose.
+publishedLod -> lo que se ha enviado a 09 como salida visible gestionada.
+```
+
+El jugador nunca debe esperar a que `desiredLod` termine de generarse.
+
+Si una pagina de mayor resolucion todavia no esta lista, se mantiene publicada la pagina estable anterior.
+
+### Estados de pagina para transicion
+
+Cada pagina tiene estado explicito:
+
+```text
+StablePublished
+WantedDifferentLod
+Queued
+GeneratingDensity
+ExtractingSurface
+GeneratingTransitions
+ReadyToPublish
+PublishedTo09
+RetiringPrevious
+Cancelled
+Failed
+```
+
+Flujo:
+
+```text
+1. 10 detecta que una pagina deberia cambiar de LOD.
+2. 10 no retira la pagina visible actual.
+3. 10 encola una version candidata con pageCoord + targetLod + version.
+4. El scheduler genera la candidata bajo presupuesto temporal.
+5. Si la candidata queda obsoleta antes de terminar, se cancela.
+6. Si termina, se generan sus transition cells necesarias.
+7. Solo entonces se publica a 09 con meshId/version o releaseGroup estable.
+8. La pagina previa queda marcada para retirada cuando la nueva queda publicada o cuando 10 decide que ya no hace falta.
+```
+
+Regla:
+
+```text
+No se publica media pagina.
+No se retira una pagina estable para esperar a otra.
+No se cambia LOD visible en el mismo frame en que se decide el target.
+```
+
+### Presupuesto temporal
+
+La transicion de LOD no debe producir un pico de frame.
+
+10 tiene un presupuesto propio por frame:
+
+```text
+maxLodWorkCpuMs.
+maxLodDispatchesPerFrame.
+maxPagesStartedPerFrame.
+maxPagesCompletedPerFrame.
+maxTemporaryTrianglesPerFrame.
+maxTemporaryBufferBytes.
+max09PublicationsPerFrame.
+```
+
+Orden recomendado:
+
+```text
+1. Mantener paginas ya visibles.
+2. Completar paginas casi terminadas.
+3. Generar costuras Transvoxel necesarias para candidatas listas.
+4. Publicar paginas listas a 09.
+5. Empezar nuevas paginas cercanas.
+6. Empezar lookahead.
+7. Degradar paginas lejanas.
+```
+
+Regla inspirada por Geometry Clipmaps:
+
+```text
+Si el jugador se mueve mas rapido de lo que 10 puede actualizar, 10 no intenta ponerse al dia en un unico frame.
+Las paginas finas pueden ir con retraso.
+La salida degrada de forma elegante manteniendo detalle grueso estable.
+```
+
+### Hysteresis
+
+Las fronteras de LOD no deben producir vibracion.
+
+Cada pagina mantiene hysteresis:
+
+```text
+refinar si visualError > refineThreshold.
+degradar si visualError < degradeThreshold.
+refineThreshold > degradeThreshold.
+```
+
+Perfil inicial:
+
+```text
+refineThreshold = 1.5 px de error aproximado.
+degradeThreshold = 0.75 px de error aproximado.
+lodDistanceMargin = 15% - 25%.
+minLodStateLifetime = 0.25 s - 0.5 s.
+```
+
+Si se usa distancia en lugar de error de pantalla:
+
+```text
+enterHigherDetailDistance = lodDistance * 0.85
+exitHigherDetailDistance = lodDistance * 1.15
+```
+
+Regla:
+
+```text
+Una pagina no puede alternar LOD cada frame por estar en la frontera.
+Un cambio brusco de mirada o velocidad puede subir prioridad, pero no elimina hysteresis.
+```
+
+### Transvoxel y popping
+
+Transvoxel resuelve continuidad geometrica entre paginas vecinas de distinto LOD.
+
+Transvoxel no resuelve por si solo el popping de reemplazar una pagina completa.
+
+Por eso 10 usa dos capas:
+
+```text
+Transvoxel -> evita grietas, agujeros y seams entre LODs vecinos.
+Transicion temporal/espacial -> evita que el reemplazo de pagina sea perceptible.
+```
+
+Transicion visual inicial:
+
+```text
+Mantener pagina antigua hasta que la nueva este lista.
+Publicar cambios por pagina, no por planeta completo.
+Limitar paginas publicadas por frame.
+Priorizar paginas cerca de la mirada y contacto.
+```
+
+Transicion visual futura si hace falta:
+
+```text
+Geomorph espacial de vertices dentro de una franja LOD.
+Dither/cross-fade por pagina pequena.
+Fade de material solo si se mide y no rompe Quest 3.
+```
+
+Decision:
+
+```text
+No usar cross-fade global como solucion base.
+Renderizar dos LODs a la vez suaviza el pop, pero duplica coste durante la transicion.
+En Quest 3 solo se permite como opcion puntual y medible para paginas pequenas, no como arquitectura principal.
+```
+
+### Publicacion hacia 09 durante transiciones
+
+10 publica versiones completas.
+
+Formato conceptual:
+
+```text
+meshId = planetId + pageCoord + logicalLayer
+version = pageVersion
+lodLevel = targetLod
+priorityScore = score calculado por 10
+releaseGroup = planetId + pageCoord
+```
+
+Regla:
+
+```text
+10 puede publicar una nueva version de la misma pagina.
+09 decide internamente que queda pintado.
+10 no usa la respuesta de 09 para decidir LOD.
+10 no libera slots de 09 directamente.
+10 solicita retirada de versiones obsoletas mediante la ruta gestionada acordada con 09.
+```
+
+### Cancelacion
+
+El trabajo de una pagina candidata es cancelable.
+
+Se cancela si:
+
+```text
+La pagina sale del area activa.
+El targetLod cambia antes de terminar.
+La receta/shapeHash cambia.
+El presupuesto temporal prioriza otra pagina mas importante.
+El planeta sale de ciclo activo.
+```
+
+Regla:
+
+```text
+Cancelar no debe generar GC ni liberar buffers globales.
+Los buffers temporales vuelven a pools preasignados.
+```
+
+### Criterio de aceptacion de transicion
+
+Una transicion de LOD se considera valida si:
+
+```text
+No hay frame hitch medible al cruzar umbral LOD.
+No hay grietas visibles en bordes entre paginas vecinas.
+No hay pagina que parpadee entre dos LODs por hysteresis insuficiente.
+El numero de publicaciones a 09 por frame queda bajo limite.
+El buffer temporal no crece en el frame de transicion.
+La pagina vieja sigue visible hasta que la nueva esta lista o hasta que 10 decide retirarla por ciclo de vida.
 ```
 
 ## Relacion con Marching Cubes
@@ -1332,7 +1569,17 @@ Metricas de calidad:
 distancia media de paginas LOD0 al player.
 error visual aproximado por pagina.
 numero de cambios de LOD por segundo.
+numero de cambios de LOD publicados por frame.
+numero de paginas en transicion.
+numero de paginas candidatas canceladas por obsolescencia.
+tiempo medio de generacion por pagina y LOD.
+tiempo maximo de trabajo 10 por frame.
+profundidad de cola de generacion.
+profundidad de cola de publicacion hacia 09.
+numero de paginas que mantienen LOD viejo esperando reemplazo listo.
 numero de paginas con diferencia LOD > 1 bloqueadas.
+numero de cambios evitados por hysteresis.
+numero de frames en los que 10 agota su presupuesto temporal.
 numero de cracks detectados visual/debug si existe test.
 ```
 
@@ -1346,6 +1593,11 @@ Meter BVH de triangulos como solucion equivocada.
 Romper la identidad de micro cell al usar sampleStepGrid alto.
 Crear grietas entre LODs.
 No respetar ratio 2:1 y complicar Transvoxel.
+Hacer switch atomico de LOD y producir popping.
+Generar la pagina nueva en el mismo frame de cruce de umbral.
+Retirar una pagina estable antes de tener reemplazo listo.
+Usar cross-fade global y duplicar coste durante transiciones.
+No tener hysteresis y provocar oscilacion de LOD.
 Duplicar density(point).
 Saltar 09 y pintar directo en la ruta gestionada.
 Hacer readback masivo para cada pagina.
@@ -1361,6 +1613,13 @@ Mitigaciones:
 Paginas con limite duro.
 sampleStepGrid powers-of-two.
 Transvoxel para costuras.
+Pipeline de transicion por estados: deseado, encolado, generando, listo, publicado, retirando viejo.
+Pagina antigua visible hasta que la candidata nueva este lista.
+Presupuesto temporal fijo por frame para trabajo de 10.
+Hysteresis de refinado/degradado.
+Cooldown minimo por pagina antes de cambiar otra vez de LOD.
+Publicacion limitada hacia 09 por frame.
+Cross-fade o dither solo como opcion puntual medida, no como base.
 Versionado/cancelacion de trabajos.
 Publicacion gestionada obligatoria via 09 para la ruta visible gestionada.
 Buffers/pools preasignados.
@@ -1382,6 +1641,12 @@ Los LOD visuales usan sampleStepGrid powers-of-two.
 maxLodLevel inicial sera 4.
 Los LOD vecinos deben diferir como maximo en 1 nivel cuando haya borde compartido.
 Transvoxel o transicion equivalente sera obligatorio para cerrar grietas entre LODs.
+Transvoxel no se considera solucion completa al popping de pagina; solo a costuras entre LODs.
+El cambio de LOD visible se hace solo con reemplazo listo.
+La pagina estable anterior se mantiene hasta que la nueva version esta completa y publicable.
+10 usa hysteresis para evitar oscilacion en fronteras de LOD.
+10 usa presupuesto temporal fijo para generar, completar y publicar cambios de LOD.
+10 no usa cross-fade global como solucion base para Quest 3.
 10 mantiene Marching Cubes como extractor inicial.
 Dual Contouring queda como alternativa futura, no entra en esta fase.
 10 prioriza por distancia, mirada y movimiento/lookahead.
@@ -1405,6 +1670,9 @@ El layout inicial sera C# generado con arrays planos y GPU/HLSL con uints empaqu
 La primera prueba de 10 usara paginas base de 64 cells.
 La primera prueba de 10 usara maxLodLevel = 4.
 La primera prueba de 10 usara pesos de prioridad 0.55 distancia, 0.30 mirada y 0.15 movimiento/lookahead.
+La primera prueba de 10 usara hysteresis de LOD con margen 15% - 25%.
+La primera prueba de 10 no retirara paginas visibles hasta tener reemplazo listo.
+La primera prueba de 10 limitara publicaciones a 09 por frame para evitar picos.
 La alta resolucion se probara alrededor del jugador/camara hasta unos 128 m.
 El detalle bajara progresivamente hasta unos 1.5 km.
 Por encima de 1.5 km se evaluara geometria muy gruesa, proxy o impostor segun coste visual.
@@ -1424,6 +1692,8 @@ Motivo:
 ```text
 Ajuste final de basePageSizeGrid y rangos LOD tras pruebas con jugador, vehiculos y altura sobre superficie.
 Ajuste final de pesos de prioridad tras medir popping, retraso de generacion y coste por frame.
+Ajuste final de hysteresis tras medir oscilacion de LOD y sensibilidad en VR.
+Ajuste final de maxLodWorkCpuMs, maxPagesCompletedPerFrame y max09PublicationsPerFrame tras profiling en Quest 3.
 Documento futuro de Biomas.
 ```
 
@@ -1454,6 +1724,10 @@ El sistema no materializa el planeta denso completo.
 El sistema conserva micro cell logica 1x1x1.
 El sistema usa sampleStepGrid powers-of-two para LOD visual.
 El sistema cose LODs con Transvoxel o transicion equivalente.
+El sistema no hace switch atomico perceptible de LOD.
+El sistema mantiene pagina estable hasta que la candidata nueva esta lista.
+El sistema usa hysteresis para cambios de LOD.
+El sistema usa presupuesto temporal fijo para evitar picos de generacion/publicacion.
 El sistema prioriza distancia, mirada y movimiento.
 El sistema cancela trabajo obsoleto.
 El sistema envia publicacion gestionada a 09.
