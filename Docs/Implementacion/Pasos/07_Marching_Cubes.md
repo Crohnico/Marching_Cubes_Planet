@@ -1153,7 +1153,7 @@ Owner de recursos separado.
 08 pinta la salida de 07.
 09 decide pool global.
 10 decide reparto adaptativo de paginas LOD.
-11 decide visibilidad/occlusion/frustum.
+11 queda como senales auxiliares de visibilidad/oclusion, no como autoridad de pintado o LOD del planeta.
 ```
 
 ## Decisiones cerradas

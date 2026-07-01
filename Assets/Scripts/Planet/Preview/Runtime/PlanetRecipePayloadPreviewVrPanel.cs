@@ -1,6 +1,5 @@
 using System;
 using System.Text;
-using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.Lab;
 using MarchingCubesPlanet.TrianglePools;
 using UnityEngine;
@@ -13,9 +12,9 @@ namespace MarchingCubesPlanet.Preview
         private const string RootName = "PlanetRecipePayloadPreviewDeadlineVR";
         private const string LegacyDebugCanvasName = "PlanetMinimalXrTestCanvas";
         private const float CanvasScale = 0.0025f;
-        private const int DefaultTemporaryTriangleCapacity = 1000000;
 
         [SerializeField] private PlanetRecipePayloadPreview preview;
+        [SerializeField] private PlanetRecipePayloadPreviewGenerationFlow generationFlow;
         [SerializeField] private Button applyPayload126kButton;
         [SerializeField] private Button applyPayload250kButton;
         [SerializeField] private Button applyPayload500kButton;
@@ -243,14 +242,18 @@ namespace MarchingCubesPlanet.Preview
 
             try
             {
-                if (!TryGenerateMarchingCubesPlanet())
-                {
-                    lastPanelDiagnostic = "Generate blocked: 09 requires the 06-07-08 lab path. Legacy payload preview fallback is disabled.";
-                }
+                PlanetRecipePayloadPreviewGenerationFlow flow = ResolveGenerationFlow();
+                flow.GenerateFromPreview(preview, ResolvePriorityOriginWorld());
+                preview.Release();
+                lastPanelDiagnostic = flow.LastDiagnostic;
             }
             catch (Exception exception)
             {
-                ReleaseMarchingCubesPlanet();
+                if (generationFlow != null)
+                {
+                    generationFlow.Release();
+                }
+
                 lastPanelDiagnostic = "Generate failed: " + exception.GetType().Name + ": " + exception.Message;
             }
 
@@ -264,100 +267,10 @@ namespace MarchingCubesPlanet.Preview
                 return;
             }
 
-            ReleaseMarchingCubesPlanet();
+            PlanetRecipePayloadPreviewGenerationFlow flow = ResolveGenerationFlow();
+            flow.Release();
             preview.Release();
             Refresh();
-        }
-
-        private bool TryGenerateMarchingCubesPlanet()
-        {
-            PlanetGpuShapeLab shapeLab = FindFirstObjectByType<PlanetGpuShapeLab>();
-            PlanetMarchingCubesLab marchingCubesLab = FindFirstObjectByType<PlanetMarchingCubesLab>();
-            PlanetMarchingCubesPaintLab paintLab = FindFirstObjectByType<PlanetMarchingCubesPaintLab>();
-
-            if (shapeLab == null || marchingCubesLab == null || paintLab == null)
-            {
-                lastPanelDiagnostic = "Generate blocked: Marching Cubes labs not found. Generate must use 06 -> 07 -> 08 -> 09.";
-                return true;
-            }
-
-            ReleaseMarchingCubesPlanet();
-
-            PlanetRecipe sourceRecipe = preview.Recipe;
-            if (!sourceRecipe.IsValid(out string recipeMessage))
-            {
-                lastPanelDiagnostic = "Generate blocked: preview PlanetRecipe is invalid. " + recipeMessage;
-                return true;
-            }
-
-            int temporaryTriangleCapacity = Mathf.Max(preview.RequestedTrianglePayload, DefaultTemporaryTriangleCapacity);
-            ApplyEnvironmentTriangleBudget(preview.RequestedTrianglePayload);
-            PlanetTrianglePoolRegistry.SetFallbackPriorityOriginWorld(ResolvePriorityOriginWorld());
-            shapeLab.SetRecipe(in sourceRecipe);
-            shapeLab.InitShapeGpu();
-            if (!shapeLab.IsShapeGpuInitialized)
-            {
-                lastPanelDiagnostic = "Generate blocked: Shape GPU did not initialize.";
-                return true;
-            }
-
-            marchingCubesLab.EnsureTemporaryOutputTriangleCapacity(temporaryTriangleCapacity);
-            marchingCubesLab.InitMarchingCubesGpu();
-            if (!marchingCubesLab.HasLiveResources)
-            {
-                lastPanelDiagnostic = "Generate blocked: 07 did not initialize. " +
-                                      FormatLabDiagnostic(marchingCubesLab.LastDiagnostic);
-                return true;
-            }
-
-            marchingCubesLab.ExtractPlanetSurface();
-
-            if (marchingCubesLab.LastOverflow)
-            {
-                lastPanelDiagnostic = "Generate blocked: Te has pasado del buffer temporal de 07 (" +
-                                      FormatBytes(CalculateMarchingCubesTemporaryBufferBytes(temporaryTriangleCapacity)) +
-                                      "). Attempted tris=" + marchingCubesLab.LastTriangleCountAttempted +
-                                      ", capacity tris=" + temporaryTriangleCapacity + ".";
-                return true;
-            }
-
-            if (marchingCubesLab.LastTriangleCountWritten == 0u)
-            {
-                lastPanelDiagnostic = "Generate finished without visible planet surface triangles. Check 07 chunk/shape diagnostics.";
-                return true;
-            }
-
-            ConfigurePaintPlacement(paintLab);
-            paintLab.UsePlanetSurfaceAtlas((int)marchingCubesLab.LastTriangleCountWritten);
-            preview.EnsureRenderTargets(out MeshFilter targetMeshFilter, out MeshRenderer targetMeshRenderer);
-            paintLab.PaintLastExtraction(targetMeshFilter, targetMeshRenderer, BuildPreviewPlacement());
-            preview.Release();
-
-            if (!paintLab.HasLiveMesh)
-            {
-                lastPanelDiagnostic = "Generate finished without visible 09 Environment triangles. " +
-                                      FormatLabDiagnostic(paintLab.LastDiagnostic);
-                return true;
-            }
-
-            lastPanelDiagnostic = "Generated via 06 -> 07 -> 08 -> 09 using PlanetRecipePayloadPreview recipe, transform and active Environment budget.";
-            return true;
-        }
-
-        private void ConfigurePaintPlacement(PlanetMarchingCubesPaintLab paintLab)
-        {
-            paintLab.SetPlacement(BuildPreviewPlacement());
-        }
-
-        private PlanetPlacement BuildPreviewPlacement()
-        {
-            Vector3 center = preview != null ? preview.TransformPlanetWorldCenter : Vector3.zero;
-            Quaternion rotation = preview != null ? preview.TransformPlanetRotation : Quaternion.identity;
-            PlanetPlacement placement = new PlanetPlacement(center)
-            {
-                PlanetRotation = rotation
-            };
-            return placement;
         }
 
         private Vector3 ResolvePriorityOriginWorld()
@@ -383,27 +296,21 @@ namespace MarchingCubesPlanet.Preview
             return preview != null ? preview.transform.position : Vector3.zero;
         }
 
-        private void ReleaseMarchingCubesPlanet()
+        private PlanetRecipePayloadPreviewGenerationFlow ResolveGenerationFlow()
         {
-            PlanetMarchingCubesPaintLab paintLab = FindFirstObjectByType<PlanetMarchingCubesPaintLab>();
-            if (paintLab != null)
+            if (generationFlow != null)
             {
-                paintLab.ReleaseModule();
+                return generationFlow;
             }
 
-            PlanetTrianglePoolRegistry.ReleaseAllSlots();
-
-            PlanetMarchingCubesLab marchingCubesLab = FindFirstObjectByType<PlanetMarchingCubesLab>();
-            if (marchingCubesLab != null)
+            generationFlow = FindFirstObjectByType<PlanetRecipePayloadPreviewGenerationFlow>();
+            if (generationFlow != null)
             {
-                marchingCubesLab.ReleaseModule();
+                return generationFlow;
             }
 
-            PlanetGpuShapeLab shapeLab = FindFirstObjectByType<PlanetGpuShapeLab>();
-            if (shapeLab != null)
-            {
-                shapeLab.ReleaseModule();
-            }
+            generationFlow = gameObject.AddComponent<PlanetRecipePayloadPreviewGenerationFlow>();
+            return generationFlow;
         }
 
         private void RegisterButtonCallbacks()
@@ -689,29 +596,6 @@ namespace MarchingCubesPlanet.Preview
         private static void ApplyEnvironmentTriangleBudget(int triangleBudget)
         {
             PlanetTrianglePoolRegistry.SetEnvironmentTriangleBudget(Mathf.Max(1, triangleBudget));
-        }
-
-        private static long CalculateMarchingCubesTemporaryBufferBytes(int temporaryTriangleCapacity)
-        {
-            return (long)Mathf.Max(0, temporaryTriangleCapacity) * 3L * 32L;
-        }
-
-        private static string FormatBytes(long bytes)
-        {
-            double mib = bytes / (1024.0 * 1024.0);
-            return bytes + " bytes / " + mib.ToString("0.00") + " MiB";
-        }
-
-        private static string FormatLabDiagnostic(PlanetLabDiagnostic diagnostic)
-        {
-            if (string.IsNullOrWhiteSpace(diagnostic.title))
-            {
-                return "No lab diagnostic was reported.";
-            }
-
-            return diagnostic.title +
-                   " Cause: " + diagnostic.probableCause +
-                   " Action: " + diagnostic.recommendedAction;
         }
 
         private static void AddListener(Button button, UnityEngine.Events.UnityAction action)

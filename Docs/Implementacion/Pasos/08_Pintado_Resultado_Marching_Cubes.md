@@ -722,7 +722,9 @@ Este documento queda listo para implementar cuando aceptemos este contrato:
 08 parte 1 no optimiza por distancia/camara.
 08 parte 1 registra y libera su Mesh/material.
 08 parte 1 mide triangulos pintados, vertices, bytes y tiempos.
-09, 10 y 11 quedan reservados para presupuesto global, reparto interno y visibilidad.
+09 queda reservado para backend/pool global de pintado.
+10 queda reservado para reparto interno, shell adaptativo y vision/interes del planeta activo.
+11 queda reservado para senales auxiliares de visibilidad/oclusion.
 ```
 
 El cierre real del bloque ocurre en:

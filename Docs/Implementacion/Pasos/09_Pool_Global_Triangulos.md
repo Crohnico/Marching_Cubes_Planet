@@ -42,7 +42,7 @@ Usarlo desde los painters indicando ese artistId.
 Contrato funcional:
 
 ```text
-sistema quiere pintar tris -> llama a Draw(datos[]) del artista -> 09 decide que entra en su presupuesto -> 09 pinta/actualiza su salida visible
+sistema quiere pintar tris -> llama a Draw(meshId, datos[], priority) del artista -> 09 decide que entra en su presupuesto -> 09 pinta/actualiza su salida visible gestionada
 ```
 
 Regla central:
@@ -51,12 +51,14 @@ Regla central:
 09 no cambia el poligonaje de ninguna geometria.
 09 no decide como se generan los triangulos.
 09 no decide donde una geometria debe tener mas o menos detalle.
+09 no calcula vision, frustum, mirada ni LOD de planeta.
 09 define artistas/pools que poseen y reparten slots dentro de su presupuesto fijo.
 Dentros de un artista, los triangulos gestionados solo se publican a traves de ese artista.
 Un artista/painter tiene un presupuesto.
 Todo lo que use ese artista compite por el mismo presupuesto.
 El ownerId no da prioridad ni reserva capacidad.
 El materialId/renderBatch no da prioridad ni reserva capacidad.
+El meshId identifica una publicacion estable dentro del artista; no autoriza pintar por fuera de 09.
 ```
 
 ## Modelo mental
@@ -87,7 +89,7 @@ Oye, artista Environment, necesito publicar X tris en esta zona.
 
 ```text
 internamente pinta X slots.
-internamente reclama slots mas lejanos si necesita sitio.
+internamente reclama slots de peor prioridad si necesita sitio.
 internamente deniega o deja sin pintar lo que no mejora el estado actual.
 ```
 
@@ -96,9 +98,11 @@ El sistema que llama no recibe una respuesta obligatoria ni usa el resultado int
 Contrato mental:
 
 ```text
-El caller dice: toma, pintame esta mesh/lote.
+El caller dice: pintame esto en meshId X.
 El artista recibe la peticion como una orden de dibujo gestionado.
-El artista procesa presupuesto, distancia y reclamacion.
+Si el meshId ya existe, el artista actualiza/reemplaza/anade su contenido gestionado.
+Si el meshId no existe, el artista crea una entrada gestionada para ese meshId.
+El artista procesa presupuesto, prioridad recibida y reclamacion.
 El artista pinta todos, algunos o ninguno.
 El caller principal no necesita saber si quedo visible.
 ```
@@ -108,12 +112,12 @@ La idea practica:
 ```text
 Hay un pool fijo de slots de triangulo.
 Cada slot puede tener un releaseGroup/owner opcional para diagnostico y liberacion agrupada.
-Cada slot tiene una posicion representativa o distancia al player.
-Cuando el pool se llena, los slots mas lejanos son los primeros candidatos a ser reutilizados.
+Cada slot tiene meshId, posicion representativa opcional y score de prioridad recibido.
+Cuando el pool se llena, los slots de peor prioridad son los primeros candidatos a ser reutilizados.
 El pool conoce que slots estan pintados y que recursos visuales propios ocupan.
 El pool puede liberar, invalidar o sobrescribir los slots que posee.
-Si dios esta mas cerca y una mariposa esta mas lejos, el artista puede quitar slots a la mariposa para darselos a dios.
-Si el agua esta mas cerca que tierra ya pintada, el artista puede reclamar tierra para pintar agua.
+Si una pagina planetaria nueva llega con mejor prioridad que geometria residente peor, el artista puede reclamar esos slots.
+Si el agua de una pagina activa compite con terreno mas viejo o de menor prioridad dentro del mismo artista, el artista puede reclamar segun politica interna.
 El tipo de cosa que pide no importa; solo importa que compite dentro del mismo artista y con la misma politica.
 ```
 
@@ -132,9 +136,9 @@ Wrapper de pintado para que 08 publique triangulos a traves de 09.
 Retirada del cortafuegos local de pintado/generacion usado antes de 09.
 Autoridad sobre que triangulos gestionados estan pintados dentro de ese artista.
 Liberacion, invalidacion o sobrescritura de recursos visuales propios del artista.
-Reclamacion de slots mas lejanos si el pool esta lleno.
-Distancia al player como criterio inicial.
-Buckets/anillos de distancia para evitar busquedas caras.
+Reclamacion de slots de peor prioridad si el pool esta lleno.
+PriorityScore plano recibido en cada request como criterio inicial.
+Buckets/anillos de prioridad para evitar busquedas caras.
 Early-out por peor score residente cuando el pool esta lleno.
 Invalidacion de slots reclamados.
 Metricas de concedidos, denegados, reclamados y vivos.
@@ -174,7 +178,8 @@ Si una decision trata de generar triangulos, pertenece a 07 u otro generador.
 Si una decision trata de pintar una Mesh de validacion sin presupuesto, pertenece a 08.
 Si una decision trata de conceder/reclamar slots de un artista, pertenece a 09.
 Si una decision trata de poner mas detalle en una zona de una geometria adaptable, pertenece a 10.
-Si una decision trata de no gastar tris en lo que no se ve, pertenece a 11.
+Si una decision trata de no generar o no publicar paginas de planeta por mirada/frustum local, pertenece a 10.
+Si una decision trata de visibilidad auxiliar reutilizable para otros productores, pertenece a 11 como senal de entrada, no como pintor.
 Si una decision trata de cuando volver a publicar geometria por distancia/visibilidad, no pertenece a 09.
 ```
 
@@ -231,7 +236,7 @@ El caller principal no cambia su flujo segun el resultado.
 El contrato publico de 09 se reduce a:
 
 ```text
-Te paso datos de triangulos para este artista y esta zona.
+Te paso datos de triangulos para este artista, este meshId y esta zona.
 El artista intenta pintarlos dentro de su presupuesto.
 Si caben, los pinta.
 Si no caben, pinta lo que pueda/reclama lo que toque/deniega segun politica.
@@ -243,8 +248,8 @@ La decision queda dentro del artista.
 API mental:
 
 ```text
-EnvironmentArtist.Draw(datos[])
-ParticlesArtist.Draw(datos[])
+EnvironmentArtist.Draw(meshId, datos[], priority)
+ParticlesArtist.Draw(meshId, datos[], priority)
 ```
 
 Regla:
@@ -254,13 +259,14 @@ El caller principal no necesita saber si finalmente se pinto todo.
 El planeta pide pintar y continua.
 El artista mantiene internamente que slots quedaron vivos, reclamados o denegados.
 El planeta, agua, roca, prop o particula no poseen la verdad de visibilidad.
+El planeta si posee la verdad de que geometria quiere publicar y con que resolucion.
 ```
 
 Ejemplos:
 
 ```text
 Props: publicaran geometria al crearse o cuando otro sistema decida que su distancia/prioridad ha cambiado.
-Mundo/terreno: publicara lotes cuando 10 rehaga reparto adaptativo de paginas LOD o cuando 11 cambie visibilidad por frustum/oclusion.
+Mundo/terreno: publicara lotes cuando el planeta activo/10 rehaga su shell adaptativo por distancia, mirada, movimiento, frustum local o ciclo de vida.
 Particulas/VFX: publicaran geometria cuando nazcan, crezcan, mueran o cambie su prioridad externa.
 ```
 
@@ -270,6 +276,7 @@ Regla:
 09 no observa el mundo para iniciar actualizaciones.
 09 no recalcula poligonaje.
 09 no decide que geometria debe existir.
+09 no decide que esta en vision.
 09 solo arbitra capacidad dentro del artista solicitado.
 ```
 
@@ -278,7 +285,7 @@ Regla:
 ```text
 No recibe un budget concedido por 09.
 Decide de forma independiente como repartir detalle dentro de la geometria planetaria virtual.
-Publica lo que decide mediante Draw(datos[]) o ruta equivalente del artista.
+Publica lo que decide mediante Draw(meshId, datos[], priority) o ruta equivalente del artista.
 No ajusta su reparto por si 09 pinto todo, parte o nada.
 No posee el millon de Environment ni ningun presupuesto de artista.
 ```
@@ -286,9 +293,9 @@ No posee el millon de Environment ni ningun presupuesto de artista.
 11:
 
 ```text
-Marca zonas invisibles o fuera de prioridad para que no compitan igual.
-Puede provocar releases o menor prioridad.
-No sustituye al pool base de 09.
+No cambia la frontera 09/10.
+No pinta, no libera slots directamente y no decide LOD del planeta.
+Si existe, aporta senales auxiliares o diagnostico que los productores pueden usar antes de publicar.
 ```
 
 ## Presupuesto configurable
@@ -309,7 +316,7 @@ Campos iniciales:
 artistId = 0
 artistName = Environment
 totalTriangleBudget = 1_000_000
-distanceBucketCount = 32
+priorityBucketCount = 32
 maxTrackedOwners = 64
 maxAllocationsPerOwner = 8192
 ```
@@ -364,7 +371,6 @@ Crear la copia runtime de presupuesto.
 Inicializar el pool del artista.
 Reservar/preparar memoria para totalTriangleBudget slots.
 Exponer API de request/release.
-Actualizar la referencia del player/camara para calculo de distancia.
 Exponer metricas.
 Liberar recursos.
 ```
@@ -385,7 +391,7 @@ Al arrancar:
 2. Validar presupuesto.
 3. Preasignar arrays/buffers de slots.
 4. Inicializar freelist con todos los slots libres.
-5. Inicializar buckets de distancia vacios.
+5. Inicializar buckets de prioridad vacios.
 6. Quedar listo para recibir requests.
 ```
 
@@ -425,52 +431,46 @@ Debris_29k.
 TemporaryDebug_5k.
 ```
 
-## Referencia de distancia
-
-09 necesita una posicion de referencia para decidir cercania.
+## Prioridad de publicacion
 
 Decision inicial:
 
 ```text
-La referencia vive en el Player de la escena.
-El componente se llama PlanetTriangleDistanceReference.
-El componente expone una posicion world plana.
-09 no conoce el XR Rig.
-09 no conoce el Player como clase de gameplay.
-09 no recibe Transform, GameObject ni referencias complejas en GPU.
+La prioridad principal llega con cada request.
+El productor calcula la prioridad segun su dominio.
+Para planeta activo, 10 calcula prioridad desde distancia, mirada, movimiento/lookahead, frustum local y ciclo de vida.
+09 no recalcula esa prioridad ni consulta camara/mirada para decidir LOD.
+09 solo compara scores recibidos para arbitrar capacidad.
 ```
 
 Contrato:
 
 ```text
-PlanetTriangleDistanceReference -> Vector3 Position.
-PlanetTrianglePoolRegistry o PlanetTrianglePoolBootstrap registra esa referencia.
-Cada artista lee la ultima posicion world disponible antes de procesar requests/buckets.
-La GPU recibe solo float3/float4 priorityOriginWorld.
+requestPriorityScore -> float.
+menor score = mejor candidato inicial.
+mayor score = peor candidato inicial.
+representativeWorldPosition -> opcional para diagnostico, bounds y fallback de Lab.
+meshId -> identidad estable de publicacion.
 ```
 
-Formato GPU:
+Fallback de Lab:
 
 ```text
-priorityOriginWorld = float4(playerPosition.xyz, 1)
-```
-
-Uso:
-
-```text
-requestScore = squaredDistance(priorityOriginWorld.xyz, representativeWorldPosition)
-menor score = mas cerca
-mayor score = mas lejos
+PlanetTrianglePriorityReferenceLab puede existir como herramienta de Lab.
+Sirve para calcular un score simple por distancia cuando una request de prueba no trae prioridad.
+No es autoridad del runtime del planeta.
+No convierte a 09 en sistema de camara, player, vision o LOD.
 ```
 
 Reglas:
 
 ```text
-La referencia de distancia es un dato plano.
+La prioridad es un dato plano.
 No hay dependencia directa entre 09 y locomocion.
 No hay dependencia directa entre 09 y XR.
-Si no existe referencia valida, 09 debe fallar con diagnostico claro o usar una referencia explicita de fallback configurada en lab.
-Actualizar esta posicion no crea GC.
+Si una request real llega sin prioridad valida, 09 debe fallar con diagnostico claro.
+Si una request de Lab llega sin prioridad valida, puede usar una referencia explicita de fallback configurada en Lab.
+Actualizar prioridades o requests no crea GC.
 ```
 
 ## Unidad de asignacion
@@ -481,10 +481,12 @@ Un slot representa:
 
 ```text
 1 triangulo visible gestionado por el pool.
+meshId.
 ownerId.
 allocationId.
 posicion representativa.
-distanceBucket.
+priorityBucket.
+priorityScore.
 estado libre/ocupado.
 version.
 ```
@@ -493,10 +495,11 @@ Formato conceptual:
 
 ```text
 TriangleSlot:
+    uint meshId
     uint ownerId
     int allocationId
     int nextFreeOrBucket
-    int distanceBucket
+    int priorityBucket
     float score
     uint version
     Vector3 representativeWorldPosition
@@ -505,7 +508,8 @@ TriangleSlot:
 Regla:
 
 ```text
-La posicion representativa se usa para prioridad/reclamacion.
+El score recibido se usa para prioridad/reclamacion.
+La posicion representativa no sustituye al score del productor.
 No es una fuente de verdad geometrica.
 La geometria de entrada viene del sistema que pide pintar.
 La geometria visible gestionada vive en la salida del artista.
@@ -534,7 +538,7 @@ Responsabilidad:
 
 ```text
 Recibir triangulos que un sistema quiere publicar.
-Llamar al artista correspondiente con Draw(datos[]).
+Llamar al artista correspondiente con Draw(meshId, datos[], priority).
 Pedir slots al PlanetTrianglePoolController de forma interna.
 Escribir o actualizar la representacion visible solo en slots concedidos.
 Guardar diagnostico interno si no caben.
@@ -548,7 +552,7 @@ Uso desde 08 antes de 10:
 08 recibe resultado de 07.
 08 crea batches de triangulos a publicar.
 08 llama a PlanetTrianglePoolWriter.
-PlanetTrianglePoolWriter llama a Draw(datos[]) del artista Environment.
+PlanetTrianglePoolWriter llama a Draw(meshId, datos[], priority) del artista Environment.
 El artista decide internamente que slots acepta/reclama/deniega.
 El artista actualiza su salida visible.
 08 no gestiona el resultado como owner de una asignacion.
@@ -580,10 +584,11 @@ Regla:
 Entrada minima de una request:
 
 ```text
+meshId.
 ownerId.
 requestedTriangleCount.
 representativeWorldPosition o bounds.
-priorityDistanceReference = player/camara actual.
+priorityScore calculado por el productor.
 ```
 
 Primera regla:
@@ -595,7 +600,7 @@ Si hay suficientes slots libres, concederlos desde freelist.
 Segunda regla:
 
 ```text
-Si no hay slots libres, buscar slots ocupados que esten en un bucket de distancia peor que la request.
+Si no hay slots libres, buscar slots ocupados que esten en un bucket de prioridad peor que la request.
 ```
 
 Tercera regla:
@@ -624,14 +629,14 @@ Una asignacion parcial debe estar diagnosticada.
 No se puede confundir con geometria completa.
 ```
 
-## Reclamacion barata por distancia
+## Reclamacion barata por prioridad
 
 No se permite escanear 1M slots por cada request.
 
 Score inicial:
 
 ```text
-requestScore = squaredDistance(playerOrCameraPosition, requestRepresentativePosition)
+requestScore = priorityScore recibido en la request
 menor score = mejor candidato
 mayor score = peor candidato
 ```
@@ -649,7 +654,7 @@ Si no tengo capacidad libre:
     si requestScore >= worstResidentScore:
         rechazo o dejo pendiente sin buscar mas.
     si requestScore < worstResidentScore:
-        busco slots peores en buckets lejanos.
+        busco slots peores en buckets de peor prioridad.
         reclamo esos slots y asigno los nuevos.
 ```
 
@@ -663,18 +668,18 @@ Una peticion mas lejana que el peor triangulo vivo no merece recorrer buckets.
 Decision inicial:
 
 ```text
-Usar buckets/anillos de distancia.
+Usar buckets/anillos de prioridad.
 ```
 
 Funcionamiento:
 
 ```text
-1. Calcular squaredDistance desde player/camara hasta representativeWorldPosition.
-2. Convertir squaredDistance a distanceBucket.
+1. Recibir priorityScore desde el productor.
+2. Convertir priorityScore a priorityBucket.
 3. Guardar cada slot ocupado dentro de su bucket.
-4. Para una nueva request, calcular su bucket.
-5. Si no hay libres, buscar buckets mas lejanos que el bucket de la request.
-6. Reusar slots sacados de los buckets mas lejanos.
+4. Para una nueva request, usar su bucket.
+5. Si no hay libres, buscar buckets peores que el bucket de la request.
+6. Reusar slots sacados de los buckets de peor prioridad.
 ```
 
 Coste esperado:
@@ -689,7 +694,7 @@ Regla:
 
 ```text
 bucketCount empieza bajo y fijo.
-No se hace ordenacion global por distancia.
+No se hace ordenacion global por score exacto.
 No se hace busqueda lineal sobre todos los triangulos en runtime caliente.
 ```
 
@@ -707,7 +712,7 @@ worstResidentScore
 Significado:
 
 ```text
-worstResidentBucket -> bucket mas lejano que contiene slots ocupados.
+worstResidentBucket -> bucket de peor prioridad que contiene slots ocupados.
 worstResidentScore -> score aproximado derivado del rango del worstResidentBucket.
 ```
 
@@ -741,8 +746,8 @@ Motivo:
 ```text
 Exacto por slot obliga a mantener o recalcular el peor triangulo global.
 En GPU eso implica reducciones globales, heaps/priority queues o mantenimiento incremental complejo.
-Para el contrato de 09 basta con saber que una request esta mejor/peor que un rango de distancia.
-10/11 pueden refinar prioridad y generar nuevas requests; 09 no necesita precision fina.
+Para el contrato de 09 basta con saber que una request esta mejor/peor que un rango de prioridad.
+Los productores pueden recalcular prioridad y generar nuevas requests; 09 no necesita precision fina.
 ```
 
 Opcion futura si hiciera falta:
@@ -757,12 +762,12 @@ No hacer:
     heap global GPU como primera version.
 ```
 
-Sobre actualizacion de distancias:
+Sobre actualizacion de prioridades:
 
 ```text
-La distancia de un slot no se recalcula cada frame obligatoriamente.
-Refresh Distance Buckets significa reconstruir los buckets de cercania porque la referencia player/camara se movio.
-Si no se refrescan, un slot que era lejano puede seguir en un bucket lejano aunque ahora este cerca.
+La prioridad de un slot no se recalcula cada frame obligatoriamente dentro de 09.
+Refresh Priority Buckets significa reconstruir buckets desde los scores que el productor haya publicado o actualizado.
+Si el productor no republica o no actualiza prioridad, 09 conserva el score anterior como dato interno de arbitraje.
 ```
 
 Decision inicial:
@@ -770,9 +775,9 @@ Decision inicial:
 ```text
 Los buckets se refrescan en GPU.
 No se refrescan cada frame por defecto.
-Se refrescan cuando el player/camara se mueve mas de media anchura de bucket desde el ultimo refresh.
+Se refrescan cuando entra una tanda de requests con scores nuevos o cuando el Lab lo fuerce.
 Si llega una request con el pool lleno y los buckets estan stale, se refrescan antes de reclamar.
-La unica prioridad de 09 es cercania/distancia.
+La unica prioridad de 09 es el score plano recibido.
 ```
 
 Regla:
@@ -781,8 +786,8 @@ Regla:
 No hay prioridad especial de gameplay en 09.
 No hay prioridad por mirada en 09.
 No hay prioridad por frustum/oclusion en 09.
-10/11 generaran nuevas requests si quieren cambiar que geometria compite.
-09 solo compara cercania.
+El planeta/10 generara nuevas requests si quiere cambiar que geometria compite.
+09 solo compara scores recibidos.
 ```
 
 Opciones descartadas para la primera version:
@@ -845,7 +850,7 @@ Reglas:
 Un owner no puede asumir que sus slots viven para siempre.
 El artista puede invalidar slots sin que el caller principal tenga que reaccionar al instante.
 Si un sistema necesita persistencia fuerte sobre una asignacion, eso sera un modo explicito futuro.
-En 09 base, el flujo normal es Draw(datos[]) y diagnostico opcional.
+En 09 base, el flujo normal es Draw(meshId, datos[], priority) y diagnostico opcional.
 ```
 
 Decision de invalidacion:
@@ -953,7 +958,7 @@ PlanetTrianglePoolRegistry
 PlanetTriangleBudget
 PlanetTrianglePoolController
 PlanetTrianglePoolWriter
-PlanetTriangleDistanceReference
+PlanetTrianglePriorityReferenceLab
 PlanetTriangleOwnerId
 PlanetTriangleArtistId
 PlanetTriangleAllocationHandle
@@ -999,7 +1004,7 @@ Responsabilidad:
 Inicializar pool.
 Exponer artistId.
 Mantener freelist.
-Mantener buckets de distancia.
+Mantener buckets de prioridad.
 Mantener worstResidentBucket/worstResidentScore.
 Procesar requests.
 Procesar releases.
@@ -1050,27 +1055,27 @@ Guardar diagnosticos internos.
 No obligar al caller principal a reaccionar al resultado.
 ```
 
-### PlanetTriangleDistanceReference
+### PlanetTrianglePriorityReferenceLab
 
-Componente minimo que vive en el Player de la escena.
+Componente minimo opcional para pruebas de Lab.
 
 Responsabilidad:
 
 ```text
-Exponer la posicion world usada por 09 para calcular cercania.
+Exponer una posicion world usada solo para calcular priorityScore simple por distancia en pruebas.
 No contener logica de locomocion.
 No contener logica XR.
 No conocer artistas ni presupuestos.
 No crear GC al consultar la posicion.
+No ser requisito del runtime del planeta.
 ```
 
 Contrato:
 
 ```text
 Position -> Vector3 world.
-El bootstrap/registry de 09 puede registrarlo como referencia activa.
-Los artistas leen esa posicion como dato plano.
-La GPU recibe priorityOriginWorld, no el componente.
+El Lab puede usarlo para fabricar requests con priorityScore.
+Los artistas reciben priorityScore, no el componente.
 ```
 
 ### PlanetTriangleOwnerId
@@ -1084,7 +1089,7 @@ Agrupar triangulos para operaciones secundarias.
 Borrar todo lo que pidio un emisor.
 Liberar todo lo de un chunk/lote/sistema si hace falta.
 Mostrar metricas de cuanto pidio Water/Terrain/Props u otros emisores.
-Quitar tris de un efecto muerto sin esperar a que distancia los robe.
+Quitar tris de un efecto muerto sin esperar a que otra request los robe.
 ```
 
 Formato:
@@ -1183,7 +1188,7 @@ Flujo de arranque:
 3. Cada controller copia su PlanetTriangleBudget runtime.
 4. Cada controller valida presupuesto.
 5. Cada controller preasigna slots.
-6. Cada controller inicializa freelist y buckets.
+6. Cada controller inicializa freelist y buckets de prioridad.
 7. Cada artista queda ready.
 ```
 
@@ -1195,7 +1200,7 @@ Flujo de pintado desde 08:
 3. 08 decide o recibe que esos tris consumen Environment.
 4. 08 llama al PlanetTrianglePoolWriter de Environment.
 5. Writer pide slots al artista Environment.
-6. Environment concede libres o reclama slots lejanos.
+6. Environment concede libres o reclama slots de peor prioridad.
 7. Writer escribe/pinta solo los slots concedidos.
 8. 09 actualiza metricas del artista.
 ```
@@ -1206,7 +1211,7 @@ Flujo de pool lleno:
 1. Request nueva llega sin slots libres suficientes.
 2. Calcular score y bucket de la request.
 3. Si requestScore es peor o igual que worstResidentScore, denegar/pending inmediato.
-4. Buscar buckets mas lejanos.
+4. Buscar buckets de peor prioridad.
 5. Reclamar slots desde los buckets peores.
 6. Invalidar owner anterior.
 7. Reasignar slots al nuevo owner.
@@ -1273,12 +1278,12 @@ No usar List<T> que crezcan en runtime caliente.
 Estructura conceptual:
 
 ```text
-bucketCounts[distanceBucketCount] -> numero de slots ocupados por bucket.
-bucketOffsets[distanceBucketCount] -> offset inicial de cada bucket dentro de compactedSlotIds.
-bucketWriteCounters[distanceBucketCount] -> contador temporal de escritura por bucket.
+bucketCounts[priorityBucketCount] -> numero de slots ocupados por bucket.
+bucketOffsets[priorityBucketCount] -> offset inicial de cada bucket dentro de compactedSlotIds.
+bucketWriteCounters[priorityBucketCount] -> contador temporal de escritura por bucket.
 compactedSlotIds[totalTriangleBudget] -> slotIds agrupados de forma contigua por bucket.
 
-TriangleSlot.distanceBucket -> bucket actual del slot.
+TriangleSlot.priorityBucket -> bucket actual del slot.
 ```
 
 Motivo:
@@ -1296,10 +1301,10 @@ No se crean objetos ni colecciones por request.
 Regla:
 
 ```text
-El bucket es una estructura de prioridad aproximada por distancia.
+El bucket es una estructura de prioridad aproximada por score recibido.
 No ordena todos los triangulos individualmente.
-Para 09 nos basta con saber que un bucket es peor/lejos que otro.
-La precision fina queda para 10/11 si hiciera falta.
+Para 09 nos basta con saber que un bucket es peor que otro.
+La precision fina queda en el productor que calcula priorityScore.
 La ruta GPU prioriza memoria contigua/coalesced sobre punteros o listas enlazadas.
 ```
 
@@ -1309,13 +1314,13 @@ Pipeline conceptual GPU:
 1. Clear bucketCounts/bucketWriteCounters.
 2. Kernel BuildBucketHistogram:
    - grid-stride sobre slots vivos.
-   - calcular o leer distanceBucket.
+   - leer priorityBucket.
    - atomic add en bucketCounts[bucket].
 3. Kernel PrefixSumBuckets:
    - scan/reduction sobre bucketCounts para producir bucketOffsets.
 4. Kernel ScatterSlotsToBuckets:
    - grid-stride sobre slots vivos.
-   - bucket = TriangleSlot.distanceBucket.
+   - bucket = TriangleSlot.priorityBucket.
    - writeIndex = bucketOffsets[bucket] + atomic add(bucketWriteCounters[bucket], 1).
    - compactedSlotIds[writeIndex] = slotId.
 5. Reclamacion:
@@ -1402,7 +1407,7 @@ Implicacion para 08:
 
 ```text
 08 actual preparaba una Mesh visible de validacion.
-Al entrar 09, 08 pasa a emitir datos hacia Draw(datos[]) del artista Environment.
+Al entrar 09, 08 pasa a emitir datos hacia Draw(meshId, datos[], priority) del artista Environment.
 El artista Environment decide que triangulos pinta dentro de su presupuesto.
 El artista Environment actualiza su Mesh runtime CPU.
 ```
@@ -1412,7 +1417,7 @@ Ruta futura posible:
 ```text
 Mover el backend visible de un artista a GraphicsBuffer sigue siendo posible.
 No entra como requisito de esta version.
-Si se hace, debe mantener el mismo contrato Draw(datos[]) y el mismo control de presupuesto.
+Si se hace, debe mantener el mismo contrato Draw(meshId, datos[], priority) y el mismo control de presupuesto.
 No puede obligar al caller a saber si sus tris quedaron visibles.
 ```
 
@@ -1477,11 +1482,11 @@ Botones esperados en `PlanetTrianglePoolLab`:
 ```text
 Validate Triangle Pool Setup
 Init Triangle Pool
-Request Near Batch
-Request Far Batch
+Request High Priority Batch
+Request Low Priority Batch
 Fill Pool
-Request Closer Than Existing
-Refresh Distance Buckets
+Request Better Than Existing
+Refresh Priority Buckets
 Show Buckets
 Show Owners
 Release Owner
@@ -1499,11 +1504,11 @@ Validate detecta profile ausente.
 Init crea tantos slots como indique el profile del artista.
 Environment inicia con 1M slots si usa el profile inicial.
 Particles inicia con su presupuesto configurado.
-Request Near Batch concede desde freelist.
-Request Far Batch concede desde freelist.
+Request High Priority Batch concede desde freelist.
+Request Low Priority Batch concede desde freelist.
 Fill Pool deja freeSlotCount = 0.
-Request Closer Than Existing reclama slots lejanos.
-Una request mas lejana que lo existente se deniega o queda parcial con diagnostico.
+Request Better Than Existing reclama slots de peor prioridad.
+Una request peor que lo existente se deniega o queda parcial con diagnostico.
 Release Owner devuelve sus slots a freelist.
 Release Triangle Pool deja contadores a cero.
 Release doble no rompe.
@@ -1515,7 +1520,7 @@ Pruebas de integracion con 08:
 ```text
 08 no pinta directo saltandose el wrapper.
 El panel/lab muestra diagnostico si 09 no pinta todo.
-Al saturar el pool, un lote cercano reemplaza slots mas lejanos.
+Al saturar el pool, un lote de mejor prioridad reemplaza slots peores.
 Los triangulos reclamados desaparecen o quedan invalidos visualmente.
 ```
 
@@ -1530,7 +1535,7 @@ Apply Payload 1M deja Environment con 1M tris maximos vivos.
 Apply Payload 2M deja Environment con 2M tris maximos vivos si la plataforma/memoria lo permite.
 El boton Generate genera el planeta usando 09 como unica via de pintado gestionado.
 Generate se ciñe al presupuesto activo del artista Environment.
-Si 07/08 producen mas triangulos que el presupuesto activo, 09 pinta como maximo el presupuesto y reclama/deniega segun distancia.
+Si 07/08 producen mas triangulos que el presupuesto activo, 09 pinta como maximo el presupuesto y reclama/deniega segun priorityScore.
 El planeta/generador no cambia su geometria ni sabe cuantos triangulos acabaron visibles.
 ```
 
@@ -1540,13 +1545,13 @@ Tests EditMode esperados:
 
 ```text
 PlanetTriangleBudget valida totalTriangleBudget > 0.
-PlanetTriangleBudget valida distanceBucketCount > 0.
+PlanetTriangleBudget valida priorityBucketCount > 0.
 Init crea exactamente `totalTriangleBudget` slots libres para el artista del profile.
 Request con slots libres concede el conteo pedido.
 Release devuelve slots a freelist.
 Release doble de una allocation no rompe.
-Pool lleno + request cercana reclama slots lejanos.
-Pool lleno + request lejana no reclama slots cercanos.
+Pool lleno + request de mejor prioridad reclama slots peores.
+Pool lleno + request de peor prioridad no reclama slots mejores.
 Las metricas de granted/denied/reclaimed son correctas.
 No hay allocations gestionadas en requests repetidas si se puede medir.
 ```
@@ -1558,7 +1563,7 @@ PlanetTrianglePoolLab existe en PlanetImplementationLab cuando se integre.
 Validate Triangle Pool Setup no lanza excepcion con profile valido.
 Init Triangle Pool no lanza excepcion.
 Fill Pool no lanza excepcion con presupuesto de test pequeno.
-Request Closer Than Existing reclama slots esperados.
+Request Better Than Existing reclama slots esperados.
 Release Triangle Pool no lanza excepcion.
 Release doble no lanza excepcion.
 ```
@@ -1585,7 +1590,7 @@ deniedTriangleCount.
 reclaimedTriangleCount.
 allocationCount.
 ownerCount.
-distanceBucketCount.
+priorityBucketCount.
 slotsByBucket.
 slotsByOwner.
 worstResidentBucket.
@@ -1601,9 +1606,9 @@ Metricas diferidas a 10/11:
 ```text
 Calidad visual por reparto interno.
 Triangulos redistribuidos por paginas LOD adaptativas.
-Triangulos evitados por frustum.
-Triangulos evitados por oclusion.
-Coste de mirar/camara como prioridad avanzada.
+Triangulos no publicados porque el productor los descarta por frustum/mirada.
+Triangulos no publicados porque el productor descarta u oculta zonas por oclusion.
+Coste de calcular priorityScore avanzado en productores como 10.
 ```
 
 ## Riesgos
@@ -1629,7 +1634,7 @@ Copiar millones de triangulos por CPU en vez de publicar mediante recursos contr
 Mitigaciones:
 
 ```text
-Buckets de distancia.
+Buckets de prioridad.
 Early-out con worstResidentBucket/worstResidentScore.
 Requests por batch.
 Handles con version.
@@ -1659,9 +1664,10 @@ El namespace inicial es MarchingCubesPlanet.TrianglePools.
 El profile se llama PlanetTriangleBudgetProfile.
 El bootstrap se llama PlanetTrianglePoolBootstrap.
 El registry se llama PlanetTrianglePoolRegistry.
-La referencia de distancia se llama PlanetTriangleDistanceReference.
-PlanetTriangleDistanceReference vive en el Player de la escena.
-09 recibe la posicion de referencia como dato plano, no como XR Rig/Transform/GameObject en GPU.
+La referencia de prioridad de Lab se llama PlanetTrianglePriorityReferenceLab.
+PlanetTrianglePriorityReferenceLab puede vivir en el Player de la escena solo para fabricar priorityScore de pruebas.
+09 recibe priorityScore como dato plano, no camara, XR Rig, Transform ni GameObject en GPU.
+meshId identifica la publicacion gestionada que el artista debe crear, actualizar o reemplazar.
 artistId es uint escrito a mano en el SO; 0 = Environment, 1 = Particles, 2 queda para el siguiente artista.
 ownerId es uint opcional para release/diagnostico; 0 = Anonymous/Untracked.
 Nadie necesita ownerId registrado para llamar a Draw.
@@ -1669,8 +1675,8 @@ El propietario real de slots, buffers y VRAM es el artista, no el ownerId.
 El bucket interno usa histograma + prefix sum/scan + scatter a arrays contiguos en la ruta GPU.
 La ruta caliente no genera GC.
 worstResidentScore es aproximado por bucket en 09.
-La unica prioridad de 09 es cercania/distancia.
-Refresh Distance Buckets reconstruye buckets en GPU cuando player/camara se mueve mas de media anchura de bucket o antes de reclaim si estan stale.
+La unica prioridad de 09 es el priorityScore recibido.
+Refresh Priority Buckets reconstruye buckets en GPU cuando entran scores nuevos o antes de reclaim si estan stale.
 La invalidacion usa versionado interno y cola compacta de eventos; no callbacks por triangulo ni polling CPU masivo.
 La salida visible inicial de 09 es Mesh runtime CPU gestionada por el artista.
 El material del artista puede usar el shader/material actual de Mesh.
@@ -1678,19 +1684,19 @@ GraphicsBuffer queda como backend visual futuro opcional, no como requisito de e
 09 no cambia el poligonaje de ninguna geometria.
 09 solo reparte slots dentro de cada artista.
 09 no decide cuando una geometria debe volver a publicar.
-09 se limita a Draw(datos[]): intenta pintar dentro del presupuesto y guarda diagnostico interno.
+09 se limita a Draw(meshId, datos[], priority): intenta pintar dentro del presupuesto y guarda diagnostico interno.
+09 no calcula vision, mirada, frustum, oclusion ni LOD del planeta.
 El planeta/generador no necesita retener handles para saber si algo se pinto.
 El handle de asignacion es interno del artista: artistId, ownerId, allocationId, slotListOffset, slotCount, version.
 08 debe publicar/pintar a traves del wrapper del artista correspondiente.
 Si hay slots libres, se conceden.
-Si no hay slots libres, se buscan slots mas lejanos que la nueva request.
-La busqueda de reclamacion no escanea todo el pool: usa buckets/anillos de distancia.
+Si no hay slots libres, se buscan slots de peor prioridad que la nueva request.
+La busqueda de reclamacion no escanea todo el pool: usa buckets/anillos de prioridad.
 El pool mantiene worstResidentBucket/worstResidentScore para rechazar peticiones peores sin recorrer buckets.
-La primera metrica de prioridad es distancia al player/camara.
 Los slots reclamados invalidan al owner anterior.
 Cada artista puede liberar, invalidar o sobrescribir los recursos visuales propios de sus slots.
-10 queda reservado para reparto adaptativo de detalle interno.
-11 queda reservado para visibilidad, oclusion y frustum.
+10 queda reservado para reparto adaptativo de detalle interno, mirada, frustum local del planeta y ciclo de vida activo.
+11 queda reservado para senales auxiliares de visibilidad/oclusion reutilizables, sin autoridad directa sobre slots ni pintado.
 ```
 
 ## TBD
@@ -1708,16 +1714,16 @@ Existen presupuestos fijos configurables por artista.
 Environment y Particles pueden arrancar como pools separados.
 Crear un artista pequeno adicional no requiere cambiar el core.
 Cada controlador reserva/prepara su pool al arrancar.
-Existe PlanetTriangleDistanceReference en el Player o una referencia explicita equivalente para labs.
-Los artistas pueden obtener priorityOriginWorld como dato plano para calcular distancias.
-08 publica triangulos llamando a Draw(datos[]) del artista Environment.
+Existe priorityScore en cada request real o una referencia explicita equivalente solo para labs.
+Los artistas reciben priorityScore como dato plano para arbitrar capacidad.
+08 publica triangulos llamando a Draw(meshId, datos[], priority) del artista Environment.
 Los botones Apply Payload del canvas actual aplican el presupuesto real de 09.
 El boton Generate del canvas actual genera el planeta usando 09.
 Generate no puede pintar mas triangulos que el presupuesto activo del artista Environment.
-Un painter de particulas publica triangulos llamando a Draw(datos[]) del artista Particles.
+Un painter de particulas publica triangulos llamando a Draw(meshId, datos[], priority) del artista Particles.
 El pool concede slots libres.
-Cuando esta lleno, puede reclamar slots mas lejanos.
-La reclamacion usa buckets/anillos y no escanea 1M slots por request.
+Cuando esta lleno, puede reclamar slots de peor prioridad.
+La reclamacion usa buckets/anillos de prioridad y no escanea 1M slots por request.
 Las peticiones peores que el peor residente se rechazan con early-out.
 Los owners pierden slots de forma detectable mediante invalidacion/version.
 Release por owner, Release por artista y Release global funcionan.

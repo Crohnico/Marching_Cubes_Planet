@@ -458,7 +458,7 @@ La Mesh de validacion no es payload final.
 08 pinta el resultado de 07.
 09 decide el pool global fijo de triangulos.
 10 decide reparto adaptativo de detalle para geometria planetaria.
-11 decide visibilidad, oclusion y frustum global.
+11 queda como senales auxiliares de visibilidad/oclusion, no como autoridad de pintado o LOD del planeta.
 ```
 
 Regla:
@@ -519,9 +519,10 @@ Debe concretar:
 ```text
 Pool fijo inicial de 1M tris.
 Asignaciones por owner/sistema.
-Peticiones de "necesito X tris".
-Reclamacion de slots lejanos si el pool esta lleno.
-Distancia al player como criterio inicial.
+Peticiones de "pintame esto en meshId X".
+Draw(meshId, datos, priority) como contrato mental.
+Reclamacion de slots de peor prioridad si el pool esta lleno.
+priorityScore recibido en la request como criterio inicial.
 Metricas de tris concedidos, denegados y reclamados.
 Release de slots por owner.
 ```
@@ -531,6 +532,7 @@ Regla:
 ```text
 09 no cambia el poligonaje de ninguna geometria.
 09 solo reparte slots de triangulos del presupuesto global.
+09 no calcula vision, mirada, frustum, oclusion ni LOD del planeta.
 ```
 
 ## 10 - Optimizacion adaptativa de poligonaje
@@ -548,13 +550,17 @@ Debe concretar:
 ```text
 Paginas/chunks LOD sobre el campo `density(point)`.
 Estructura tipo octree/clipmap centrada en player/camara.
+Shell activo del planeta cuando el jugador entra en su area de actividad.
+Shell minimo lejano y shell de maxima resolucion local manteniendo diametro visible practico aproximado de 8k.
 Transvoxel o transicion equivalente para coser LODs.
 Reparto por distancia.
 Reparto por direccion de mirada.
 Reparto por direccion de movimiento/lookahead.
+Frustum/interes local del planeta activo.
 Mas detalle donde mira/esta el player.
 Menos detalle conforme se aleja.
 Relacion con terreno planetario y Marching Cubes adaptativo.
+Publicacion con meshId estable y priorityScore hacia 09.
 Metricas de calidad/coste.
 Ruta Mesh inicial y backend GPU-resident como paso final futuro.
 ```
@@ -567,12 +573,13 @@ Regla:
 10 no cambia su LOD por una respuesta de 09.
 10 no se disena como BVH de triangulos.
 10 no genera un planeta denso completo para simplificarlo despues.
+10 calcula la resolucion y vision/interes del planeta activo.
 10 no tiene por que aplicarse a props; props pueden usar LODs naturales futuros.
 ```
 
 ## 11 - Visibilidad, oclusion y frustum
 
-Documento para evitar gastar triangulos en lo que no se ve.
+Documento para definir senales auxiliares reutilizables de visibilidad, oclusion y frustum.
 
 Documento propio:
 
@@ -583,18 +590,21 @@ Docs/Implementacion/Pasos/11_Visibilidad_Oclusion_Frustum.md
 Debe concretar:
 
 ```text
-Frustum culling global.
-Oclusion inicial.
-Prioridad por direccion de camara.
-Liberacion/degradacion de tris invisibles.
-Borrado natural del hemisferio contrario a la mirada.
-Metricas de tris visibles, ocultos y liberados.
+Helpers de frustum/bounds reutilizables.
+Oclusion inicial como senal auxiliar.
+Formato de senal plana para productores.
+Debug visual de bounds/zones marcadas.
+Metricas de senales calculadas.
+Integracion futura como entrada opcional de 10 u otros productores.
 ```
 
 Regla:
 
 ```text
-11 afecta a todo el universo gestionado por el pool de tris.
+11 no pinta.
+11 no libera slots de 09 directamente.
+11 no decide LOD ni vision del planeta activo.
+Si afecta al planeta, lo hace como entrada documentada de 10.
 ```
 
 ## Deadline 06-08 - Validacion de forma, Marching Cubes y pintado

@@ -92,7 +92,9 @@ El planeta base es campo escalar implicito, no volumen materializado.
 07 decide que zona muestrear con una rejilla temporal.
 07 convierte ese muestreo en triangulos reales de superficie.
 08 parte 1 pinta esos triangulos.
-09, 10 y 11 deciden despues pool global, reparto de detalle, camara, oclusion y frustum.
+09 decide despues el backend/pool de pintado gestionado.
+10 decide despues el shell adaptativo del planeta activo por distancia, mirada, movimiento y frustum local.
+11 queda despues como senales auxiliares de visibilidad/oclusion, no como pintor ni como LOD del planeta.
 ```
 
 Frontera obligatoria:

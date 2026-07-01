@@ -8,12 +8,22 @@ Definir el sistema que decide que zonas del planeta se generan con mas o menos r
 
 10 trabaja sobre la forma virtual del planeta y toma el control de como se divide, genera y publica la superficie adaptable.
 
+Cuando el jugador entra en el area de actividad de un planeta, 10 es el sistema que activa y mantiene su shell de representacion dinamica:
+
+```text
+Planeta activo
+-> calcula resolucion deseada por distancia, mirada, movimiento y estado.
+-> genera o actualiza paginas/shells desde density(point).
+-> cose LODs con Transvoxel o transicion equivalente.
+-> publica lotes identificados por meshId hacia 09.
+```
+
 09 queda tratado como backend de publicacion/dibujo:
 
 ```text
 10 decide su reparto.
 10 genera o prepara paginas.
-10 publica lotes de triangulos.
+10 publica lotes de triangulos con meshId estable y priorityScore.
 09, por detras, decide si los pinta, los reclama, los sobrescribe o los descarta.
 10 no cambia su reparto por una respuesta de 09.
 ```
@@ -27,7 +37,7 @@ density(point) de 06
 -> paginas LOD alrededor del player/camara
 -> Marching Cubes multiresolucion por pagina
 -> costura entre LODs con Transvoxel o transicion equivalente
--> Draw/SetMesh/publicacion hacia 09 como backend gestionado
+-> Draw/SetMesh/publicacion con meshId hacia 09 como backend gestionado
 ```
 
 Decision central:
@@ -36,6 +46,7 @@ Decision central:
 10 no se disena como BVH de triangulos.
 10 se disena como generacion adaptativa por paginas/chunks LOD sobre el campo density(point).
 10 no recibe autorizacion ni presupuesto de 09 para decidir su reparto.
+10 es quien calcula que parte del planeta esta en vision/interes para el planeta activo.
 ```
 
 El nombre de archivo conserva `BVH` por continuidad con el indice historico, pero el contrato tecnico de este documento elimina BVH como arquitectura principal.
@@ -86,19 +97,38 @@ Regla:
 Estas cifras son observaciones utiles para calibrar, no contratos finales:
 
 ```text
-Planeta 130 grid / 61.5 scale:
-- radio visual aproximado mantenido en 8k de diametro / 4k de radio efectivo.
-- salida observada: ~2.7M tris.
-- cabe en el socket temporal actual.
-- tarda poco para validacion.
-- parece adecuado como lectura de planeta completo a distancia, pero no para cercania extrema.
+Nota de escala:
+- En estas observaciones, "grid" describe el perfil/resolucion del shell de representacion usado en la prueba.
+- No redefine la micro cell logica 1x1x1 ni rompe `WorldRadius = GridRadius * WorldScale`.
+- Como el isoLevel actual es 0 y la superficie visible util aparece alrededor del corte del campo, se habla de diametro visible practico de ~8k.
+- El objetivo visual es mantener un planeta legible de ~8k de diametro visible util mientras cambia la resolucion del shell.
 
-Planeta 20 grid / 400 scale:
+Shell minimo / lejano:
+- grid/profile: 20.
+- world scale: 400.
+- diametro visible practico objetivo: ~8k.
 - salida observada: ~27k tris.
 - parece apropiado para muy lejos o para base de impostor/proxy.
 
-Planeta 400 grid / 20 scale:
-- resolucion visual deseable cerca.
+Shell intermedio de validacion:
+- grid/profile: 130.
+- world scale: 61.5.
+- diametro visible practico objetivo: ~8k.
+- salida observada: ~2.7M tris.
+- cabe en el buffer/socket temporal actual.
+- tarda poco para validacion.
+- parece adecuado como lectura de planeta completo a distancia, pero no para cercania extrema.
+
+Shell maxima resolucion local:
+- grid/profile: 125.
+- world scale: 64.
+- diametro visible practico objetivo: ~8k.
+- cabe en el buffer temporal.
+- va bien de rendimiento en pruebas actuales.
+- debe usarse como resolucion local/paginas activas, no como obligacion de planeta completo permanente.
+
+Referencia anterior de alta resolucion:
+- planeta 400 grid / 20 scale mostraba resolucion visual deseable cerca.
 - no cabe como planeta completo en el socket temporal.
 - solo debe existir como resolucion local por paginas, no como planeta entero.
 ```
@@ -157,7 +187,8 @@ Regla:
 ```text
 Si una decision trata de cuantos tris totales acaba pintando Environment, pertenece a 09.
 Si una decision trata de que paginas del planeta se generan y a que resolucion, pertenece a 10.
-Si una decision trata de no pedir/mantener paginas que la camara no puede ver, pertenece a 11.
+Si una decision trata de no pedir/mantener paginas del planeta activo por mirada, frustum local o interes visual, pertenece a 10.
+Si una decision trata de visibilidad auxiliar reutilizable para otros productores, pertenece a 11 como senal, no como autoridad del planeta.
 Si una decision trata de biomas y cambios de ruido por region, pertenece a un documento futuro de biomas/receta.
 ```
 
@@ -185,9 +216,9 @@ Relacion concreta:
 06 aporta density(point).
 07 aporta Marching Cubes canonico sobre celdas cartesianas.
 08 aporta la ruta de pintado/formato visual inicial.
-09 aporta un backend gestionado de publicacion, equivalente conceptual a una herramienta `Draw` / `SetMesh`.
+09 aporta un backend gestionado de publicacion, equivalente conceptual a una herramienta `Draw(meshId, datos, priority)` / `SetMesh`.
 10 decide paginas LOD y resolucion de muestreo.
-11 reducira prioridad o liberara lo no visible.
+11 queda como fuente futura de senales auxiliares de visibilidad/oclusion, sin liberar slots ni decidir LOD del planeta.
 ```
 
 Regla de frontera:
@@ -196,7 +227,7 @@ Regla de frontera:
 10 no modifica density(point).
 10 no reimplementa la formula de planeta.
 10 no depende de una respuesta de 09.
-10 no asume visibilidad final de 11.
+10 no delega en 11 la decision de vision/interes del planeta activo.
 ```
 
 ## Fuentes tecnicas usadas
@@ -504,7 +535,7 @@ frente de camara -> alta.
 direccion de movimiento -> alta.
 periferia cercana -> media.
 lejos visible -> baja.
-hemisferio contrario -> baja o delegada a 11.
+hemisferio contrario del planeta activo -> baja o no publicado por 10.
 ```
 
 Regla:
@@ -517,7 +548,8 @@ La direccion de mirada y el movimiento deben influir desde 10.
 Pero:
 
 ```text
-Frustum culling fuerte, oclusion y liberacion por invisibilidad pertenecen a 11.
+El frustum/interes del planeta activo se calcula aqui porque afecta a que paginas se generan y publican.
+La oclusion avanzada reutilizable queda para 11 como senal auxiliar futura.
 ```
 
 ## Lookahead
@@ -559,11 +591,12 @@ Flujo minimo:
 7. Cada pagina ejecuta Marching Cubes usando sampleStepGrid.
 8. Si hay borde con LOD distinto, se generan transition cells.
 9. 10 aplica o delega en 08 el formato de pintado/material/datos visuales por pagina.
-10. 10 envia la pagina a 09 como operacion de publicacion/dibujo.
-11. 09 decide internamente que pinta, reclama o descarta.
-12. 10 no ajusta su reparto por la respuesta de 09.
-13. Paginas obsoletas se liberan o degradan por decision de 10/11, no por feedback de 09.
-14. Metricas y diagnostico quedan visibles en el Lab.
+10. 10 asigna meshId estable y priorityScore a la pagina/lote.
+11. 10 envia la pagina a 09 como operacion de publicacion/dibujo.
+12. 09 decide internamente que pinta, reclama o descarta.
+13. 10 no ajusta su reparto por la respuesta de 09.
+14. Paginas obsoletas se liberan o degradan por decision de 10, no por feedback de 09.
+15. Metricas y diagnostico quedan visibles en el Lab.
 ```
 
 Regla:
@@ -679,8 +712,8 @@ Regla:
 09 puede entenderse como una herramienta parecida a:
 
 ```text
-ManagedDraw(datos)
-SetManagedMesh(datos)
+ManagedDraw(meshId, datos, priority)
+SetManagedMesh(meshId, datos, priority)
 ```
 
 Flujo:
@@ -706,25 +739,31 @@ Regla:
 
 ## Relacion con 11
 
-10 usa senales de mirada y movimiento para calidad.
+10 usa distancia, mirada, movimiento y frustum local del planeta activo para decidir paginas y prioridad.
 
-11 decide visibilidad global.
+11 no decide la visibilidad del planeta activo en lugar de 10.
 
 Separacion:
 
 ```text
 10:
-    Que resolucion quiero para esta pagina si compite por geometria.
+    Que paginas del planeta activo existen.
+    Que resolucion tiene cada pagina.
+    Que paginas se publican con meshId y priorityScore.
+    Que paginas se degradan, cancelan o liberan por ciclo de vida del planeta.
 
 11:
-    Esta pagina deberia competir ahora o esta fuera de frustum/oculta.
+    Puede aportar senales auxiliares reutilizables de oclusion/visibilidad a productores futuros.
+    No pinta.
+    No libera slots de 09 directamente.
+    No decide LOD del planeta.
 ```
 
 Regla:
 
 ```text
-11 puede bajar prioridad, liberar o evitar que paginas invisibles sigan compitiendo.
-10 no implementa oclusion global en esta fase.
+Si una senal futura de 11 contradice la decision del planeta activo, se documenta como entrada a 10.
+No se crea un segundo camino que calcule vision y pinte por fuera de 10 -> 09.
 ```
 
 ## Biomas
@@ -768,7 +807,7 @@ Crear documento propio de Biomas antes de introducir reglas de bioma en codigo.
 Decision inicial:
 
 ```text
-Durante 09-10-11 la salida visible seguira usando Mesh runtime CPU gestionada por el artista, porque es mas facil de depurar y hacer andar.
+Durante 09-10 y las senales auxiliares que hagan falta, la salida visible seguira usando Mesh runtime CPU gestionada por el artista, porque es mas facil de depurar y hacer andar.
 ```
 
 Motivo:
@@ -794,8 +833,9 @@ La ruta natural a largo plazo es GPU-resident: GraphicsBuffer, draw procedural/i
 Regla de orden:
 
 ```text
-Primero hacer funcionar 09, 10 y 11 con Mesh runtime medible.
-Cuando 11 este terminado y el trabajo con triangulos este resuelto, cambiar el backend visible para que deje de escupir a Mesh y pinte desde GPU.
+Primero hacer funcionar 09 y 10 con Mesh runtime medible.
+Si 11 aporta senales auxiliares necesarias, integrarlas como entrada de productores sin cambiar la frontera 10 -> 09.
+Cuando el trabajo con triangulos este resuelto, cambiar el backend visible para que deje de escupir a Mesh y pinte desde GPU.
 ```
 
 Momento de GPU-resident:
@@ -803,8 +843,8 @@ Momento de GPU-resident:
 ```text
 09 resuelve el backend gestionado de triangulos.
 10 resuelve el reparto adaptativo de poligonaje.
-11 resuelve visibilidad, oclusion y frustum.
-Despues de 11, la geometria ya existe como flujo de triangulos correcto.
+11 puede aportar senales auxiliares de visibilidad/oclusion si hacen falta.
+Despues de validar 09/10, la geometria ya existe como flujo de triangulos correcto.
 El siguiente paso es cambiar la salida visible: de Mesh runtime a buffers/draw GPU-resident.
 ```
 
@@ -812,7 +852,7 @@ Decision:
 
 ```text
 GPU-resident no es requisito para cerrar 10.
-GPU-resident queda como ultimo paso posterior a 11, reutilizando el flujo de triangulos ya validado.
+GPU-resident queda como ultimo paso posterior a validar 09/10 y las senales auxiliares necesarias, reutilizando el flujo de triangulos ya validado.
 ```
 
 No se permite:
@@ -1027,6 +1067,7 @@ Responsabilidad:
 ```text
 Preparar batches de triangulos por pagina.
 Enviar operaciones Draw/SetMesh al backend gestionado por 09.
+Enviar meshId estable y priorityScore junto a cada publicacion.
 Registrar que se solicito publicacion.
 No interpretar granted/denied/reclaimed como decision de LOD.
 No saltarse PlanetTrianglePoolWriter.
@@ -1124,7 +1165,7 @@ Generar y publicar hacia Mesh runtime CPU gestionada por 09 como backend de dibu
 Ruta futura:
 
 ```text
-Evaluar backend GPU-resident al final del bloque 09-10-11.
+Evaluar backend GPU-resident despues de validar 09/10 con Mesh runtime.
 ```
 
 ## Liberacion de recursos
@@ -1325,7 +1366,7 @@ Publicacion gestionada obligatoria via 09 para la ruta visible gestionada.
 Buffers/pools preasignados.
 Metricas por pagina y por LOD.
 Ruta Mesh inicial para depurar.
-GPU-resident como ultimo paso del bloque.
+GPU-resident como ultimo paso despues de validar la publicacion adaptativa.
 Biomas en documento futuro propio.
 ```
 
@@ -1344,14 +1385,15 @@ Transvoxel o transicion equivalente sera obligatorio para cerrar grietas entre L
 10 mantiene Marching Cubes como extractor inicial.
 Dual Contouring queda como alternativa futura, no entra en esta fase.
 10 prioriza por distancia, mirada y movimiento/lookahead.
-10 no implementa oclusion/frustum global.
-10 envia Draw/SetMesh/publicacion gestionada a 09.
+10 implementa frustum/interes local del planeta activo como parte de su seleccion de paginas.
+10 no implementa oclusion global reutilizable.
+10 envia Draw/SetMesh/publicacion gestionada con meshId y priorityScore a 09.
 10 no pinta directo saltandose 09.
 10 no recibe ni usa respuesta de 09 para decidir LOD.
 10 no modifica density(point).
 Biomas quedan fuera y requieren documento propio.
 La salida visible inicial sigue siendo Mesh runtime CPU gestionada por 09.
-La ruta GPU-resident queda como evaluacion final del bloque 09-10-11, despues de tener 09/10/11 funcionando con Mesh.
+La ruta GPU-resident queda como evaluacion final despues de tener 09/10 funcionando con Mesh y las senales auxiliares necesarias integradas.
 Las tablas Transvoxel oficiales de Eric Lengyel quedan descargadas como referencia local en Docs/Referencias/Transvoxel.
 El layout inicial sera C# generado con arrays planos y GPU/HLSL con uints empaquetados.
 10 compartira base HLSL/codigo comun con 07, pero su cache residente sera propia por pagina, LOD y version.
@@ -1398,7 +1440,7 @@ Empezar con selector de paginas y Marching Cubes adaptativo.
 Mantener Mesh runtime para ver y medir.
 Introducir Transvoxel antes de cerrar 10.
 No tocar biomas todavia.
-No migrar a GPU-resident hasta que 09/10/11 funcionen y se midan.
+No migrar a GPU-resident hasta que 09/10 funcionen y se midan.
 ```
 
 ## Criterio de cierre
@@ -1417,5 +1459,5 @@ El sistema cancela trabajo obsoleto.
 El sistema envia publicacion gestionada a 09.
 El sistema mide paginas, tris, memoria, tiempos y releases.
 El sistema mantiene Mesh runtime como backend visible inicial.
-La migracion GPU-resident queda documentada como ultimo paso posterior a validar 09/10/11.
+La migracion GPU-resident queda documentada como ultimo paso posterior a validar 09/10.
 ```
