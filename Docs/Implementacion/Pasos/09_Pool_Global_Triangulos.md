@@ -6,6 +6,50 @@ Crear un presupuesto fijo de triangulos para una familia de geometria gestionada
 
 La intencion de 09 no es reducir, simplificar ni recalcular geometria. La intencion es controlar cuantos triangulos pueden estar vivos/pintados al mismo tiempo.
 
+## Implementacion incremental actual
+
+La primera reparacion de 09 se divide en dos niveles:
+
+```text
+Nivel A -> residencia real de paquetes/publicaciones y confiscacion.
+Nivel B -> salida visible Mesh runtime poseida directamente por el artista.
+```
+
+El nivel A es obligatorio antes de seguir:
+
+```text
+Cada publicacion concedida ocupa un paquete residente del artista.
+Cada paquete guarda ownerId, meshId, allocationId, triangleCount, score, bucket y version.
+Una publicacion nueva con mejor priorityScore puede confiscar paquetes residentes peores.
+Una publicacion peor que lo residente se deniega sin borrar lo ya ocupado.
+Una publicacion con el mismo ownerId + meshId reemplaza su publicacion anterior.
+El storage de paquetes se reserva de forma perezosa en el primer Draw real, no al entrar en Play.
+ReleaseAllSlots suelta las referencias para recuperar RAM.
+```
+
+Estado aceptado temporalmente:
+
+```text
+08 sigue construyendo la Mesh visible usando la seleccion devuelta por 09.
+09 ya no es solo un filtro efimero: conserva residencia de paquetes y puede confiscar.
+09 todavia no posee por completo la Mesh runtime visible del artista.
+```
+
+Pendiente para cerrar el nivel B:
+
+```text
+Mover la salida visible Mesh runtime al artista.
+Hacer que las confiscaciones invaliden o retiren visualmente triangulos ya pintados por publicaciones anteriores.
+Agrupar publicaciones por material/render batch dentro del artista.
+```
+
+Regla:
+
+```text
+No se avanza a reparto adaptativo real de 10 sin que 09 conserve al menos residencia/confiscacion de slots.
+La posesion completa de la Mesh por 09 queda como siguiente cierre de 09 si la ruta actual necesita pintar varias publicaciones simultaneas.
+```
+
 Presupuestos iniciales:
 
 ```text

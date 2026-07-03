@@ -18,6 +18,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private const int SurfaceAtlasResolution = 256;
         private const float SurfaceAtlasSeaLevelV = 0.5f;
         private const float SurfaceAtlasLandRangeScale = 0.6f;
+        private const uint PlanetSurfaceMeshId = 1u;
 
         private Mesh runtimeMesh;
         private Mesh runtimeWaterMesh;
@@ -95,7 +96,8 @@ namespace MarchingCubesPlanet.MarchingCubes
                     sourceVertices,
                     triangleIndex,
                     recipeCopy.GridRadius),
-                PlanetTriangleOwnerId.PlanetSurfaceValue);
+                PlanetTriangleOwnerId.PlanetSurfaceValue,
+                PlanetSurfaceMeshId);
             int paintedTriangleCount = drawResult.SelectedSourceTriangleCount;
             int paintedVertexCount = paintedTriangleCount * 3;
             PlanetGpuShapeCell[] cells = new PlanetGpuShapeCell[recipe.VoronoiDivision];

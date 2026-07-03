@@ -1,4 +1,5 @@
 using System;
+using UnityEngine;
 
 namespace MarchingCubesPlanet.TrianglePools
 {
@@ -6,6 +7,9 @@ namespace MarchingCubesPlanet.TrianglePools
     {
         private readonly PlanetTrianglePoolController controller;
         private bool[] selectedSourceTriangles;
+        private float[] triangleScores;
+        private int[] triangleCosts;
+        private int[] triangleBuckets;
         private int[] bucketTriangleCosts;
 
         public PlanetTrianglePoolWriter(PlanetTrianglePoolController controller)
@@ -27,11 +31,13 @@ namespace MarchingCubesPlanet.TrianglePools
             int sourceTriangleCount,
             Func<int, float> scoreProvider,
             Func<int, int> triangleCostProvider,
-            uint ownerId)
+            uint ownerId,
+            uint meshId = 0u)
         {
             sourceTriangleCount = Math.Max(0, sourceTriangleCount);
             EnsureBuffers(sourceTriangleCount, controller.Budget.DistanceBucketCount);
             ClearSelection(sourceTriangleCount);
+            int allocationId = controller.BeginAllocation(ownerId, meshId);
 
             if (sourceTriangleCount <= 0 || controller.TotalTriangleBudget <= 0)
             {
@@ -58,6 +64,7 @@ namespace MarchingCubesPlanet.TrianglePools
             for (int triangleIndex = 0; triangleIndex < sourceTriangleCount; triangleIndex++)
             {
                 float score = scoreProvider(triangleIndex);
+                triangleScores[triangleIndex] = score;
                 if (score < minScore)
                 {
                     minScore = score;
@@ -74,66 +81,99 @@ namespace MarchingCubesPlanet.TrianglePools
             for (int triangleIndex = 0; triangleIndex < sourceTriangleCount; triangleIndex++)
             {
                 int cost = Math.Max(0, triangleCostProvider(triangleIndex));
+                triangleCosts[triangleIndex] = cost;
                 requestedTriangleCost += cost;
                 int bucket = ScoreToBucket(
-                    scoreProvider(triangleIndex),
+                    triangleScores[triangleIndex],
                     minScore,
                     maxScore);
+                triangleBuckets[triangleIndex] = bucket;
                 bucketTriangleCosts[bucket] += cost;
-            }
-
-            int budgetRemaining = Math.Min(controller.TotalTriangleBudget, requestedTriangleCost);
-            int highestFullBucket = -1;
-            int partialBucket = -1;
-            int partialBucketRemaining = 0;
-            for (int bucket = 0; bucket < bucketTriangleCosts.Length; bucket++)
-            {
-                int bucketCost = bucketTriangleCosts[bucket];
-                if (bucketCost <= budgetRemaining)
-                {
-                    budgetRemaining -= bucketCost;
-                    highestFullBucket = bucket;
-                    continue;
-                }
-
-                partialBucket = bucket;
-                partialBucketRemaining = budgetRemaining;
-                break;
             }
 
             int selectedSourceTriangleCount = 0;
             int grantedTriangleCost = 0;
             int worstBucket = 0;
             float worstScore = 0f;
-            for (int triangleIndex = 0; triangleIndex < sourceTriangleCount; triangleIndex++)
+            int packageBucket = 0;
+            float packageScore = minScore;
+            if (!controller.TryReserveAllocation(
+                    ownerId,
+                    meshId,
+                    allocationId,
+                    requestedTriangleCost,
+                    packageBucket,
+                    packageScore,
+                    Vector3.zero,
+                    out int grantedTriangleCapacity,
+                    out int reclaimedTriangleCost))
             {
-                float score = scoreProvider(triangleIndex);
-                int bucket = ScoreToBucket(score, minScore, maxScore);
-                int cost = Math.Max(0, triangleCostProvider(triangleIndex));
-                bool selected = bucket <= highestFullBucket;
-                if (!selected && bucket == partialBucket && cost <= partialBucketRemaining)
-                {
-                    selected = true;
-                    partialBucketRemaining -= cost;
-                }
+                grantedTriangleCapacity = 0;
+            }
 
-                if (!selected)
+            int remainingGrantedCapacity = grantedTriangleCapacity;
+            for (int bucket = 0; bucket < bucketTriangleCosts.Length; bucket++)
+            {
+                if (bucketTriangleCosts[bucket] <= 0)
                 {
                     continue;
                 }
 
-                selectedSourceTriangles[triangleIndex] = true;
-                selectedSourceTriangleCount++;
-                grantedTriangleCost += cost;
-                if (bucket >= worstBucket)
+                for (int triangleIndex = 0; triangleIndex < sourceTriangleCount; triangleIndex++)
                 {
-                    worstBucket = bucket;
-                    worstScore = score;
+                    if (triangleBuckets[triangleIndex] != bucket)
+                    {
+                        continue;
+                    }
+
+                    int cost = triangleCosts[triangleIndex];
+                    if (cost <= 0)
+                    {
+                        continue;
+                    }
+
+                    if (cost > remainingGrantedCapacity)
+                    {
+                        continue;
+                    }
+
+                    float score = triangleScores[triangleIndex];
+                    selectedSourceTriangles[triangleIndex] = true;
+                    selectedSourceTriangleCount++;
+                    grantedTriangleCost += cost;
+                    remainingGrantedCapacity -= cost;
+                    if (bucket >= worstBucket)
+                    {
+                        worstBucket = bucket;
+                        worstScore = score;
+                    }
                 }
             }
 
+            if (grantedTriangleCost > 0)
+            {
+                controller.SetAllocationTriangleCount(
+                    ownerId,
+                    meshId,
+                    allocationId,
+                    grantedTriangleCost);
+                controller.UpdateAllocationPriority(
+                    ownerId,
+                    meshId,
+                    allocationId,
+                    worstBucket,
+                    worstScore);
+            }
+            else
+            {
+                controller.SetAllocationTriangleCount(
+                    ownerId,
+                    meshId,
+                    allocationId,
+                    0);
+            }
+
             int deniedTriangleCost = Math.Max(0, requestedTriangleCost - grantedTriangleCost);
-            int reclaimedTriangleCost = Math.Max(0, grantedTriangleCost - controller.FreeTriangleSlots);
             LastDrawResult = new PlanetTriangleDrawResult(
                 controller.Budget.ArtistId,
                 ownerId,
@@ -158,6 +198,21 @@ namespace MarchingCubesPlanet.TrianglePools
             if (selectedSourceTriangles == null || selectedSourceTriangles.Length < sourceTriangleCount)
             {
                 selectedSourceTriangles = new bool[sourceTriangleCount];
+            }
+
+            if (triangleScores == null || triangleScores.Length < sourceTriangleCount)
+            {
+                triangleScores = new float[sourceTriangleCount];
+            }
+
+            if (triangleCosts == null || triangleCosts.Length < sourceTriangleCount)
+            {
+                triangleCosts = new int[sourceTriangleCount];
+            }
+
+            if (triangleBuckets == null || triangleBuckets.Length < sourceTriangleCount)
+            {
+                triangleBuckets = new int[sourceTriangleCount];
             }
 
             if (bucketTriangleCosts == null || bucketTriangleCosts.Length != bucketCount)
