@@ -11,6 +11,10 @@ namespace MarchingCubesPlanet.MarchingCubes
 {
     public sealed class PlanetChunkMeshCache
     {
+        private const string DebugPrefix = "[10 Chunk Cache]";
+        private const string CreateColor = "#FFD400";
+        private const string DeleteColor = "#FF4040";
+        private const string LoadColor = "#37D67A";
         public const string DefaultFolderName = "PlanetChunkCache";
         public const string PlanetIdFileName = "planet_id";
         public const string ChunksFolderName = "chunks";
@@ -67,7 +71,13 @@ namespace MarchingCubesPlanet.MarchingCubes
 
             try
             {
+                bool rootExists = Directory.Exists(RootPath);
                 Directory.CreateDirectory(RootPath);
+                if (!rootExists)
+                {
+                    LogCreate("Created cache root: " + RootPath);
+                }
+
                 string planetIdPath = Path.Combine(RootPath, PlanetIdFileName);
                 string existingPlanetId = File.Exists(planetIdPath)
                     ? File.ReadAllText(planetIdPath, Encoding.UTF8).Trim()
@@ -78,12 +88,28 @@ namespace MarchingCubesPlanet.MarchingCubes
                 {
                     if (Directory.Exists(ChunksPath))
                     {
+                        LogDelete(
+                            "Deleted stale chunk cache. oldPlanetId=" + existingPlanetId +
+                            " newPlanetId=" + planetId +
+                            " path=" + ChunksPath);
                         Directory.Delete(ChunksPath, true);
                     }
                 }
 
+                bool chunksPathExists = Directory.Exists(ChunksPath);
                 Directory.CreateDirectory(ChunksPath);
+                if (!chunksPathExists)
+                {
+                    LogCreate("Created chunks folder: " + ChunksPath);
+                }
+
+                bool planetIdFileExists = File.Exists(planetIdPath);
                 File.WriteAllText(planetIdPath, planetId, Encoding.UTF8);
+                if (!planetIdFileExists || !string.Equals(existingPlanetId, planetId, StringComparison.Ordinal))
+                {
+                    LogCreate("Wrote planet_id: " + planetIdPath + " planetId=" + planetId);
+                }
+
                 lastDiagnostic = "Chunk cache ready. planetId=" + planetId + " root=" + RootPath;
                 return true;
             }
@@ -190,18 +216,29 @@ namespace MarchingCubesPlanet.MarchingCubes
             try
             {
                 string lodDirectory = GetChunkLodDirectory(chunkId, lod);
+                bool lodDirectoryExists = Directory.Exists(lodDirectory);
                 Directory.CreateDirectory(lodDirectory);
+                if (!lodDirectoryExists)
+                {
+                    LogCreate("Created chunk LOD folder: " + lodDirectory);
+                }
 
                 if (surfaceMesh != null)
                 {
-                    WriteMesh(Path.Combine(lodDirectory, MeshFileName), surfaceMesh);
-                    WriteChunkData(Path.Combine(lodDirectory, ChunkDataFileName), chunkId, lod, surfaceMesh, false);
+                    string surfaceMeshPath = Path.Combine(lodDirectory, MeshFileName);
+                    string surfaceDataPath = Path.Combine(lodDirectory, ChunkDataFileName);
+                    WriteMesh(surfaceMeshPath, surfaceMesh);
+                    WriteChunkData(surfaceDataPath, chunkId, lod, surfaceMesh, false);
+                    LogCreate("Wrote surface cache files: " + surfaceMeshPath + " / " + surfaceDataPath);
                 }
 
                 if (waterMesh != null)
                 {
-                    WriteMesh(Path.Combine(lodDirectory, WaterMeshFileName), waterMesh);
-                    WriteChunkData(Path.Combine(lodDirectory, WaterDataFileName), chunkId, lod, waterMesh, true);
+                    string waterMeshPath = Path.Combine(lodDirectory, WaterMeshFileName);
+                    string waterDataPath = Path.Combine(lodDirectory, WaterDataFileName);
+                    WriteMesh(waterMeshPath, waterMesh);
+                    WriteChunkData(waterDataPath, chunkId, lod, waterMesh, true);
+                    LogCreate("Wrote water cache files: " + waterMeshPath + " / " + waterDataPath);
                 }
 
                 lastDiagnostic = "Chunk cache saved chunk " + chunkId + " LOD" + lod + ".";
@@ -407,6 +444,7 @@ namespace MarchingCubesPlanet.MarchingCubes
 
                     mesh.SetIndices(indices, MeshTopology.Triangles, 0, true);
                     mesh.bounds = bounds;
+                    LogLoad("Loaded mesh from disk: " + path + " vertices=" + vertexCount + " indices=" + indexCount);
                     return true;
                 }
             }
@@ -500,6 +538,26 @@ namespace MarchingCubesPlanet.MarchingCubes
             {
                 UnityEngine.Object.DestroyImmediate(target);
             }
+        }
+
+        private static void LogCreate(string message)
+        {
+            Debug.Log(FormatColor(CreateColor, "CREATE " + message));
+        }
+
+        private static void LogDelete(string message)
+        {
+            Debug.Log(FormatColor(DeleteColor, "DELETE " + message));
+        }
+
+        private static void LogLoad(string message)
+        {
+            Debug.Log(FormatColor(LoadColor, "LOAD " + message));
+        }
+
+        private static string FormatColor(string color, string message)
+        {
+            return "<color=" + color + ">" + DebugPrefix + " " + message + "</color>";
         }
     }
 
