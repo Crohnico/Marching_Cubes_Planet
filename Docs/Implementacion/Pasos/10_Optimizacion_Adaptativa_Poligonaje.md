@@ -561,7 +561,22 @@ Esto permite validar desde Generate que el camino barato no esta leyendo datos i
 
 ## Paso 5 - Trabajo por paquetes de chunks
 
-10 no debe generar, cargar ni instanciar todos los chunks visibles de golpe.
+10 no debe generar, cargar ni instanciar todos los chunks de refinamiento de golpe.
+
+Excepcion importante:
+
+```text
+La shell fallback LOD2 del planeta si debe priorizarse como carga inmediata.
+```
+
+Motivo:
+
+```text
+Al entrar en el planeta necesitamos una representacion completa y barata cuanto antes.
+LOD2 actua como shell global de seguridad.
+Esa shell puede cargarse o generarse de una vez para que el planeta exista entero.
+Despues, LOD0 y LOD1 sustituyen partes de esa shell por paquetes.
+```
 
 Se trabajara por paquetes.
 
@@ -585,22 +600,82 @@ No provocar picos de instanciacion.
 No bloquear el frame por intentar resolver demasiados chunks a la vez.
 ```
 
+Lectura:
+
+```text
+Estos objetivos aplican a refinamientos, cambios de LOD y cargas no urgentes.
+No bloquean la publicacion inicial de LOD2 fallback.
+```
+
 Regla:
 
 ```text
-El sistema avanza por paquetes hasta completar el conjunto visible deseado.
+Primero se obtiene una shell completa LOD2.
+Despues el sistema avanza por paquetes hasta completar el conjunto visible/refinado deseado.
 ```
 
 Decision inicial:
 
 ```text
-Cada paquete tendra 5 o 6 chunks.
+LOD2 fallback -> ImmediateLod2Shell.
+LOD0/LOD1/refinamientos -> paquetes de 5 o 6 chunks.
 ```
 
-Pendiente:
+### Paso 5B - Primer swap visual tosco
+
+Para que el cambio de LOD sea visible sin recalcular el planeta entero, 07 debe
+poder extraer solo un chunk candidato.
+
+Regla:
 
 ```text
-Definir prioridad dentro del paquete.
+07 expone una ruta de extraccion por candidateChunkIndex.
+La extraccion de un chunk procesa solo ese chunk canonico de 64^3 celdas.
+El resultado conserva el chunkId original del candidato.
+```
+
+Motivo:
+
+```text
+Si 07 recalcula todo el planeta para sacar un chunk LOD1/LOD0, volvemos al problema de RAM/freeze.
+Si 07 extrae un chunk pero lo marca como chunk 0, 10 no sabe que GameObject LOD2 debe sustituir.
+```
+
+Flujo objetivo del swap tosco:
+
+```text
+1. Mantener la shell LOD2 visible.
+2. Elegir un paquete pequeno de chunks cercanos.
+3. Para cada chunk del paquete, pedir a 07 solo ese candidateChunkIndex con receta LOD1.
+4. Pintar/cachear ese chunk LOD1.
+5. Sustituir el GameObject LOD2 de ese chunk por el GameObject LOD1.
+```
+
+Estado actual:
+
+```text
+07 ya expone la ruta para extraer un solo chunk candidato.
+Esto desbloquea 5B, pero no completa 5B.
+```
+
+Pasos pendientes antes de pasar al Paso 6:
+
+```text
+1. Mantener la shell LOD2 visible como estado base de Generate.
+2. Seleccionar un paquete pequeno de chunks cercanos que pidan refinamiento.
+3. Crear una lista operativa de cambios de LOD:
+   chunkId/candidateChunkIndex -> LOD1.
+4. Ejecutar una segunda fase de Generate despues de publicar LOD2.
+5. Para cada entrada del paquete, comprobar si existe chunkId/LOD1 en cache.
+6. Si existe, cargar solo ese chunk LOD1 desde disco.
+7. Si no existe, cambiar temporalmente 06/07 a receta LOD1 y pedir a 07 solo ese candidateChunkIndex.
+8. Pintar ese resultado como chunk LOD1 sin reconstruir toda la shell.
+9. Guardar ese chunk LOD1 en cache como chunkId/LOD1.
+10. Anadir a 09/painter una operacion publica para sustituir solo un chunk:
+    quitar/ocultar GameObjects LOD2 de ese chunkId y publicar los GameObjects LOD1.
+11. Actualizar metricas/debug para mostrar cuantos chunks del paquete se han cargado,
+    generado, guardado y sustituido.
+12. Validar desde el boton Generate del Canvas que se ve el primer swap tosco LOD2 -> LOD1.
 ```
 
 Presupuestos:
@@ -676,15 +751,16 @@ El flujo inicial sera:
 1. 06/10 determinan los chunks necesarios para el planeta visible inicial.
 2. Para cada chunk, 10 calcula su puntuacion segun jugador y camara.
 3. 10 asigna LOD0, LOD1 o LOD2 al chunk.
-4. 10 agrupa los chunks visibles en paquetes de trabajo.
-5. Para cada paquete, 10 comprueba si cada chunk existe en disco con el LOD asignado.
-6. Si el chunk existe y no necesita Transvoxel, 10 carga solo mesh.
-7. Si el chunk existe y necesita Transvoxel, 10 carga chunk_data.
-8. Si el chunk no existe, 10 pide/genera la data necesaria para ese chunk y LOD.
-9. 10 construye la mesh del chunk si hace falta.
-10. 10 guarda mesh y chunk_data en cache segun corresponda.
-11. 10 pinta/publica ese chunk de forma independiente.
-12. 10 pasa al siguiente paquete sin saturar el sistema.
+4. Si no hay shell LOD2 visible, 10 carga/genera primero LOD2 como fallback inmediato.
+5. 10 agrupa los chunks que necesitan LOD0/LOD1 en paquetes de refinamiento.
+6. Para cada paquete, 10 comprueba si cada chunk existe en disco con el LOD asignado.
+7. Si el chunk existe y no necesita Transvoxel, 10 carga solo mesh.
+8. Si el chunk existe y necesita Transvoxel, 10 carga chunk_data.
+9. Si el chunk no existe, 10 pide/genera la data necesaria para ese chunk y LOD.
+10. 10 construye la mesh del chunk si hace falta.
+11. 10 guarda mesh y chunk_data en cache segun corresponda.
+12. 10 pinta/publica ese chunk sustituyendo su representacion LOD2.
+13. 10 pasa al siguiente paquete sin saturar el sistema.
 ```
 
 Regla:
@@ -732,6 +808,7 @@ Los thresholds iniciales seran LOD0 hasta 3 chunks, LOD1 hasta 6 chunks y LOD2 p
 La hysteresis inicial sera LOD0 sale al pasar de 4 chunks y LOD1 sale al pasar de 7 chunks.
 10 asigna LOD0, LOD1 o LOD2 a cada chunk en funcion de esa puntuacion.
 LOD2 se usa como fallback barato inicial.
+LOD2 fallback se prioriza como shell inmediata completa.
 Generar o cambiar un chunk solo calcula ese chunk y su halo minimo, nunca el planeta entero.
 La primera ruta guarda mesh y chunk_data por chunkId/LOD.
 10 solo trabaja sobre chunks visibles o candidatos visibles.
@@ -739,8 +816,8 @@ La primera ruta guarda mesh y chunk_data por chunkId/LOD.
 10 carga solo .pmesh cuando no necesita operar con datos internos del chunk.
 10 carga .pchunk cuando necesita resolver Transvoxel o bordes por cambio de LOD.
 Generate usa MeshOnly hasta que exista una necesidad real de Transvoxel o cambio de LOD entre vecinos.
-10 procesa chunks por paquetes para no saturar el sistema.
-El paquete inicial de trabajo tendra 5 o 6 chunks.
+10 procesa refinamientos por paquetes para no saturar el sistema.
+El paquete inicial de refinamiento tendra 5 o 6 chunks.
 No se fija presupuesto por frame, disco o RAM hasta medir la primera ruta.
 09 recibe la orden de pintar/publicar y gestiona internamente residencia y confiscacion.
 Si no hay trabajo visible urgente, 10 cocina lentamente LODs restantes en disco.

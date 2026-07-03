@@ -201,4 +201,68 @@ namespace MarchingCubesPlanet.MarchingCubes
             return PlanetChunkLod.LOD2;
         }
     }
+
+    public enum PlanetChunkWorkPackageMode
+    {
+        ImmediateLod2Shell = 0,
+        RefinementPackages = 1
+    }
+
+    public readonly struct PlanetChunkWorkPackageSummary
+    {
+        public PlanetChunkWorkPackageSummary(
+            int lod,
+            int chunkCount,
+            int packageSize,
+            int packageCount,
+            PlanetChunkWorkPackageMode mode)
+        {
+            Lod = lod;
+            ChunkCount = chunkCount;
+            PackageSize = packageSize;
+            PackageCount = packageCount;
+            Mode = mode;
+        }
+
+        public int Lod { get; }
+        public int ChunkCount { get; }
+        public int PackageSize { get; }
+        public int PackageCount { get; }
+        public PlanetChunkWorkPackageMode Mode { get; }
+        public bool IsImmediateShell => Mode == PlanetChunkWorkPackageMode.ImmediateLod2Shell;
+    }
+
+    public static class PlanetChunkWorkPackagePlanner
+    {
+        public const int DefaultRefinementPackageSize = 6;
+
+        public static PlanetChunkWorkPackageSummary BuildSummary(
+            int lod,
+            int chunkCount,
+            int refinementPackageSize = DefaultRefinementPackageSize)
+        {
+            int safeLod = Mathf.Max(0, lod);
+            int safeChunkCount = Mathf.Max(0, chunkCount);
+            if (safeLod == (int)PlanetChunkLodUtility.InitialFallbackLod)
+            {
+                return new PlanetChunkWorkPackageSummary(
+                    safeLod,
+                    safeChunkCount,
+                    safeChunkCount,
+                    safeChunkCount > 0 ? 1 : 0,
+                    PlanetChunkWorkPackageMode.ImmediateLod2Shell);
+            }
+
+            int safePackageSize = Mathf.Max(1, refinementPackageSize);
+            int packageCount = safeChunkCount > 0
+                ? Mathf.CeilToInt(safeChunkCount / (float)safePackageSize)
+                : 0;
+            return new PlanetChunkWorkPackageSummary(
+                safeLod,
+                safeChunkCount,
+                safePackageSize,
+                packageCount,
+                PlanetChunkWorkPackageMode.RefinementPackages);
+        }
+    }
 }

@@ -557,6 +557,7 @@ namespace MarchingCubesPlanet.Preview
                 AppendLine("MC tris attempted", marchingCubesLab.LastTriangleCountAttempted.ToString());
                 AppendLine("MC tris written", marchingCubesLab.LastTriangleCountWritten.ToString());
                 AppendLine("MC overflow", marchingCubesLab.LastOverflow ? "yes" : "no");
+                AppendLine("MC extracted chunk", marchingCubesLab.LastExtractedCandidateChunkIndex.ToString());
             }
 
             if (paintLab != null)
@@ -571,6 +572,9 @@ namespace MarchingCubesPlanet.Preview
                 AppendLine("Cache loaded chunks", paintLab.LastChunkCacheLoadedChunkCount.ToString());
                 AppendLine("Cache mesh-only loads", paintLab.LastChunkCacheMeshOnlyLoadCount.ToString());
                 AppendLine("Cache chunk-data loads", paintLab.LastChunkCacheChunkDataLoadCount.ToString());
+                AppendLine("Chunk work mode", paintLab.LastChunkWorkPackageMode.ToString());
+                AppendLine("Chunk work packages", paintLab.LastChunkWorkPackageCount.ToString());
+                AppendLine("Chunk package size", paintLab.LastChunkWorkPackageSize.ToString());
                 AppendLine("Painted tris", paintLab.LastPaintedTriangleCount.ToString());
                 AppendLine("Painted vertices", paintLab.LastPaintedVertexCount.ToString());
                 AppendLine("Painted water tris", paintLab.LastWaterTriangleCount.ToString());

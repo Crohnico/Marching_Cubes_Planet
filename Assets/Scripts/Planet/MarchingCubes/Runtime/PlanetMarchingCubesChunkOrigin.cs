@@ -19,5 +19,10 @@ namespace MarchingCubesPlanet.MarchingCubes
             this.z = z;
             reserved = 0;
         }
+
+        public override string ToString()
+        {
+            return "(" + x + ", " + y + ", " + z + ")";
+        }
     }
 }

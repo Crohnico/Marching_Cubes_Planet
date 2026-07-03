@@ -45,6 +45,10 @@ namespace MarchingCubesPlanet.Lab
         [SerializeField] private int lastChunkCacheMeshOnlyLoadCount;
         [SerializeField] private int lastChunkCacheChunkDataLoadCount;
         [SerializeField] private int lastChunkCacheMissingChunkDataCount;
+        [SerializeField] private PlanetChunkWorkPackageMode lastChunkWorkPackageMode;
+        [SerializeField] private int lastChunkWorkPackageSize;
+        [SerializeField] private int lastChunkWorkPackageCount;
+        [SerializeField] private bool lastChunkWorkImmediateShell;
         [SerializeField] private long lastMeshEstimatedBytes;
         [SerializeField] private long lastWaterMeshEstimatedBytes;
         [SerializeField] private string lastAction;
@@ -92,6 +96,10 @@ namespace MarchingCubesPlanet.Lab
         public int LastChunkCacheMeshOnlyLoadCount => lastChunkCacheMeshOnlyLoadCount;
         public int LastChunkCacheChunkDataLoadCount => lastChunkCacheChunkDataLoadCount;
         public int LastChunkCacheMissingChunkDataCount => lastChunkCacheMissingChunkDataCount;
+        public PlanetChunkWorkPackageMode LastChunkWorkPackageMode => lastChunkWorkPackageMode;
+        public int LastChunkWorkPackageSize => lastChunkWorkPackageSize;
+        public int LastChunkWorkPackageCount => lastChunkWorkPackageCount;
+        public bool LastChunkWorkImmediateShell => lastChunkWorkImmediateShell;
         public long LastMeshEstimatedBytes => lastMeshEstimatedBytes;
         public long LastWaterMeshEstimatedBytes => lastWaterMeshEstimatedBytes;
 
@@ -320,6 +328,7 @@ namespace MarchingCubesPlanet.Lab
             }
 
             ApplyChunkCacheLoadSummary(cacheLoadSummary);
+            ApplyChunkWorkPackageSummary(PlanetChunkWorkPackagePlanner.BuildSummary(lod, cacheLoadSummary.LoadedChunkCount));
             activeMeshFilter = targetMeshFilter;
             activeMeshRenderer = targetMeshRenderer;
             placement = targetPlacement;
@@ -367,6 +376,7 @@ namespace MarchingCubesPlanet.Lab
             }
 
             int savedChunkCount = painter.SaveRuntimeChunksToCache(cache, lod);
+            ApplyChunkWorkPackageSummary(PlanetChunkWorkPackagePlanner.BuildSummary(lod, painter.RuntimeChunkCount));
             lastAction = "Save Live Chunks To Cache finished.";
             return savedChunkCount;
         }
@@ -506,6 +516,10 @@ namespace MarchingCubesPlanet.Lab
             lastChunkCacheMeshOnlyLoadCount = 0;
             lastChunkCacheChunkDataLoadCount = 0;
             lastChunkCacheMissingChunkDataCount = 0;
+            lastChunkWorkPackageMode = PlanetChunkWorkPackageMode.ImmediateLod2Shell;
+            lastChunkWorkPackageSize = 0;
+            lastChunkWorkPackageCount = 0;
+            lastChunkWorkImmediateShell = false;
             lastMeshEstimatedBytes = 0L;
             lastWaterMeshEstimatedBytes = 0L;
 
@@ -561,6 +575,14 @@ namespace MarchingCubesPlanet.Lab
             lastChunkCacheMeshOnlyLoadCount = summary.MeshOnlyLoadCount;
             lastChunkCacheChunkDataLoadCount = summary.ChunkDataLoadCount;
             lastChunkCacheMissingChunkDataCount = summary.MissingChunkDataCount;
+        }
+
+        private void ApplyChunkWorkPackageSummary(PlanetChunkWorkPackageSummary summary)
+        {
+            lastChunkWorkPackageMode = summary.Mode;
+            lastChunkWorkPackageSize = summary.PackageSize;
+            lastChunkWorkPackageCount = summary.PackageCount;
+            lastChunkWorkImmediateShell = summary.IsImmediateShell;
         }
 
         private void RegisterRuntimeResources()
@@ -680,6 +702,10 @@ namespace MarchingCubesPlanet.Lab
                    "\nchunkCacheMeshOnlyLoadCount=" + lastChunkCacheMeshOnlyLoadCount +
                    "\nchunkCacheChunkDataLoadCount=" + lastChunkCacheChunkDataLoadCount +
                    "\nchunkCacheMissingChunkDataCount=" + lastChunkCacheMissingChunkDataCount +
+                   "\nchunkWorkPackageMode=" + lastChunkWorkPackageMode +
+                   "\nchunkWorkPackageSize=" + lastChunkWorkPackageSize +
+                   "\nchunkWorkPackageCount=" + lastChunkWorkPackageCount +
+                   "\nchunkWorkImmediateShell=" + lastChunkWorkImmediateShell +
                    "\nwaterTriangleCount=" + lastWaterTriangleCount +
                    "\nwaterVertexCount=" + lastWaterVertexCount +
                    "\nmeshEstimatedBytes=" + lastMeshEstimatedBytes +

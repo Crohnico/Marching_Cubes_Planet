@@ -29,6 +29,7 @@ namespace MarchingCubesPlanet.Lab
         [SerializeField] private uint lastVertexCountWritten;
         [SerializeField] private bool lastOverflow;
         [SerializeField] private bool lastInvalidCase;
+        [SerializeField] private int lastExtractedCandidateChunkIndex = -1;
         [SerializeField] private string lastAction;
         [SerializeField] private PlanetLabMetricsSnapshot lastSnapshot;
         [SerializeField] private PlanetLabDiagnostic lastDiagnostic;
@@ -59,6 +60,7 @@ namespace MarchingCubesPlanet.Lab
         public uint LastVertexCountWritten => lastVertexCountWritten;
         public bool LastOverflow => lastOverflow;
         public bool LastInvalidCase => lastInvalidCase;
+        public int LastExtractedCandidateChunkIndex => lastExtractedCandidateChunkIndex;
 
         public override bool ValidateModule()
         {
@@ -208,6 +210,7 @@ namespace MarchingCubesPlanet.Lab
             }
 
             lastResult = extractor.ExtractPlanetSurface();
+            lastExtractedCandidateChunkIndex = -1;
             ApplyResultSummary(lastResult);
 
             stopwatch.Stop();
@@ -216,6 +219,57 @@ namespace MarchingCubesPlanet.Lab
                 BuildResultMetrics());
             lastAction = "Extract Cartesian Planet Surface finished.";
             CaptureMetrics("Extract Cartesian Planet Surface", stopwatch.Elapsed.TotalMilliseconds);
+        }
+
+        public void ExtractFirstCandidateChunkSurface()
+        {
+            ExtractCandidateChunkSurface(0);
+        }
+
+        public void ExtractCandidateChunkSurface(int candidateChunkIndex)
+        {
+            stopwatch.Restart();
+
+            if (!extractor.IsInitialized)
+            {
+                InitMarchingCubesGpu();
+            }
+
+            if (!extractor.IsInitialized)
+            {
+                stopwatch.Stop();
+                return;
+            }
+
+            if (candidateChunkIndex < 0 || candidateChunkIndex >= extractor.CandidateChunkCount)
+            {
+                stopwatch.Stop();
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "Candidate chunk extraction blocked",
+                    "Requested chunk index is outside the current 07 candidate list.",
+                    "Choose a candidateChunkIndex between 0 and " + Mathf.Max(0, extractor.CandidateChunkCount - 1) + ".",
+                    "candidateChunkIndex=" + candidateChunkIndex +
+                    "\ncandidateChunkCount=" + extractor.CandidateChunkCount);
+                lastAction = "Extract Candidate Chunk Surface blocked.";
+                CaptureMetrics("Extract Candidate Chunk Surface Blocked", stopwatch.Elapsed.TotalMilliseconds);
+                return;
+            }
+
+            lastResult = extractor.ExtractCandidateChunkSurface(candidateChunkIndex);
+            lastExtractedCandidateChunkIndex = candidateChunkIndex;
+            ApplyResultSummary(lastResult);
+
+            stopwatch.Stop();
+            string chunkOriginMetrics = extractor.TryGetCandidateChunkOrigin(candidateChunkIndex, out PlanetMarchingCubesChunkOrigin origin)
+                ? "\nchunkOrigin=" + origin
+                : string.Empty;
+            lastDiagnostic = PlanetLabDiagnostic.Ok(
+                "Single candidate chunk surface extracted",
+                BuildResultMetrics() +
+                "\ncandidateChunkIndex=" + candidateChunkIndex +
+                chunkOriginMetrics);
+            lastAction = "Extract Candidate Chunk Surface finished.";
+            CaptureMetrics("Extract Candidate Chunk Surface", stopwatch.Elapsed.TotalMilliseconds);
         }
 
         public void RunMarchingCubesSmokeTest()
@@ -247,6 +301,7 @@ namespace MarchingCubesPlanet.Lab
             lastVertexCountWritten = 0u;
             lastOverflow = false;
             lastInvalidCase = false;
+            lastExtractedCandidateChunkIndex = -1;
             MarkReleased(ref triTableBufferResourceId);
             MarkReleased(ref edgeTableBufferResourceId);
             MarkReleased(ref stateBufferResourceId);
@@ -346,6 +401,7 @@ namespace MarchingCubesPlanet.Lab
                    "\ntriangleCountAttempted=" + lastTriangleCountAttempted +
                    "\ntriangleCountWritten=" + lastTriangleCountWritten +
                    "\nvertexCountWritten=" + lastVertexCountWritten +
+                   "\nlastExtractedCandidateChunkIndex=" + lastExtractedCandidateChunkIndex +
                    "\nreadbackVertexCount=" + lastResult.VertexCount +
                    "\noverflow=" + lastOverflow +
                    "\ninvalidCase=" + lastInvalidCase +

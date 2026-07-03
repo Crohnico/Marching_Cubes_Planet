@@ -18,6 +18,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private static readonly int CellCountId = Shader.PropertyToID("_MarchingCubesCellCount");
         private static readonly int CellStartIndexId = Shader.PropertyToID("_MarchingCubesCellStartIndex");
         private static readonly int ChunkSizeId = Shader.PropertyToID("_MarchingCubesChunkSize");
+        private static readonly int ChunkIndexBaseId = Shader.PropertyToID("_MarchingCubesChunkIndexBase");
         private static readonly int MaxTriangleCountId = Shader.PropertyToID("_MarchingCubesMaxTriangleCount");
         private static readonly int WriteEnabledId = Shader.PropertyToID("_MarchingCubesWriteEnabled");
 
@@ -30,6 +31,7 @@ namespace MarchingCubesPlanet.MarchingCubes
 
         private readonly PlanetMarchingCubesState[] stateUpload = new PlanetMarchingCubesState[1];
         private readonly PlanetMarchingCubesState[] stateReadback = new PlanetMarchingCubesState[1];
+        private readonly PlanetMarchingCubesChunkOrigin[] singleChunkUpload = new PlanetMarchingCubesChunkOrigin[1];
 
         private ComputeShader computeShader;
         private int extractKernel;
@@ -142,15 +144,68 @@ namespace MarchingCubesPlanet.MarchingCubes
 
         public PlanetMarchingCubesExtractionResult ExtractCartesianPlanetSurface()
         {
+            return ExtractCartesianSurfaceRange(0, chunkOrigins.Length, 0);
+        }
+
+        public PlanetMarchingCubesExtractionResult ExtractCandidateChunkSurface(int candidateChunkIndex)
+        {
             if (!IsInitialized)
             {
                 throw new InvalidOperationException("PlanetMarchingCubesExtractor must be initialized before extraction.");
             }
 
-            BindCommonBuffers(extractKernel);
-            SetCommonParameters();
+            if (candidateChunkIndex < 0 || candidateChunkIndex >= chunkOrigins.Length)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(candidateChunkIndex),
+                    candidateChunkIndex,
+                    "Candidate chunk index is outside the current 07 candidate list.");
+            }
+
+            return ExtractCartesianSurfaceRange(candidateChunkIndex, 1, candidateChunkIndex);
+        }
+
+        public bool TryGetCandidateChunkOrigin(int candidateChunkIndex, out PlanetMarchingCubesChunkOrigin origin)
+        {
+            if (candidateChunkIndex >= 0 && candidateChunkIndex < chunkOrigins.Length)
+            {
+                origin = chunkOrigins[candidateChunkIndex];
+                return true;
+            }
+
+            origin = default;
+            return false;
+        }
+
+        private PlanetMarchingCubesExtractionResult ExtractCartesianSurfaceRange(
+            int candidateStartIndex,
+            int candidateCount,
+            int chunkIndexBase)
+        {
+            if (!IsInitialized)
+            {
+                throw new InvalidOperationException("PlanetMarchingCubesExtractor must be initialized before extraction.");
+            }
+
+            int safeCandidateStartIndex = Mathf.Max(0, candidateStartIndex);
+            if (safeCandidateStartIndex >= chunkOrigins.Length)
+            {
+                return PlanetMarchingCubesExtractionResult.Empty;
+            }
+
+            int safeCandidateCount = Mathf.Clamp(candidateCount, 0, chunkOrigins.Length - safeCandidateStartIndex);
+            if (safeCandidateCount <= 0)
+            {
+                return PlanetMarchingCubesExtractionResult.Empty;
+            }
+
+            UploadChunkOrigins(safeCandidateStartIndex, safeCandidateCount);
+            long activeCellCount = (long)safeCandidateCount * CellsPerCanonicalChunk;
+
+            BindCommonBuffers(extractKernel, safeCandidateCount);
+            SetCommonParameters(activeCellCount, chunkIndexBase);
             computeShader.SetInt(WriteEnabledId, 0);
-            Dispatch(extractKernel, CandidateCellCount);
+            Dispatch(extractKernel, activeCellCount);
 
             GetData(stateBuffer, stateReadback, 1);
             PlanetMarchingCubesState countedState = stateReadback[0];
@@ -166,10 +221,10 @@ namespace MarchingCubesPlanet.MarchingCubes
                     settings.temporaryOutputTriangleCapacity);
             }
 
-            BindCommonBuffers(extractKernel);
-            SetCommonParameters();
+            BindCommonBuffers(extractKernel, safeCandidateCount);
+            SetCommonParameters(activeCellCount, chunkIndexBase);
             computeShader.SetInt(WriteEnabledId, 1);
-            Dispatch(extractKernel, CandidateCellCount);
+            Dispatch(extractKernel, activeCellCount);
             return ReadbackResult();
         }
 
@@ -189,12 +244,13 @@ namespace MarchingCubesPlanet.MarchingCubes
             chunkBuildStats = default;
         }
 
-        private void BindCommonBuffers(int kernel)
+        private void BindCommonBuffers(int kernel, int activeChunkCount)
         {
+            uint safeActiveChunkCount = (uint)Mathf.Max(0, activeChunkCount);
             stateUpload[0] = new PlanetMarchingCubesState
             {
-                chunkCountCandidate = (uint)chunkOrigins.Length,
-                chunkCountProcessed = (uint)chunkOrigins.Length
+                chunkCountCandidate = safeActiveChunkCount,
+                chunkCountProcessed = safeActiveChunkCount
             };
             SetData(stateBuffer, stateUpload, 1);
 
@@ -207,11 +263,37 @@ namespace MarchingCubesPlanet.MarchingCubes
             triTableBuffer.BindTo(computeShader, kernel, TriTableId);
         }
 
-        private void SetCommonParameters()
+        private void SetCommonParameters(long activeCellCount, int chunkIndexBase)
         {
-            computeShader.SetInt(CellCountId, unchecked((int)(uint)CandidateCellCount));
+            computeShader.SetInt(CellCountId, unchecked((int)(uint)Math.Max(0L, activeCellCount)));
             computeShader.SetInt(ChunkSizeId, PlanetMarchingCubesChunkRange.CanonicalChunkSize);
+            computeShader.SetInt(ChunkIndexBaseId, Mathf.Max(0, chunkIndexBase));
             computeShader.SetInt(MaxTriangleCountId, settings.temporaryOutputTriangleCapacity);
+        }
+
+        private void UploadChunkOrigins(int candidateStartIndex, int candidateCount)
+        {
+            if (candidateCount <= 0)
+            {
+                return;
+            }
+
+            if (candidateCount == 1)
+            {
+                singleChunkUpload[0] = chunkOrigins[candidateStartIndex];
+                SetData(chunkOriginBuffer, singleChunkUpload, 1);
+                return;
+            }
+
+            if (candidateStartIndex == 0 && candidateCount == chunkOrigins.Length)
+            {
+                SetData(chunkOriginBuffer, chunkOrigins, chunkOrigins.Length);
+                return;
+            }
+
+            PlanetMarchingCubesChunkOrigin[] range = new PlanetMarchingCubesChunkOrigin[candidateCount];
+            Array.Copy(chunkOrigins, candidateStartIndex, range, 0, candidateCount);
+            SetData(chunkOriginBuffer, range, candidateCount);
         }
 
         private void Dispatch(int kernel, long cellCount)

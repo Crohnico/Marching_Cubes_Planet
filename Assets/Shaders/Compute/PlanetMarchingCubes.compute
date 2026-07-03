@@ -30,6 +30,7 @@ StructuredBuffer<int> _MarchingCubesTriTable;
 uint _MarchingCubesCellCount;
 uint _MarchingCubesCellStartIndex;
 uint _MarchingCubesChunkSize;
+uint _MarchingCubesChunkIndexBase;
 uint _MarchingCubesMaxTriangleCount;
 uint _MarchingCubesWriteEnabled;
 
@@ -177,6 +178,7 @@ void CS_ExtractChunkedCartesianSurface(uint3 dispatchThreadId : SV_DispatchThrea
     uint localY = (localCellIndex / chunkSize) % chunkSize;
     uint localZ = localCellIndex / (chunkSize * chunkSize);
     int4 chunkOrigin = _MarchingCubesChunkOrigins[chunkIndex];
+    uint outputChunkIndex = _MarchingCubesChunkIndexBase + chunkIndex;
     int3 cellOrigin = int3(chunkOrigin.x, chunkOrigin.y, chunkOrigin.z) + int3((int)localX, (int)localY, (int)localZ);
 
     float3 cornerPositions[8];
@@ -201,5 +203,5 @@ void CS_ExtractChunkedCartesianSurface(uint3 dispatchThreadId : SV_DispatchThrea
         }
     }
 
-    PlanetMcEmitCube(cellIndex, cornerPositions, cornerDensities, caseIndex, chunkIndex);
+    PlanetMcEmitCube(cellIndex, cornerPositions, cornerDensities, caseIndex, outputChunkIndex);
 }

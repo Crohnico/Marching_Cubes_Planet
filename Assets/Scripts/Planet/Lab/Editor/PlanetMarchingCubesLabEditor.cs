@@ -40,6 +40,12 @@ namespace MarchingCubesPlanet.Lab.Editor
                 MarkDirty(lab);
             }
 
+            if (GUILayout.Button("Extract First Candidate Chunk"))
+            {
+                lab.ExtractFirstCandidateChunkSurface();
+                MarkDirty(lab);
+            }
+
             if (GUILayout.Button("Run Marching Cubes Smoke Test"))
             {
                 lab.RunMarchingCubesSmokeTest();

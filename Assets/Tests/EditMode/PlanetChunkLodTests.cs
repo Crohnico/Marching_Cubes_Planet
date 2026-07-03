@@ -50,5 +50,27 @@ namespace MarchingCubesPlanet.Lab.Tests
             Assert.Greater(centered.ViewScore, sideways.ViewScore);
             Assert.Greater(centered.Score, sideways.Score);
         }
+
+        [Test]
+        public void FallbackLod2UsesImmediateShellPackage()
+        {
+            PlanetChunkWorkPackageSummary summary = PlanetChunkWorkPackagePlanner.BuildSummary(2, 17);
+
+            Assert.AreEqual(PlanetChunkWorkPackageMode.ImmediateLod2Shell, summary.Mode);
+            Assert.IsTrue(summary.IsImmediateShell);
+            Assert.AreEqual(17, summary.PackageSize);
+            Assert.AreEqual(1, summary.PackageCount);
+        }
+
+        [Test]
+        public void RefinementLodsUseSmallPackages()
+        {
+            PlanetChunkWorkPackageSummary summary = PlanetChunkWorkPackagePlanner.BuildSummary(0, 17);
+
+            Assert.AreEqual(PlanetChunkWorkPackageMode.RefinementPackages, summary.Mode);
+            Assert.IsFalse(summary.IsImmediateShell);
+            Assert.AreEqual(PlanetChunkWorkPackagePlanner.DefaultRefinementPackageSize, summary.PackageSize);
+            Assert.AreEqual(3, summary.PackageCount);
+        }
     }
 }
