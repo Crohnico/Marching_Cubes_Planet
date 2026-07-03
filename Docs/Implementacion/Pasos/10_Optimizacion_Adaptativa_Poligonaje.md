@@ -25,6 +25,13 @@ chunk + LOD
 Cada chunk se puede generar, guardar, cargar, pintar y liberar de forma
 independiente.
 
+Regla de validacion:
+
+```text
+Todo avance de 10 debe ser usable y testeable desde el boton Generate del Canvas.
+Los botones de Inspector pueden existir como diagnostico o comparacion, pero no sustituyen la ruta de Canvas.
+```
+
 ## Paso 1 - Pintado por chunk
 
 En vez de pintar la mesh completa del planeta, 10 pintara cada chunk por separado.

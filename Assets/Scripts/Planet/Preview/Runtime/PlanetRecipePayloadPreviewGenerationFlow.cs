@@ -108,7 +108,7 @@ namespace MarchingCubesPlanet.Preview
 
             paintLab.SetPlacement(placement);
             paintLab.UsePlanetSurfaceAtlas((int)marchingCubesLab.LastTriangleCountWritten);
-            paintLab.PaintLastExtraction(targetMeshFilter, targetMeshRenderer, placement);
+            paintLab.PaintLastExtractionByChunks(targetMeshFilter, targetMeshRenderer, placement);
 
             if (!paintLab.HasLiveMesh)
             {
@@ -117,7 +117,7 @@ namespace MarchingCubesPlanet.Preview
                 return false;
             }
 
-            lastDiagnostic = "Generated via runtime flow 06 -> 07 -> 08 -> 09.";
+            lastDiagnostic = "Generated via runtime flow 06 -> 07 -> 10 chunk paint -> 09.";
             return true;
         }
 

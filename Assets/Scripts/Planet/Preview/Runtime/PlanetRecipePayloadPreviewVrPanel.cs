@@ -561,6 +561,7 @@ namespace MarchingCubesPlanet.Preview
 
             if (paintLab != null)
             {
+                AppendLine("Painted chunks", paintLab.LastPaintedChunkCount.ToString());
                 AppendLine("Painted tris", paintLab.LastPaintedTriangleCount.ToString());
                 AppendLine("Painted vertices", paintLab.LastPaintedVertexCount.ToString());
                 AppendLine("Painted water tris", paintLab.LastWaterTriangleCount.ToString());

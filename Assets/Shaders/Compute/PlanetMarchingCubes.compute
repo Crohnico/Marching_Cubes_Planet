@@ -59,15 +59,15 @@ uint PlanetMcTriangleCount(uint caseIndex)
     return count;
 }
 
-void PlanetMcWriteVertex(uint vertexIndex, float3 position, float3 normal, uint caseIndex)
+void PlanetMcWriteVertex(uint vertexIndex, float3 position, float3 normal, uint caseIndex, uint chunkIndex)
 {
     PlanetMarchingCubesVertex vertex;
     vertex.positionAndCase = float4(position, (float)caseIndex);
-    vertex.normalAndDiagnostic = float4(normal, 0.0);
+    vertex.normalAndDiagnostic = float4(normal, (float)chunkIndex);
     _MarchingCubesVertices[vertexIndex] = vertex;
 }
 
-void PlanetMcEmitCube(uint cellIndex, float3 cornerPositions[8], float cornerDensities[8], uint caseIndex)
+void PlanetMcEmitCube(uint cellIndex, float3 cornerPositions[8], float cornerDensities[8], uint caseIndex, uint chunkIndex)
 {
     if (caseIndex > 255u)
     {
@@ -151,9 +151,9 @@ void PlanetMcEmitCube(uint cellIndex, float3 cornerPositions[8], float cornerDen
         float3 normal = normalize(cross(b - a, c - a));
 
         uint outputVertex = vertexStart + (uint)(triIndex * 3);
-        PlanetMcWriteVertex(outputVertex, a, normal, caseIndex);
-        PlanetMcWriteVertex(outputVertex + 1u, b, normal, caseIndex);
-        PlanetMcWriteVertex(outputVertex + 2u, c, normal, caseIndex);
+        PlanetMcWriteVertex(outputVertex, a, normal, caseIndex, chunkIndex);
+        PlanetMcWriteVertex(outputVertex + 1u, b, normal, caseIndex, chunkIndex);
+        PlanetMcWriteVertex(outputVertex + 2u, c, normal, caseIndex, chunkIndex);
     }
 }
 
@@ -201,5 +201,5 @@ void CS_ExtractChunkedCartesianSurface(uint3 dispatchThreadId : SV_DispatchThrea
         }
     }
 
-    PlanetMcEmitCube(cellIndex, cornerPositions, cornerDensities, caseIndex);
+    PlanetMcEmitCube(cellIndex, cornerPositions, cornerDensities, caseIndex, chunkIndex);
 }

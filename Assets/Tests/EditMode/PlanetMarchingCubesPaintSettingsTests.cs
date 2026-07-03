@@ -50,7 +50,8 @@ namespace MarchingCubesPlanet.Lab.Tests
                 12,
                 36,
                 256,
-                PlanetMarchingCubesPaintColorMode.HeightColor);
+                PlanetMarchingCubesPaintColorMode.HeightColor,
+                7);
 
             Assert.IsTrue(result.HasVisibleMesh);
             Assert.AreEqual(100, result.SourceTriangleCount);
@@ -60,6 +61,7 @@ namespace MarchingCubesPlanet.Lab.Tests
             Assert.AreEqual(12, result.WaterTriangleCount);
             Assert.AreEqual(36, result.WaterVertexCount);
             Assert.AreEqual(256, result.WaterMeshEstimatedBytes);
+            Assert.AreEqual(7, result.ChunkCount);
             Assert.AreEqual(1280, result.TotalMeshEstimatedBytes);
             Assert.AreEqual(PlanetMarchingCubesPaintColorMode.HeightColor, result.ColorMode);
         }

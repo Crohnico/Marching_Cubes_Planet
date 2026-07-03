@@ -45,7 +45,13 @@ namespace MarchingCubesPlanet.Preview
             get
             {
                 CacheRendererComponents();
-                return meshFilter != null && meshFilter.sharedMesh != null;
+                if (meshFilter != null && meshFilter.sharedMesh != null)
+                {
+                    return true;
+                }
+
+                PlanetMarchingCubesPaintLab paintLab = FindFirstObjectByType<PlanetMarchingCubesPaintLab>();
+                return paintLab != null && paintLab.HasLiveMesh;
             }
         }
 

@@ -16,7 +16,8 @@ namespace MarchingCubesPlanet.MarchingCubes
                 0,
                 0,
                 0L,
-                colorMode)
+                colorMode,
+                0)
         {
         }
 
@@ -29,6 +30,29 @@ namespace MarchingCubesPlanet.MarchingCubes
             int waterVertexCount,
             long waterMeshEstimatedBytes,
             PlanetMarchingCubesPaintColorMode colorMode)
+            : this(
+                sourceTriangleCount,
+                paintedTriangleCount,
+                paintedVertexCount,
+                meshEstimatedBytes,
+                waterTriangleCount,
+                waterVertexCount,
+                waterMeshEstimatedBytes,
+                colorMode,
+                0)
+        {
+        }
+
+        public PlanetMarchingCubesPaintResult(
+            int sourceTriangleCount,
+            int paintedTriangleCount,
+            int paintedVertexCount,
+            long meshEstimatedBytes,
+            int waterTriangleCount,
+            int waterVertexCount,
+            long waterMeshEstimatedBytes,
+            PlanetMarchingCubesPaintColorMode colorMode,
+            int chunkCount)
         {
             SourceTriangleCount = sourceTriangleCount;
             PaintedTriangleCount = paintedTriangleCount;
@@ -38,6 +62,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             WaterVertexCount = waterVertexCount;
             WaterMeshEstimatedBytes = waterMeshEstimatedBytes;
             ColorMode = colorMode;
+            ChunkCount = chunkCount;
         }
 
         public int SourceTriangleCount { get; }
@@ -47,6 +72,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         public int WaterTriangleCount { get; }
         public int WaterVertexCount { get; }
         public long WaterMeshEstimatedBytes { get; }
+        public int ChunkCount { get; }
         public long TotalMeshEstimatedBytes => MeshEstimatedBytes + WaterMeshEstimatedBytes;
         public PlanetMarchingCubesPaintColorMode ColorMode { get; }
         public bool HasVisibleMesh => PaintedTriangleCount > 0 && PaintedVertexCount > 0 ||

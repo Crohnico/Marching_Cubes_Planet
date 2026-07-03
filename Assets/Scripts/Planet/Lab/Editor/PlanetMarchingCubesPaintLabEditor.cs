@@ -39,6 +39,12 @@ namespace MarchingCubesPlanet.Lab.Editor
                 MarkDirty(lab);
             }
 
+            if (GUILayout.Button("Paint Last Extraction By Chunks"))
+            {
+                lab.PaintLastExtractionByChunks();
+                MarkDirty(lab);
+            }
+
             EditorGUILayout.Space();
 
             if (GUILayout.Button("Capture Snapshot"))

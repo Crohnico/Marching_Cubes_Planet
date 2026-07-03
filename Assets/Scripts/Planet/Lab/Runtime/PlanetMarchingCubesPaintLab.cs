@@ -29,6 +29,7 @@ namespace MarchingCubesPlanet.Lab
         [SerializeField] private int lastPaintedVertexCount;
         [SerializeField] private int lastWaterTriangleCount;
         [SerializeField] private int lastWaterVertexCount;
+        [SerializeField] private int lastPaintedChunkCount;
         [SerializeField] private long lastMeshEstimatedBytes;
         [SerializeField] private long lastWaterMeshEstimatedBytes;
         [SerializeField] private string lastAction;
@@ -44,6 +45,8 @@ namespace MarchingCubesPlanet.Lab
         private MeshRenderer activeMeshRenderer;
         private int meshResourceId;
         private int waterMeshResourceId;
+        private int chunkMeshesResourceId;
+        private int chunkWaterMeshesResourceId;
         private int materialResourceId;
         private int waterMaterialResourceId;
         private int surfaceAtlasResourceId;
@@ -61,6 +64,7 @@ namespace MarchingCubesPlanet.Lab
         public int LastPaintedVertexCount => lastPaintedVertexCount;
         public int LastWaterTriangleCount => lastWaterTriangleCount;
         public int LastWaterVertexCount => lastWaterVertexCount;
+        public int LastPaintedChunkCount => lastPaintedChunkCount;
         public long LastMeshEstimatedBytes => lastMeshEstimatedBytes;
         public long LastWaterMeshEstimatedBytes => lastWaterMeshEstimatedBytes;
 
@@ -181,6 +185,26 @@ namespace MarchingCubesPlanet.Lab
 
         public void PaintLastExtraction(MeshFilter targetMeshFilter, MeshRenderer targetMeshRenderer, PlanetPlacement targetPlacement)
         {
+            PaintLastExtractionInternal(targetMeshFilter, targetMeshRenderer, targetPlacement, false);
+        }
+
+        public void PaintLastExtractionByChunks()
+        {
+            EnsureRendererComponents();
+            PaintLastExtractionByChunks(meshFilter, meshRenderer, placement);
+        }
+
+        public void PaintLastExtractionByChunks(MeshFilter targetMeshFilter, MeshRenderer targetMeshRenderer, PlanetPlacement targetPlacement)
+        {
+            PaintLastExtractionInternal(targetMeshFilter, targetMeshRenderer, targetPlacement, true);
+        }
+
+        private void PaintLastExtractionInternal(
+            MeshFilter targetMeshFilter,
+            MeshRenderer targetMeshRenderer,
+            PlanetPlacement targetPlacement,
+            bool paintByChunks)
+        {
             stopwatch.Restart();
             ReleaseModule();
             stopwatch.Restart();
@@ -221,14 +245,23 @@ namespace MarchingCubesPlanet.Lab
             PlanetMarchingCubesPaintResult result;
             try
             {
-                result = painter.Paint(
-                    activeMeshFilter,
-                    activeMeshRenderer,
-                    materialOverride,
-                    marchingCubesLab.LastResult,
-                    shapeLab.Recipe,
-                    placement,
-                    settings);
+                result = paintByChunks
+                    ? painter.PaintChunks(
+                        activeMeshFilter,
+                        activeMeshRenderer,
+                        materialOverride,
+                        marchingCubesLab.LastResult,
+                        shapeLab.Recipe,
+                        placement,
+                        settings)
+                    : painter.Paint(
+                        activeMeshFilter,
+                        activeMeshRenderer,
+                        materialOverride,
+                        marchingCubesLab.LastResult,
+                        shapeLab.Recipe,
+                        placement,
+                        settings);
             }
             catch (System.Exception exception)
             {
@@ -237,9 +270,9 @@ namespace MarchingCubesPlanet.Lab
                     exception.Message,
                     "Check the 09 Environment painter budget and the source extraction diagnostics.",
                     settings.ToString());
-                lastAction = "Paint Last Extraction blocked.";
+                lastAction = paintByChunks ? "Paint Last Extraction By Chunks blocked." : "Paint Last Extraction blocked.";
                 stopwatch.Stop();
-                CaptureMetrics("Paint Last Extraction Blocked", stopwatch.Elapsed.TotalMilliseconds);
+                CaptureMetrics(paintByChunks ? "Paint Last Extraction By Chunks Blocked" : "Paint Last Extraction Blocked", stopwatch.Elapsed.TotalMilliseconds);
                 return;
             }
 
@@ -248,10 +281,10 @@ namespace MarchingCubesPlanet.Lab
 
             stopwatch.Stop();
             lastDiagnostic = PlanetLabDiagnostic.Ok(
-                "Marching Cubes mesh painted",
+                paintByChunks ? "Marching Cubes chunk meshes painted" : "Marching Cubes mesh painted",
                 BuildResultMetrics());
-            lastAction = "Paint Last Extraction finished.";
-            CaptureMetrics("Paint Last Extraction", stopwatch.Elapsed.TotalMilliseconds);
+            lastAction = paintByChunks ? "Paint Last Extraction By Chunks finished." : "Paint Last Extraction finished.";
+            CaptureMetrics(paintByChunks ? "Paint Last Extraction By Chunks" : "Paint Last Extraction", stopwatch.Elapsed.TotalMilliseconds);
         }
 
         public override void RunModuleTest()
@@ -277,6 +310,8 @@ namespace MarchingCubesPlanet.Lab
             MarkReleased(ref surfaceAtlasResourceId);
             MarkReleased(ref waterMaterialResourceId);
             MarkReleased(ref materialResourceId);
+            MarkReleased(ref chunkWaterMeshesResourceId);
+            MarkReleased(ref chunkMeshesResourceId);
             MarkReleased(ref waterMeshResourceId);
             MarkReleased(ref meshResourceId);
             hasLiveMesh = false;
@@ -285,6 +320,7 @@ namespace MarchingCubesPlanet.Lab
             lastPaintedVertexCount = 0;
             lastWaterTriangleCount = 0;
             lastWaterVertexCount = 0;
+            lastPaintedChunkCount = 0;
             lastMeshEstimatedBytes = 0L;
             lastWaterMeshEstimatedBytes = 0L;
 
@@ -311,6 +347,7 @@ namespace MarchingCubesPlanet.Lab
             lastPaintedVertexCount = result.PaintedVertexCount;
             lastWaterTriangleCount = result.WaterTriangleCount;
             lastWaterVertexCount = result.WaterVertexCount;
+            lastPaintedChunkCount = result.ChunkCount;
             lastMeshEstimatedBytes = result.MeshEstimatedBytes;
             lastWaterMeshEstimatedBytes = result.WaterMeshEstimatedBytes;
         }
@@ -342,6 +379,28 @@ namespace MarchingCubesPlanet.Lab
                     OwnerName,
                     lastWaterMeshEstimatedBytes,
                     lastWaterVertexCount,
+                    0);
+            }
+
+            if (painter.RuntimeChunkMeshCount > 0)
+            {
+                chunkMeshesResourceId = resourceRegistry.RegisterResource(
+                    "PlanetMarchingCubesPaint Chunk Surface Meshes",
+                    PlanetLabResourceType.Mesh,
+                    OwnerName,
+                    painter.RuntimeChunkMeshEstimatedBytes,
+                    painter.RuntimeChunkVertexCount,
+                    0);
+            }
+
+            if (painter.RuntimeChunkWaterMeshCount > 0)
+            {
+                chunkWaterMeshesResourceId = resourceRegistry.RegisterResource(
+                    "PlanetMarchingCubesPaint Chunk Water Meshes",
+                    PlanetLabResourceType.Mesh,
+                    OwnerName,
+                    painter.RuntimeChunkWaterMeshEstimatedBytes,
+                    painter.RuntimeChunkWaterVertexCount,
                     0);
             }
 
@@ -398,6 +457,7 @@ namespace MarchingCubesPlanet.Lab
             return "sourceTriangleCount=" + lastSourceTriangleCount +
                    "\npaintedTriangleCount=" + lastPaintedTriangleCount +
                    "\npaintedVertexCount=" + lastPaintedVertexCount +
+                   "\npaintedChunkCount=" + lastPaintedChunkCount +
                    "\nwaterTriangleCount=" + lastWaterTriangleCount +
                    "\nwaterVertexCount=" + lastWaterVertexCount +
                    "\nmeshEstimatedBytes=" + lastMeshEstimatedBytes +
