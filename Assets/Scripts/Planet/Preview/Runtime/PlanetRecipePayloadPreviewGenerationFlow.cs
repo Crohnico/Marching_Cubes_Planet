@@ -1,5 +1,6 @@
 using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.Lab;
+using MarchingCubesPlanet.MarchingCubes;
 using MarchingCubesPlanet.TrianglePools;
 using UnityEngine;
 
@@ -9,6 +10,7 @@ namespace MarchingCubesPlanet.Preview
     public sealed class PlanetRecipePayloadPreviewGenerationFlow : MonoBehaviour
     {
         private const int DefaultTemporaryTriangleCapacity = 1000000;
+        private const int InitialChunkCacheLod = 2;
 
         [Header("Runtime Chain")]
         [SerializeField] private PlanetGpuShapeLab shapeLab;
@@ -73,6 +75,25 @@ namespace MarchingCubesPlanet.Preview
             PlanetTrianglePoolRegistry.SetFallbackPriorityOriginWorld(priorityOriginWorld);
 
             shapeLab.SetRecipe(in sourceRecipe);
+            paintLab.SetPlacement(placement);
+            paintLab.UsePlanetSurfaceAtlas(temporaryTriangleCapacity);
+
+            PlanetChunkMeshCache chunkCache = PlanetChunkMeshCache.CreateDefault();
+            bool chunkCacheReady = chunkCache.Prepare(in sourceRecipe);
+            if (chunkCacheReady &&
+                paintLab.TryPaintCachedChunks(
+                    chunkCache,
+                    InitialChunkCacheLod,
+                    targetMeshFilter,
+                    targetMeshRenderer,
+                    placement,
+                    in sourceRecipe))
+            {
+                lastDiagnostic = "Generated from 10 chunk cache LOD" + InitialChunkCacheLod + ". " +
+                                 chunkCache.LastDiagnostic;
+                return true;
+            }
+
             shapeLab.InitShapeGpu();
             if (!shapeLab.IsShapeGpuInitialized)
             {
@@ -106,8 +127,6 @@ namespace MarchingCubesPlanet.Preview
                 return false;
             }
 
-            paintLab.SetPlacement(placement);
-            paintLab.UsePlanetSurfaceAtlas((int)marchingCubesLab.LastTriangleCountWritten);
             paintLab.PaintLastExtractionByChunks(targetMeshFilter, targetMeshRenderer, placement);
 
             if (!paintLab.HasLiveMesh)
@@ -117,7 +136,16 @@ namespace MarchingCubesPlanet.Preview
                 return false;
             }
 
-            lastDiagnostic = "Generated via runtime flow 06 -> 07 -> 10 chunk paint -> 09.";
+            int savedCacheChunks = chunkCacheReady
+                ? paintLab.SaveLiveChunksToCache(chunkCache, InitialChunkCacheLod)
+                : 0;
+            lastDiagnostic = "Generated via runtime flow 06 -> 07 -> 10 chunk paint -> 09. " +
+                             "Cached LOD" + InitialChunkCacheLod + " chunks=" + savedCacheChunks + ".";
+            if (!chunkCacheReady)
+            {
+                lastDiagnostic += " Cache skipped: " + chunkCache.LastDiagnostic;
+            }
+
             return true;
         }
 

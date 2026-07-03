@@ -204,6 +204,30 @@ Regla:
 .pchunk no guarda todo el volumen interno del chunk salvo que se demuestre necesario.
 ```
 
+Implementacion inicial:
+
+```text
+Mientras no exista todavia el extractor de bordes/Transvoxel, .pchunk se escribe
+como registro minimo de chunk:
+
+chunkId
+LOD
+tipo terreno/agua
+vertexCount
+triangleCount
+bounds
+borderPayloadCount = 0
+```
+
+Lectura:
+
+```text
+El .pchunk inicial no resuelve Transvoxel todavia.
+Solo deja creada la estructura de cache por chunk/LOD sin inventar datos de borde.
+Cuando se implemente la extraccion de bordes, ese archivo pasara a contener el
+payload real de las 6 caras.
+```
+
 Terraformado:
 
 ```text

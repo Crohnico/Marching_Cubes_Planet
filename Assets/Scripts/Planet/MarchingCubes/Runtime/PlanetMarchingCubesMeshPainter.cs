@@ -498,6 +498,150 @@ namespace MarchingCubesPlanet.MarchingCubes
                 visibleChunkCount);
         }
 
+        public PlanetMarchingCubesPaintResult PaintCachedChunks(
+            MeshFilter meshFilter,
+            MeshRenderer meshRenderer,
+            Material materialOverride,
+            IList<PlanetCachedChunkMesh> cachedChunks,
+            in PlanetRecipe recipe,
+            PlanetMarchingCubesPaintSettings settings)
+        {
+            if (meshFilter == null)
+            {
+                throw new ArgumentNullException(nameof(meshFilter));
+            }
+
+            if (meshRenderer == null)
+            {
+                throw new ArgumentNullException(nameof(meshRenderer));
+            }
+
+            if (cachedChunks == null)
+            {
+                throw new ArgumentNullException(nameof(cachedChunks));
+            }
+
+            if (!settings.Validate(out string message))
+            {
+                throw new ArgumentException(message, nameof(settings));
+            }
+
+            if (!recipe.IsValid(out string recipeMessage))
+            {
+                throw new ArgumentException(recipeMessage, nameof(recipe));
+            }
+
+            PlanetGpuShapeCell[] cells = new PlanetGpuShapeCell[recipe.VoronoiDivision];
+            PlanetGpuShapeCellBuilder.Build(in recipe, cells);
+
+            Release(meshFilter, meshRenderer);
+            meshFilter.sharedMesh = null;
+            meshRenderer.sharedMaterial = null;
+
+            Material surfaceMaterial = ResolveMaterial(materialOverride, settings.colorMode, cells);
+            int paintedTriangleTotal = 0;
+            int paintedVertexTotal = 0;
+            int waterTriangleTotal = 0;
+            int waterVertexTotal = 0;
+            long meshEstimatedBytesTotal = 0L;
+            long waterEstimatedBytesTotal = 0L;
+            int visibleChunkCount = 0;
+
+            for (int i = 0; i < cachedChunks.Count; i++)
+            {
+                PlanetCachedChunkMesh cachedChunk = cachedChunks[i];
+                if (cachedChunk == null || cachedChunk.SurfaceMesh == null && cachedChunk.WaterMesh == null)
+                {
+                    continue;
+                }
+
+                RuntimeChunkMesh runtimeChunk = new RuntimeChunkMesh
+                {
+                    chunkIndex = cachedChunk.ChunkId,
+                    surfaceMesh = cachedChunk.SurfaceMesh,
+                    surfaceTriangleCount = cachedChunk.SurfaceTriangleCount,
+                    surfaceVertexCount = cachedChunk.SurfaceVertexCount,
+                    surfaceEstimatedBytes = cachedChunk.SurfaceEstimatedBytes,
+                    waterMesh = cachedChunk.WaterMesh,
+                    waterTriangleCount = cachedChunk.WaterTriangleCount,
+                    waterVertexCount = cachedChunk.WaterVertexCount,
+                    waterEstimatedBytes = cachedChunk.WaterEstimatedBytes
+                };
+
+                if (runtimeChunk.surfaceMesh != null)
+                {
+                    runtimeChunk.surfaceObject = CreateChunkObject(
+                        meshFilter.transform,
+                        meshFilter.gameObject.layer,
+                        "PlanetChunk_" + runtimeChunk.chunkIndex + "_Surface_Cached");
+                    MeshFilter chunkMeshFilter = runtimeChunk.surfaceObject.AddComponent<MeshFilter>();
+                    MeshRenderer chunkMeshRenderer = runtimeChunk.surfaceObject.AddComponent<MeshRenderer>();
+                    CopyRendererSettings(meshRenderer, chunkMeshRenderer);
+                    chunkMeshRenderer.sharedMaterial = surfaceMaterial;
+                    chunkMeshFilter.sharedMesh = runtimeChunk.surfaceMesh;
+                }
+
+                if (runtimeChunk.waterMesh != null)
+                {
+                    runtimeChunk.waterObject = CreateChunkObject(
+                        meshFilter.transform,
+                        meshFilter.gameObject.layer,
+                        "PlanetChunk_" + runtimeChunk.chunkIndex + "_Water_Cached");
+                    MeshFilter waterMeshFilter = runtimeChunk.waterObject.AddComponent<MeshFilter>();
+                    MeshRenderer waterMeshRenderer = runtimeChunk.waterObject.AddComponent<MeshRenderer>();
+                    CopyRendererSettings(meshRenderer, waterMeshRenderer);
+                    waterMeshRenderer.shadowCastingMode = ShadowCastingMode.Off;
+                    waterMeshRenderer.sharedMaterial = ResolveWaterMaterial();
+                    waterMeshFilter.sharedMesh = runtimeChunk.waterMesh;
+                }
+
+                runtimeChunks.Add(runtimeChunk);
+                visibleChunkCount++;
+                paintedTriangleTotal += runtimeChunk.surfaceTriangleCount;
+                paintedVertexTotal += runtimeChunk.surfaceVertexCount;
+                waterTriangleTotal += runtimeChunk.waterTriangleCount;
+                waterVertexTotal += runtimeChunk.waterVertexCount;
+                meshEstimatedBytesTotal += runtimeChunk.surfaceEstimatedBytes;
+                waterEstimatedBytesTotal += runtimeChunk.waterEstimatedBytes;
+            }
+
+            return new PlanetMarchingCubesPaintResult(
+                paintedTriangleTotal,
+                paintedTriangleTotal,
+                paintedVertexTotal,
+                meshEstimatedBytesTotal,
+                waterTriangleTotal,
+                waterVertexTotal,
+                waterEstimatedBytesTotal,
+                settings.colorMode,
+                visibleChunkCount);
+        }
+
+        public int SaveRuntimeChunksToCache(PlanetChunkMeshCache cache, int lod)
+        {
+            if (cache == null)
+            {
+                throw new ArgumentNullException(nameof(cache));
+            }
+
+            int savedChunkCount = 0;
+            for (int i = 0; i < runtimeChunks.Count; i++)
+            {
+                RuntimeChunkMesh chunk = runtimeChunks[i];
+                if (chunk == null || chunk.surfaceMesh == null && chunk.waterMesh == null)
+                {
+                    continue;
+                }
+
+                if (cache.SaveChunk(chunk.chunkIndex, lod, chunk.surfaceMesh, chunk.waterMesh))
+                {
+                    savedChunkCount++;
+                }
+            }
+
+            return savedChunkCount;
+        }
+
         public void Release(MeshFilter meshFilter, MeshRenderer meshRenderer)
         {
             ReleaseMeshOnly(meshFilter);

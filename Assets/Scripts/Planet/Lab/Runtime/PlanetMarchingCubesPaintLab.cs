@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Collections.Generic;
 using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.MarchingCubes;
 using UnityEngine;
@@ -38,6 +39,7 @@ namespace MarchingCubesPlanet.Lab
 
         private readonly Stopwatch stopwatch = new Stopwatch();
         private readonly PlanetMarchingCubesMeshPainter painter = new PlanetMarchingCubesMeshPainter();
+        private readonly List<PlanetCachedChunkMesh> cachedChunks = new List<PlanetCachedChunkMesh>();
 
         private MeshFilter meshFilter;
         private MeshRenderer meshRenderer;
@@ -197,6 +199,141 @@ namespace MarchingCubesPlanet.Lab
         public void PaintLastExtractionByChunks(MeshFilter targetMeshFilter, MeshRenderer targetMeshRenderer, PlanetPlacement targetPlacement)
         {
             PaintLastExtractionInternal(targetMeshFilter, targetMeshRenderer, targetPlacement, true);
+        }
+
+        public bool TryPaintCachedChunks(
+            PlanetChunkMeshCache cache,
+            int lod,
+            MeshFilter targetMeshFilter,
+            MeshRenderer targetMeshRenderer,
+            PlanetPlacement targetPlacement,
+            in PlanetRecipe recipe)
+        {
+            stopwatch.Restart();
+            ReleaseModule();
+            stopwatch.Restart();
+
+            if (cache == null)
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "Chunk cache is missing",
+                    "10 step 2 needs a cache instance to load chunk meshes.",
+                    "Create and prepare PlanetChunkMeshCache before calling TryPaintCachedChunks.",
+                    "cache=null");
+                lastAction = "Paint Cached Chunks failed.";
+                stopwatch.Stop();
+                return false;
+            }
+
+            if (targetMeshFilter == null)
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Critical(
+                    "Paint target MeshFilter is missing",
+                    "10 step 2 needs a MeshFilter target to display cached chunks.",
+                    "Pass the PlanetRecipePayloadPreview MeshFilter or assign the Lab MeshFilter.",
+                    "targetMeshFilter=null");
+                lastAction = "Paint Cached Chunks failed.";
+                stopwatch.Stop();
+                return false;
+            }
+
+            if (targetMeshRenderer == null)
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Critical(
+                    "Paint target MeshRenderer is missing",
+                    "10 step 2 needs a MeshRenderer target to display cached chunks.",
+                    "Pass the PlanetRecipePayloadPreview MeshRenderer or assign the Lab MeshRenderer.",
+                    "targetMeshRenderer=null");
+                lastAction = "Paint Cached Chunks failed.";
+                stopwatch.Stop();
+                return false;
+            }
+
+            if (!recipe.IsValid(out string recipeMessage))
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "PlanetRecipe is invalid",
+                    recipeMessage,
+                    "Fix the preview recipe before loading cached chunks.",
+                    "recipe invalid");
+                lastAction = "Paint Cached Chunks failed.";
+                stopwatch.Stop();
+                return false;
+            }
+
+            if (!settings.Validate(out string settingsMessage))
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "Marching Cubes paint settings are invalid",
+                    settingsMessage,
+                    "Fix paint settings before loading cached chunks.",
+                    settings.ToString());
+                lastAction = "Paint Cached Chunks failed.";
+                stopwatch.Stop();
+                return false;
+            }
+
+            if (!cache.TryLoadAllChunkMeshes(lod, cachedChunks))
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "Chunk cache miss",
+                    cache.LastDiagnostic,
+                    "Generate will continue through 06 -> 07 and write the chunk cache afterwards.",
+                    "LOD=" + lod);
+                lastAction = "Paint Cached Chunks cache miss.";
+                stopwatch.Stop();
+                CaptureMetrics("Paint Cached Chunks Cache Miss", stopwatch.Elapsed.TotalMilliseconds);
+                return false;
+            }
+
+            activeMeshFilter = targetMeshFilter;
+            activeMeshRenderer = targetMeshRenderer;
+            placement = targetPlacement;
+
+            try
+            {
+                PlanetMarchingCubesPaintResult result = painter.PaintCachedChunks(
+                    activeMeshFilter,
+                    activeMeshRenderer,
+                    materialOverride,
+                    cachedChunks,
+                    in recipe,
+                    settings);
+                ApplyResultSummary(result);
+                RegisterRuntimeResources();
+            }
+            catch (System.Exception exception)
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "Cached chunk paint blocked",
+                    exception.Message,
+                    "Delete the chunk cache for this planet or regenerate it from 06 -> 07.",
+                    "LOD=" + lod);
+                lastAction = "Paint Cached Chunks blocked.";
+                stopwatch.Stop();
+                CaptureMetrics("Paint Cached Chunks Blocked", stopwatch.Elapsed.TotalMilliseconds);
+                return false;
+            }
+
+            stopwatch.Stop();
+            lastDiagnostic = PlanetLabDiagnostic.Ok(
+                "Cached chunk meshes painted",
+                BuildResultMetrics() + "\ncache=" + cache.RootPath + "\nLOD=" + lod);
+            lastAction = "Paint Cached Chunks finished.";
+            CaptureMetrics("Paint Cached Chunks", stopwatch.Elapsed.TotalMilliseconds);
+            return hasLiveMesh;
+        }
+
+        public int SaveLiveChunksToCache(PlanetChunkMeshCache cache, int lod)
+        {
+            if (cache == null || !hasLiveMesh)
+            {
+                return 0;
+            }
+
+            int savedChunkCount = painter.SaveRuntimeChunksToCache(cache, lod);
+            lastAction = "Save Live Chunks To Cache finished.";
+            return savedChunkCount;
         }
 
         private void PaintLastExtractionInternal(
