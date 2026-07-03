@@ -542,7 +542,15 @@ namespace MarchingCubesPlanet.Preview
         {
             PlanetMarchingCubesLab marchingCubesLab = FindFirstObjectByType<PlanetMarchingCubesLab>();
             PlanetMarchingCubesPaintLab paintLab = FindFirstObjectByType<PlanetMarchingCubesPaintLab>();
-            if (marchingCubesLab == null && paintLab == null)
+            PlanetRecipePayloadPreviewGenerationFlow flow = generationFlow != null
+                ? generationFlow
+                : FindFirstObjectByType<PlanetRecipePayloadPreviewGenerationFlow>();
+            if (flow != null)
+            {
+                generationFlow = flow;
+            }
+
+            if (marchingCubesLab == null && paintLab == null && flow == null)
             {
                 return;
             }
@@ -563,11 +571,6 @@ namespace MarchingCubesPlanet.Preview
             if (paintLab != null)
             {
                 AppendLine("Painted chunks", paintLab.LastPaintedChunkCount.ToString());
-                AppendLine("Desired LOD0 chunks", paintLab.LastDesiredLod0ChunkCount.ToString());
-                AppendLine("Desired LOD1 chunks", paintLab.LastDesiredLod1ChunkCount.ToString());
-                AppendLine("Desired LOD2 chunks", paintLab.LastDesiredLod2ChunkCount.ToString());
-                AppendLine("Best chunk LOD score", paintLab.LastBestChunkLodScore.ToString("0.000"));
-                AppendLine("Average chunk LOD score", paintLab.LastAverageChunkLodScore.ToString("0.000"));
                 AppendLine("Cache payload mode", paintLab.LastChunkCachePayloadMode.ToString());
                 AppendLine("Cache loaded chunks", paintLab.LastChunkCacheLoadedChunkCount.ToString());
                 AppendLine("Cache mesh-only loads", paintLab.LastChunkCacheMeshOnlyLoadCount.ToString());
@@ -580,6 +583,15 @@ namespace MarchingCubesPlanet.Preview
                 AppendLine("Painted water tris", paintLab.LastWaterTriangleCount.ToString());
                 AppendLine("Painted water vertices", paintLab.LastWaterVertexCount.ToString());
                 AppendLine("Paint mesh live", paintLab.HasLiveMesh ? "yes" : "no");
+            }
+
+            if (flow != null)
+            {
+                AppendLine("Desired LOD0 chunks", flow.LastDesiredLod0ChunkCount.ToString());
+                AppendLine("Desired LOD1 chunks", flow.LastDesiredLod1ChunkCount.ToString());
+                AppendLine("Desired LOD2 chunks", flow.LastDesiredLod2ChunkCount.ToString());
+                AppendLine("Best chunk LOD score", flow.LastBestChunkLodScore.ToString("0.000"));
+                AppendLine("Average chunk LOD score", flow.LastAverageChunkLodScore.ToString("0.000"));
             }
 
             PlanetTrianglePoolMetrics environmentMetrics = PlanetTrianglePoolRegistry.Environment.Metrics;

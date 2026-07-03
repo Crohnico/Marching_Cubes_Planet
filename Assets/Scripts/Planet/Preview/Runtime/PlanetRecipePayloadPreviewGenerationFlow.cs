@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.Lab;
 using MarchingCubesPlanet.MarchingCubes;
@@ -21,8 +22,20 @@ namespace MarchingCubesPlanet.Preview
 
         [Header("State")]
         [SerializeField] private string lastDiagnostic;
+        [SerializeField] private int lastDesiredLod0ChunkCount;
+        [SerializeField] private int lastDesiredLod1ChunkCount;
+        [SerializeField] private int lastDesiredLod2ChunkCount;
+        [SerializeField] private float lastBestChunkLodScore;
+        [SerializeField] private float lastAverageChunkLodScore;
+
+        private readonly List<PlanetCachedChunkMesh> cachedChunks = new List<PlanetCachedChunkMesh>();
 
         public string LastDiagnostic => lastDiagnostic;
+        public int LastDesiredLod0ChunkCount => lastDesiredLod0ChunkCount;
+        public int LastDesiredLod1ChunkCount => lastDesiredLod1ChunkCount;
+        public int LastDesiredLod2ChunkCount => lastDesiredLod2ChunkCount;
+        public float LastBestChunkLodScore => lastBestChunkLodScore;
+        public float LastAverageChunkLodScore => lastAverageChunkLodScore;
 
         public bool GenerateFromPreview(PlanetRecipePayloadPreview preview, Vector3 priorityOriginWorld)
         {
@@ -67,6 +80,8 @@ namespace MarchingCubesPlanet.Preview
             }
 
             Release();
+            ApplyChunkLodSummary(default);
+            cachedChunks.Clear();
 
             int safeTriangleBudget = Mathf.Max(1, requestedTriangleBudget);
             int temporaryTriangleCapacity = Mathf.Max(safeTriangleBudget, Mathf.Max(1, minimumTemporaryTriangleCapacity));
@@ -78,23 +93,42 @@ namespace MarchingCubesPlanet.Preview
             PlanetRecipe fallbackRecipe = PlanetChunkLodUtility.BuildRecipeForLod(in sourceRecipe, fallbackLod);
             shapeLab.SetRecipe(in fallbackRecipe);
             paintLab.SetPlacement(placement);
-            paintLab.SetChunkLodBaseRecipe(in sourceRecipe);
             paintLab.UsePlanetSurfaceAtlas(temporaryTriangleCapacity);
 
             PlanetChunkMeshCache chunkCache = PlanetChunkMeshCache.CreateDefault();
             bool chunkCacheReady = chunkCache.Prepare(in sourceRecipe);
-            if (chunkCacheReady &&
-                paintLab.TryPaintCachedChunks(
-                    chunkCache,
-                    fallbackLodIndex,
-                    targetMeshFilter,
-                    targetMeshRenderer,
-                    placement,
-                    in fallbackRecipe))
+            if (chunkCacheReady)
             {
-                lastDiagnostic = "Generated from 10 chunk cache LOD" + fallbackLodIndex + ". " +
-                                 chunkCache.LastDiagnostic;
-                return true;
+                PlanetChunkCachePayloadMode payloadMode = PlanetChunkCachePayloadMode.MeshOnly;
+                if (chunkCache.TryLoadAllChunkMeshes(
+                    fallbackLodIndex,
+                    payloadMode,
+                    cachedChunks,
+                    out PlanetChunkCacheLoadSummary cacheLoadSummary))
+                {
+                    ApplyChunkLodSummary(PlanetChunkLodRuntimePlanner.BuildSummaryFromCachedChunks(
+                        cachedChunks,
+                        targetMeshFilter != null ? targetMeshFilter.transform : null,
+                        in sourceRecipe,
+                        PlanetTrianglePoolRegistry.PlayerPositionWorld,
+                        PlanetTrianglePoolRegistry.PlayerForwardWorld));
+
+                    if (paintLab.PaintCachedChunks(
+                        cachedChunks,
+                        cacheLoadSummary,
+                        fallbackLodIndex,
+                        targetMeshFilter,
+                        targetMeshRenderer,
+                        placement,
+                        in fallbackRecipe))
+                    {
+                        lastDiagnostic = "Generated from 10 chunk cache LOD" + fallbackLodIndex + ". " +
+                                         chunkCache.LastDiagnostic;
+                        return true;
+                    }
+
+                    ReleaseCachedChunkMeshes(cachedChunks);
+                }
             }
 
             shapeLab.InitShapeGpu();
@@ -115,6 +149,13 @@ namespace MarchingCubesPlanet.Preview
             }
 
             marchingCubesLab.ExtractPlanetSurface();
+            ApplyChunkLodSummary(PlanetChunkLodRuntimePlanner.BuildSummaryFromExtraction(
+                marchingCubesLab.LastResult,
+                in fallbackRecipe,
+                in sourceRecipe,
+                in placement,
+                PlanetTrianglePoolRegistry.PlayerPositionWorld,
+                PlanetTrianglePoolRegistry.PlayerForwardWorld));
             if (marchingCubesLab.LastOverflow)
             {
                 lastDiagnostic = "Generate blocked: 07 temporary triangle buffer overflow (" +
@@ -175,6 +216,33 @@ namespace MarchingCubesPlanet.Preview
             {
                 shapeLab.ReleaseModule();
             }
+
+            ApplyChunkLodSummary(default);
+            cachedChunks.Clear();
+        }
+
+        private void ApplyChunkLodSummary(PlanetChunkLodSummary summary)
+        {
+            lastDesiredLod0ChunkCount = summary.lod0Count;
+            lastDesiredLod1ChunkCount = summary.lod1Count;
+            lastDesiredLod2ChunkCount = summary.lod2Count;
+            lastBestChunkLodScore = summary.bestScore;
+            lastAverageChunkLodScore = summary.averageScore;
+        }
+
+        private static void ReleaseCachedChunkMeshes(List<PlanetCachedChunkMesh> chunks)
+        {
+            if (chunks == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < chunks.Count; i++)
+            {
+                chunks[i]?.ReleaseMeshes();
+            }
+
+            chunks.Clear();
         }
 
         private void ResolveReferences()

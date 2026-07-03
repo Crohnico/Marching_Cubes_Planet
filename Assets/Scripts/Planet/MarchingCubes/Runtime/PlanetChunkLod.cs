@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using MarchingCubesPlanet.Coordinates;
 using UnityEngine;
 
@@ -199,6 +200,164 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
 
             return PlanetChunkLod.LOD2;
+        }
+    }
+
+    public static class PlanetChunkLodRuntimePlanner
+    {
+        public static PlanetChunkLodSummary BuildSummaryFromExtraction(
+            PlanetMarchingCubesExtractionResult extraction,
+            in PlanetRecipe renderRecipe,
+            in PlanetRecipe lod1Recipe,
+            in PlanetPlacement placement,
+            Vector3 playerPositionWorld,
+            Vector3 cameraForwardWorld)
+        {
+            if (extraction == null || extraction.VertexCount <= 0)
+            {
+                return default;
+            }
+
+            Dictionary<int, ChunkCenterAccumulator> chunks = new Dictionary<int, ChunkCenterAccumulator>();
+            PlanetMarchingCubesVertex[] vertices = extraction.Vertices;
+            int triangleCount = extraction.TriangleCount;
+            for (int sourceTriangleIndex = 0; sourceTriangleIndex < triangleCount; sourceTriangleIndex++)
+            {
+                int vertexIndex = sourceTriangleIndex * 3;
+                if (vertexIndex + 2 >= extraction.VertexCount)
+                {
+                    break;
+                }
+
+                int chunkId = ReadSourceChunkIndex(vertices, vertexIndex);
+                Vector3 centerGrid =
+                    (ReadGridPosition(vertices[vertexIndex]) +
+                     ReadGridPosition(vertices[vertexIndex + 1]) +
+                     ReadGridPosition(vertices[vertexIndex + 2])) * 0.33333334f;
+
+                chunks.TryGetValue(chunkId, out ChunkCenterAccumulator accumulator);
+                accumulator.Add(centerGrid);
+                chunks[chunkId] = accumulator;
+            }
+
+            PlanetChunkLodScoringContext context = BuildContext(
+                in lod1Recipe,
+                playerPositionWorld,
+                cameraForwardWorld);
+            PlanetChunkLodSummary summary = default;
+            foreach (KeyValuePair<int, ChunkCenterAccumulator> chunk in chunks)
+            {
+                if (chunk.Value.SampleCount <= 0)
+                {
+                    continue;
+                }
+
+                Vector3 centerGrid = chunk.Value.AverageGridCenter;
+                Vector3 centerWorld = PlanetCoordinateConverter.GridToWorld(centerGrid, in renderRecipe, in placement);
+                summary.Record(PlanetChunkLodScorer.Evaluate(chunk.Key, centerWorld, in context));
+            }
+
+            summary.Finish();
+            return summary;
+        }
+
+        public static PlanetChunkLodSummary BuildSummaryFromCachedChunks(
+            IList<PlanetCachedChunkMesh> cachedChunks,
+            Transform meshParentTransform,
+            in PlanetRecipe lod1Recipe,
+            Vector3 playerPositionWorld,
+            Vector3 cameraForwardWorld)
+        {
+            if (cachedChunks == null || cachedChunks.Count <= 0)
+            {
+                return default;
+            }
+
+            PlanetChunkLodScoringContext context = BuildContext(
+                in lod1Recipe,
+                playerPositionWorld,
+                cameraForwardWorld);
+            PlanetChunkLodSummary summary = default;
+            for (int i = 0; i < cachedChunks.Count; i++)
+            {
+                PlanetCachedChunkMesh cachedChunk = cachedChunks[i];
+                if (cachedChunk == null || !TryGetCachedChunkCenterWorld(cachedChunk, meshParentTransform, out Vector3 centerWorld))
+                {
+                    continue;
+                }
+
+                summary.Record(PlanetChunkLodScorer.Evaluate(cachedChunk.ChunkId, centerWorld, in context));
+            }
+
+            summary.Finish();
+            return summary;
+        }
+
+        private static PlanetChunkLodScoringContext BuildContext(
+            in PlanetRecipe lod1Recipe,
+            Vector3 playerPositionWorld,
+            Vector3 cameraForwardWorld)
+        {
+            float baseChunkWorldSize = PlanetChunkLodUtility.CalculateBaseChunkWorldSize(in lod1Recipe);
+            return new PlanetChunkLodScoringContext(
+                playerPositionWorld,
+                cameraForwardWorld,
+                baseChunkWorldSize);
+        }
+
+        private static bool TryGetCachedChunkCenterWorld(
+            PlanetCachedChunkMesh cachedChunk,
+            Transform meshParentTransform,
+            out Vector3 centerWorld)
+        {
+            Mesh mesh = cachedChunk.SurfaceMesh != null ? cachedChunk.SurfaceMesh : cachedChunk.WaterMesh;
+            if (mesh == null)
+            {
+                centerWorld = Vector3.zero;
+                return false;
+            }
+
+            Vector3 centerLocal = mesh.bounds.center;
+            centerWorld = meshParentTransform != null
+                ? meshParentTransform.TransformPoint(centerLocal)
+                : centerLocal;
+            return true;
+        }
+
+        private static Vector3 ReadGridPosition(PlanetMarchingCubesVertex vertex)
+        {
+            Vector4 packedPosition = vertex.positionAndCase;
+            return new Vector3(packedPosition.x, packedPosition.y, packedPosition.z);
+        }
+
+        private static int ReadSourceChunkIndex(PlanetMarchingCubesVertex[] vertices, int vertexIndex)
+        {
+            if (vertices == null || vertexIndex < 0 || vertexIndex >= vertices.Length)
+            {
+                return 0;
+            }
+
+            float packedChunkIndex = vertices[vertexIndex].normalAndDiagnostic.w;
+            if (packedChunkIndex <= 0f)
+            {
+                return 0;
+            }
+
+            return Mathf.Max(0, Mathf.RoundToInt(packedChunkIndex));
+        }
+
+        private struct ChunkCenterAccumulator
+        {
+            private Vector3 gridCenterSum;
+
+            public int SampleCount { get; private set; }
+            public Vector3 AverageGridCenter => SampleCount > 0 ? gridCenterSum / SampleCount : Vector3.zero;
+
+            public void Add(Vector3 gridCenter)
+            {
+                gridCenterSum += gridCenter;
+                SampleCount++;
+            }
         }
     }
 

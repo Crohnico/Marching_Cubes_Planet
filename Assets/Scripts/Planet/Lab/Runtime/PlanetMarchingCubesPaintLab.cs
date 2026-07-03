@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Collections.Generic;
 using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.MarchingCubes;
-using MarchingCubesPlanet.TrianglePools;
 using UnityEngine;
 
 namespace MarchingCubesPlanet.Lab
@@ -23,8 +22,6 @@ namespace MarchingCubesPlanet.Lab
 
         [Header("Paint")]
         [SerializeField] private PlanetMarchingCubesPaintSettings settings = PlanetMarchingCubesPaintSettings.Default();
-        [SerializeField] private PlanetRecipe chunkLodBaseRecipe = PlanetRecipe.Default();
-        [SerializeField] private bool hasChunkLodBaseRecipe;
 
         [Header("State")]
         [SerializeField] private bool hasLiveMesh;
@@ -34,11 +31,6 @@ namespace MarchingCubesPlanet.Lab
         [SerializeField] private int lastWaterTriangleCount;
         [SerializeField] private int lastWaterVertexCount;
         [SerializeField] private int lastPaintedChunkCount;
-        [SerializeField] private int lastDesiredLod0ChunkCount;
-        [SerializeField] private int lastDesiredLod1ChunkCount;
-        [SerializeField] private int lastDesiredLod2ChunkCount;
-        [SerializeField] private float lastBestChunkLodScore;
-        [SerializeField] private float lastAverageChunkLodScore;
         [SerializeField] private PlanetChunkCachePayloadMode lastChunkCachePayloadMode;
         [SerializeField] private int lastChunkCacheRequestedChunkCount;
         [SerializeField] private int lastChunkCacheLoadedChunkCount;
@@ -57,8 +49,6 @@ namespace MarchingCubesPlanet.Lab
 
         private readonly Stopwatch stopwatch = new Stopwatch();
         private readonly PlanetMarchingCubesMeshPainter painter = new PlanetMarchingCubesMeshPainter();
-        private readonly List<PlanetCachedChunkMesh> cachedChunks = new List<PlanetCachedChunkMesh>();
-
         private MeshFilter meshFilter;
         private MeshRenderer meshRenderer;
         private MeshFilter activeMeshFilter;
@@ -85,11 +75,6 @@ namespace MarchingCubesPlanet.Lab
         public int LastWaterTriangleCount => lastWaterTriangleCount;
         public int LastWaterVertexCount => lastWaterVertexCount;
         public int LastPaintedChunkCount => lastPaintedChunkCount;
-        public int LastDesiredLod0ChunkCount => lastDesiredLod0ChunkCount;
-        public int LastDesiredLod1ChunkCount => lastDesiredLod1ChunkCount;
-        public int LastDesiredLod2ChunkCount => lastDesiredLod2ChunkCount;
-        public float LastBestChunkLodScore => lastBestChunkLodScore;
-        public float LastAverageChunkLodScore => lastAverageChunkLodScore;
         public PlanetChunkCachePayloadMode LastChunkCachePayloadMode => lastChunkCachePayloadMode;
         public int LastChunkCacheRequestedChunkCount => lastChunkCacheRequestedChunkCount;
         public int LastChunkCacheLoadedChunkCount => lastChunkCacheLoadedChunkCount;
@@ -212,12 +197,6 @@ namespace MarchingCubesPlanet.Lab
             placement = value;
         }
 
-        public void SetChunkLodBaseRecipe(in PlanetRecipe lod1Recipe)
-        {
-            chunkLodBaseRecipe = lod1Recipe;
-            hasChunkLodBaseRecipe = true;
-        }
-
         public void PaintLastExtraction()
         {
             EnsureRendererComponents();
@@ -240,8 +219,9 @@ namespace MarchingCubesPlanet.Lab
             PaintLastExtractionInternal(targetMeshFilter, targetMeshRenderer, targetPlacement, true);
         }
 
-        public bool TryPaintCachedChunks(
-            PlanetChunkMeshCache cache,
+        public bool PaintCachedChunks(
+            List<PlanetCachedChunkMesh> chunks,
+            PlanetChunkCacheLoadSummary cacheLoadSummary,
             int lod,
             MeshFilter targetMeshFilter,
             MeshRenderer targetMeshRenderer,
@@ -252,15 +232,17 @@ namespace MarchingCubesPlanet.Lab
             ReleaseModule();
             stopwatch.Restart();
 
-            if (cache == null)
+            if (chunks == null || chunks.Count <= 0)
             {
+                ApplyChunkCacheLoadSummary(cacheLoadSummary);
                 lastDiagnostic = PlanetLabDiagnostic.Warning(
-                    "Chunk cache is missing",
-                    "10 step 2 needs a cache instance to load chunk meshes.",
-                    "Create and prepare PlanetChunkMeshCache before calling TryPaintCachedChunks.",
-                    "cache=null");
+                    "Cached chunk list is empty",
+                    "09 can only paint meshes that 10 has already loaded.",
+                    "Load chunk meshes in 10 before calling PaintCachedChunks.",
+                    "chunks=0");
                 lastAction = "Paint Cached Chunks failed.";
                 stopwatch.Stop();
+                CaptureMetrics("Paint Cached Chunks Empty", stopwatch.Elapsed.TotalMilliseconds);
                 return false;
             }
 
@@ -268,7 +250,7 @@ namespace MarchingCubesPlanet.Lab
             {
                 lastDiagnostic = PlanetLabDiagnostic.Critical(
                     "Paint target MeshFilter is missing",
-                    "10 step 2 needs a MeshFilter target to display cached chunks.",
+                    "09 needs a MeshFilter target to display cached chunks.",
                     "Pass the PlanetRecipePayloadPreview MeshFilter or assign the Lab MeshFilter.",
                     "targetMeshFilter=null");
                 lastAction = "Paint Cached Chunks failed.";
@@ -280,7 +262,7 @@ namespace MarchingCubesPlanet.Lab
             {
                 lastDiagnostic = PlanetLabDiagnostic.Critical(
                     "Paint target MeshRenderer is missing",
-                    "10 step 2 needs a MeshRenderer target to display cached chunks.",
+                    "09 needs a MeshRenderer target to display cached chunks.",
                     "Pass the PlanetRecipePayloadPreview MeshRenderer or assign the Lab MeshRenderer.",
                     "targetMeshRenderer=null");
                 lastAction = "Paint Cached Chunks failed.";
@@ -293,7 +275,7 @@ namespace MarchingCubesPlanet.Lab
                 lastDiagnostic = PlanetLabDiagnostic.Warning(
                     "PlanetRecipe is invalid",
                     recipeMessage,
-                    "Fix the preview recipe before loading cached chunks.",
+                    "Fix the preview recipe before painting cached chunks.",
                     "recipe invalid");
                 lastAction = "Paint Cached Chunks failed.";
                 stopwatch.Stop();
@@ -305,25 +287,10 @@ namespace MarchingCubesPlanet.Lab
                 lastDiagnostic = PlanetLabDiagnostic.Warning(
                     "Marching Cubes paint settings are invalid",
                     settingsMessage,
-                    "Fix paint settings before loading cached chunks.",
+                    "Fix paint settings before painting cached chunks.",
                     settings.ToString());
                 lastAction = "Paint Cached Chunks failed.";
                 stopwatch.Stop();
-                return false;
-            }
-
-            PlanetChunkCachePayloadMode payloadMode = PlanetChunkCachePayloadMode.MeshOnly;
-            if (!cache.TryLoadAllChunkMeshes(lod, payloadMode, cachedChunks, out PlanetChunkCacheLoadSummary cacheLoadSummary))
-            {
-                ApplyChunkCacheLoadSummary(cacheLoadSummary);
-                lastDiagnostic = PlanetLabDiagnostic.Warning(
-                    "Chunk cache miss",
-                    cache.LastDiagnostic,
-                    "Generate will continue through 06 -> 07 and write the chunk cache afterwards.",
-                    "LOD=" + lod);
-                lastAction = "Paint Cached Chunks cache miss.";
-                stopwatch.Stop();
-                CaptureMetrics("Paint Cached Chunks Cache Miss", stopwatch.Elapsed.TotalMilliseconds);
                 return false;
             }
 
@@ -339,11 +306,10 @@ namespace MarchingCubesPlanet.Lab
                     activeMeshFilter,
                     activeMeshRenderer,
                     materialOverride,
-                    cachedChunks,
+                    chunks,
                     in recipe,
                     settings);
                 ApplyResultSummary(result);
-                ApplyChunkLodScoring(in recipe);
                 RegisterRuntimeResources();
             }
             catch (System.Exception exception)
@@ -362,7 +328,7 @@ namespace MarchingCubesPlanet.Lab
             stopwatch.Stop();
             lastDiagnostic = PlanetLabDiagnostic.Ok(
                 "Cached chunk meshes painted",
-                BuildResultMetrics() + "\ncache=" + cache.RootPath + "\nLOD=" + lod);
+                BuildResultMetrics() + "\nLOD=" + lod);
             lastAction = "Paint Cached Chunks finished.";
             CaptureMetrics("Paint Cached Chunks", stopwatch.Elapsed.TotalMilliseconds);
             return hasLiveMesh;
@@ -459,8 +425,6 @@ namespace MarchingCubesPlanet.Lab
             }
 
             ApplyResultSummary(result);
-            PlanetRecipe scoringRecipe = shapeLab.Recipe;
-            ApplyChunkLodScoring(in scoringRecipe);
             RegisterRuntimeResources();
 
             stopwatch.Stop();
@@ -505,11 +469,6 @@ namespace MarchingCubesPlanet.Lab
             lastWaterTriangleCount = 0;
             lastWaterVertexCount = 0;
             lastPaintedChunkCount = 0;
-            lastDesiredLod0ChunkCount = 0;
-            lastDesiredLod1ChunkCount = 0;
-            lastDesiredLod2ChunkCount = 0;
-            lastBestChunkLodScore = 0f;
-            lastAverageChunkLodScore = 0f;
             lastChunkCachePayloadMode = PlanetChunkCachePayloadMode.MeshOnly;
             lastChunkCacheRequestedChunkCount = 0;
             lastChunkCacheLoadedChunkCount = 0;
@@ -549,22 +508,6 @@ namespace MarchingCubesPlanet.Lab
             lastPaintedChunkCount = result.ChunkCount;
             lastMeshEstimatedBytes = result.MeshEstimatedBytes;
             lastWaterMeshEstimatedBytes = result.WaterMeshEstimatedBytes;
-        }
-
-        private void ApplyChunkLodScoring(in PlanetRecipe renderRecipe)
-        {
-            PlanetRecipe lod1Recipe = hasChunkLodBaseRecipe ? chunkLodBaseRecipe : renderRecipe;
-            float baseChunkWorldSize = PlanetChunkLodUtility.CalculateBaseChunkWorldSize(in lod1Recipe);
-            PlanetChunkLodScoringContext context = new PlanetChunkLodScoringContext(
-                PlanetTrianglePoolRegistry.PlayerPositionWorld,
-                PlanetTrianglePoolRegistry.PlayerForwardWorld,
-                baseChunkWorldSize);
-            PlanetChunkLodSummary summary = painter.ScoreRuntimeChunks(in context);
-            lastDesiredLod0ChunkCount = summary.lod0Count;
-            lastDesiredLod1ChunkCount = summary.lod1Count;
-            lastDesiredLod2ChunkCount = summary.lod2Count;
-            lastBestChunkLodScore = summary.bestScore;
-            lastAverageChunkLodScore = summary.averageScore;
         }
 
         private void ApplyChunkCacheLoadSummary(PlanetChunkCacheLoadSummary summary)
@@ -691,11 +634,6 @@ namespace MarchingCubesPlanet.Lab
                    "\npaintedTriangleCount=" + lastPaintedTriangleCount +
                    "\npaintedVertexCount=" + lastPaintedVertexCount +
                    "\npaintedChunkCount=" + lastPaintedChunkCount +
-                   "\ndesiredLOD0ChunkCount=" + lastDesiredLod0ChunkCount +
-                   "\ndesiredLOD1ChunkCount=" + lastDesiredLod1ChunkCount +
-                   "\ndesiredLOD2ChunkCount=" + lastDesiredLod2ChunkCount +
-                   "\nbestChunkLodScore=" + lastBestChunkLodScore.ToString("0.000") +
-                   "\naverageChunkLodScore=" + lastAverageChunkLodScore.ToString("0.000") +
                    "\nchunkCachePayloadMode=" + lastChunkCachePayloadMode +
                    "\nchunkCacheRequestedChunkCount=" + lastChunkCacheRequestedChunkCount +
                    "\nchunkCacheLoadedChunkCount=" + lastChunkCacheLoadedChunkCount +

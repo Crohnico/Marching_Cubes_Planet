@@ -9,12 +9,14 @@ Este documento sustituye la definicion anterior de 10.
 La idea vigente ya no es pintar una mesh completa del planeta ni apoyarse en una
 estructura compleja antes de tiempo.
 
-10 empieza como sistema de generacion, cache y pintado por chunks.
+10 empieza como sistema de generacion, cache, decision de LOD y orquestacion de
+publicacion por chunks.
 
 ## Objetivo inicial
 
 10 debe hacer que el planeta se materialice por partes pequenas, persistibles y
-recuperables, evitando generar o pintar la mesh completa como una sola unidad.
+recuperables, evitando generar o pedir a 09 publicar la mesh completa como una
+sola unidad.
 
 La unidad de trabajo inicial sera:
 
@@ -22,8 +24,8 @@ La unidad de trabajo inicial sera:
 chunk + LOD
 ```
 
-Cada chunk se puede generar, guardar, cargar, pintar y liberar de forma
-independiente.
+Cada chunk se puede generar, guardar, cargar y pedir a 09 que publique o libere
+de forma independiente.
 
 Regla de validacion:
 
@@ -34,7 +36,8 @@ Los botones de Inspector pueden existir como diagnostico o comparacion, pero no 
 
 ## Paso 1 - Pintado por chunk
 
-En vez de pintar la mesh completa del planeta, 10 pintara cada chunk por separado.
+En vez de pedir una mesh completa del planeta, 10 pedira a 09 publicar cada chunk
+por separado.
 
 Cada chunk tendra:
 
@@ -788,6 +791,10 @@ Regla:
 
 ```text
 10 entrega meshes o paquetes de triangulos para publicar.
+10 decide chunks, LOD deseado, cache y prioridad.
+09 no calcula LOD ni conserva el estado logico de LOD/chunk de 10; solo conserva
+las referencias de meshes que necesita para publicar, liberar, guardar o
+confiscar.
 09 gestiona la residencia, sustitucion y confiscacion de triangulos.
 10 no decide desde aqui que triangulos lejanos confisca 09.
 ```
@@ -796,7 +803,7 @@ Regla:
 
 ```text
 10 trabaja por chunks.
-10 no pinta una mesh completa unica del planeta.
+10 no publica directamente una mesh completa unica del planeta.
 Cada chunk puede tener terreno y segmento de agua.
 Terreno y agua pertenecen al mismo chunk logico, pero son dos meshes separadas.
 10 tendra cache en disco.
@@ -821,7 +828,8 @@ El paquete inicial de refinamiento tendra 5 o 6 chunks.
 No se fija presupuesto por frame, disco o RAM hasta medir la primera ruta.
 09 recibe la orden de pintar/publicar y gestiona internamente residencia y confiscacion.
 Si no hay trabajo visible urgente, 10 cocina lentamente LODs restantes en disco.
-06 no debe forzar la generacion de toda la mesh a la vez para que 10 pueda pintar.
+06 no debe forzar la generacion de toda la mesh a la vez para que 10 pueda pedir
+la publicacion por chunks.
 ```
 
 ## Pendientes
