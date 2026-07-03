@@ -24,10 +24,6 @@ namespace MarchingCubesPlanet.MarchingCubes
 
         private const string ExtractChunkedCartesianSurfaceKernelName = "CS_ExtractChunkedCartesianSurface";
         private const int MaxThreadGroupsPerDispatchAxis = 65535;
-        private const int CellsPerCanonicalChunk =
-            PlanetMarchingCubesChunkRange.CanonicalChunkSize *
-            PlanetMarchingCubesChunkRange.CanonicalChunkSize *
-            PlanetMarchingCubesChunkRange.CanonicalChunkSize;
 
         private readonly PlanetMarchingCubesState[] stateUpload = new PlanetMarchingCubesState[1];
         private readonly PlanetMarchingCubesState[] stateReadback = new PlanetMarchingCubesState[1];
@@ -62,7 +58,9 @@ namespace MarchingCubesPlanet.MarchingCubes
         public PlanetMarchingCubesSettings Settings => settings;
         public PlanetMarchingCubesChunkBuildStats ChunkBuildStats => chunkBuildStats;
         public int CandidateChunkCount => chunkOrigins.Length;
-        public long CandidateCellCount => (long)chunkOrigins.Length * CellsPerCanonicalChunk;
+        public int ActiveChunkSize => Mathf.Max(1, settings.chunkRange.chunkSize);
+        public long CellsPerActiveChunk => CalculateCellsPerChunk(ActiveChunkSize);
+        public long CandidateCellCount => (long)chunkOrigins.Length * CellsPerActiveChunk;
 
         public void Initialize(
             ComputeShader shader,
@@ -200,7 +198,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
 
             UploadChunkOrigins(safeCandidateStartIndex, safeCandidateCount);
-            long activeCellCount = (long)safeCandidateCount * CellsPerCanonicalChunk;
+            long activeCellCount = (long)safeCandidateCount * CellsPerActiveChunk;
 
             BindCommonBuffers(extractKernel, safeCandidateCount);
             SetCommonParameters(activeCellCount, chunkIndexBase);
@@ -266,9 +264,15 @@ namespace MarchingCubesPlanet.MarchingCubes
         private void SetCommonParameters(long activeCellCount, int chunkIndexBase)
         {
             computeShader.SetInt(CellCountId, unchecked((int)(uint)Math.Max(0L, activeCellCount)));
-            computeShader.SetInt(ChunkSizeId, PlanetMarchingCubesChunkRange.CanonicalChunkSize);
+            computeShader.SetInt(ChunkSizeId, ActiveChunkSize);
             computeShader.SetInt(ChunkIndexBaseId, Mathf.Max(0, chunkIndexBase));
             computeShader.SetInt(MaxTriangleCountId, settings.temporaryOutputTriangleCapacity);
+        }
+
+        private static long CalculateCellsPerChunk(int chunkSize)
+        {
+            long safeChunkSize = Math.Max(1, chunkSize);
+            return safeChunkSize * safeChunkSize * safeChunkSize;
         }
 
         private void UploadChunkOrigins(int candidateStartIndex, int candidateCount)

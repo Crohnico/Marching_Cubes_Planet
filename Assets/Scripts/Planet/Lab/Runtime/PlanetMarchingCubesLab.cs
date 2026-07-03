@@ -149,6 +149,25 @@ namespace MarchingCubesPlanet.Lab
             }
         }
 
+        public void SetRuntimeChunkSize(int chunkSize)
+        {
+            int safeChunkSize = Mathf.Max(1, chunkSize);
+            if (settings.chunkRange.chunkSize == safeChunkSize)
+            {
+                return;
+            }
+
+            ReleaseModule();
+            settings.chunkRange.chunkSize = safeChunkSize;
+            settings.chunkRange.cellSizeGrid = PlanetMarchingCubesChunkRange.CanonicalCellSizeGrid;
+            settings.chunkRange.EnsureDefaults();
+            lastDiagnostic = PlanetLabDiagnostic.Ok(
+                "Marching Cubes runtime chunk size assigned",
+                BuildSettingsMetrics());
+            lastAction = "Set Runtime Chunk Size finished.";
+            CaptureMetrics("Set Runtime Chunk Size", 0);
+        }
+
         public void InitMarchingCubesGpu()
         {
             stopwatch.Restart();
@@ -183,6 +202,14 @@ namespace MarchingCubesPlanet.Lab
             }
 
             RegisterBuffers();
+            lastCandidateChunkCount = (uint)Mathf.Max(0, extractor.CandidateChunkCount);
+            lastProcessedChunkCount = 0u;
+            lastProcessedCellCount = 0u;
+            lastTriangleCountAttempted = 0u;
+            lastTriangleCountWritten = 0u;
+            lastVertexCountWritten = 0u;
+            lastOverflow = false;
+            lastInvalidCase = false;
 
             stopwatch.Stop();
             lastDiagnostic = PlanetLabDiagnostic.Ok(
@@ -270,6 +297,11 @@ namespace MarchingCubesPlanet.Lab
                 chunkOriginMetrics);
             lastAction = "Extract Candidate Chunk Surface finished.";
             CaptureMetrics("Extract Candidate Chunk Surface", stopwatch.Elapsed.TotalMilliseconds);
+        }
+
+        public bool TryGetCandidateChunkOrigin(int candidateChunkIndex, out PlanetMarchingCubesChunkOrigin origin)
+        {
+            return extractor.TryGetCandidateChunkOrigin(candidateChunkIndex, out origin);
         }
 
         public void RunMarchingCubesSmokeTest()

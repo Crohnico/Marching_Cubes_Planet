@@ -20,6 +20,10 @@ namespace MarchingCubesPlanet.Preview
         [Header("Budget")]
         [SerializeField] private int minimumTemporaryTriangleCapacity = DefaultTemporaryTriangleCapacity;
 
+        [Header("Runtime LOD")]
+        [SerializeField] private bool runtimeLodUpdatesEnabled = true;
+        [SerializeField] private float runtimeLodRefreshIntervalSeconds = 0.1f;
+
         [Header("State")]
         [SerializeField] private string lastDiagnostic;
         [SerializeField] private int lastDesiredLod0ChunkCount;
@@ -27,8 +31,23 @@ namespace MarchingCubesPlanet.Preview
         [SerializeField] private int lastDesiredLod2ChunkCount;
         [SerializeField] private float lastBestChunkLodScore;
         [SerializeField] private float lastAverageChunkLodScore;
+        [SerializeField] private int lastRuntimeLodChangedChunkCount;
+        [SerializeField] private int lastRuntimeLodUpdateCount;
+        [SerializeField] private int lastRuntimeLodViewVersion = -1;
 
         private readonly List<PlanetCachedChunkMesh> cachedChunks = new List<PlanetCachedChunkMesh>();
+        private readonly List<PlanetChunkLodRuntimeEntry> runtimeChunkLods = new List<PlanetChunkLodRuntimeEntry>();
+
+        private PlanetRecipe runtimeLod1Recipe = PlanetRecipe.Default();
+        private PlanetPlacement runtimePlacement = PlanetPlacement.Default();
+        private MeshFilter runtimeTargetMeshFilter;
+        private MeshRenderer runtimeTargetMeshRenderer;
+        private PlanetChunkMeshCache runtimeChunkCache;
+        private bool hasRuntimeChunkLods;
+        private bool runtimeChunkCacheReady;
+        private float lastRuntimeLodRefreshTime;
+        private int runtimeTemporaryTriangleCapacity = DefaultTemporaryTriangleCapacity;
+        private int activeRuntimeExtractionLod = -1;
 
         public string LastDiagnostic => lastDiagnostic;
         public int LastDesiredLod0ChunkCount => lastDesiredLod0ChunkCount;
@@ -36,6 +55,27 @@ namespace MarchingCubesPlanet.Preview
         public int LastDesiredLod2ChunkCount => lastDesiredLod2ChunkCount;
         public float LastBestChunkLodScore => lastBestChunkLodScore;
         public float LastAverageChunkLodScore => lastAverageChunkLodScore;
+        public int RuntimeChunkLodCount => runtimeChunkLods.Count;
+        public int LastRuntimeLodChangedChunkCount => lastRuntimeLodChangedChunkCount;
+        public int LastRuntimeLodUpdateCount => lastRuntimeLodUpdateCount;
+        public int LastRuntimeLodViewVersion => lastRuntimeLodViewVersion;
+
+        private void Update()
+        {
+            if (!runtimeLodUpdatesEnabled || !hasRuntimeChunkLods)
+            {
+                return;
+            }
+
+            int viewVersion = PlanetTrianglePoolRegistry.PlayerViewVersion;
+            float now = Time.unscaledTime;
+            bool versionChanged = viewVersion != lastRuntimeLodViewVersion;
+            bool intervalElapsed = now - lastRuntimeLodRefreshTime >= Mathf.Max(0.01f, runtimeLodRefreshIntervalSeconds);
+            if (versionChanged || intervalElapsed)
+            {
+                RefreshRuntimeChunkLods(false);
+            }
+        }
 
         public bool GenerateFromPreview(PlanetRecipePayloadPreview preview, Vector3 priorityOriginWorld)
         {
@@ -82,6 +122,7 @@ namespace MarchingCubesPlanet.Preview
             Release();
             ApplyChunkLodSummary(default);
             cachedChunks.Clear();
+            ClearRuntimeChunkLods();
 
             int safeTriangleBudget = Mathf.Max(1, requestedTriangleBudget);
             int temporaryTriangleCapacity = Mathf.Max(safeTriangleBudget, Mathf.Max(1, minimumTemporaryTriangleCapacity));
@@ -95,102 +136,35 @@ namespace MarchingCubesPlanet.Preview
             paintLab.SetPlacement(placement);
             paintLab.UsePlanetSurfaceAtlas(temporaryTriangleCapacity);
 
-            PlanetChunkMeshCache chunkCache = PlanetChunkMeshCache.CreateDefault();
-            bool chunkCacheReady = chunkCache.Prepare(in sourceRecipe);
-            if (chunkCacheReady)
+            runtimePlacement = placement;
+            runtimeTargetMeshFilter = targetMeshFilter;
+            runtimeTargetMeshRenderer = targetMeshRenderer;
+            runtimeTemporaryTriangleCapacity = temporaryTriangleCapacity;
+            runtimeChunkCache = PlanetChunkMeshCache.CreateDefault();
+            runtimeChunkCacheReady = runtimeChunkCache.Prepare(in sourceRecipe);
+
+            if (!InitializeRuntimeExtractionForLod(fallbackLod, in fallbackRecipe))
             {
-                PlanetChunkCachePayloadMode payloadMode = PlanetChunkCachePayloadMode.MeshOnly;
-                if (chunkCache.TryLoadAllChunkMeshes(
-                    fallbackLodIndex,
-                    payloadMode,
-                    cachedChunks,
-                    out PlanetChunkCacheLoadSummary cacheLoadSummary))
-                {
-                    ApplyChunkLodSummary(PlanetChunkLodRuntimePlanner.BuildSummaryFromCachedChunks(
-                        cachedChunks,
-                        targetMeshFilter != null ? targetMeshFilter.transform : null,
-                        in sourceRecipe,
-                        PlanetTrianglePoolRegistry.PlayerPositionWorld,
-                        PlanetTrianglePoolRegistry.PlayerForwardWorld));
-
-                    if (paintLab.PaintCachedChunks(
-                        cachedChunks,
-                        cacheLoadSummary,
-                        fallbackLodIndex,
-                        targetMeshFilter,
-                        targetMeshRenderer,
-                        placement,
-                        in fallbackRecipe))
-                    {
-                        lastDiagnostic = "Generated from 10 chunk cache LOD" + fallbackLodIndex + ". " +
-                                         chunkCache.LastDiagnostic;
-                        return true;
-                    }
-
-                    ReleaseCachedChunkMeshes(cachedChunks);
-                }
-            }
-
-            shapeLab.InitShapeGpu();
-            if (!shapeLab.IsShapeGpuInitialized)
-            {
-                lastDiagnostic = "Generate blocked: 06 Shape GPU did not initialize. " +
-                                 FormatLabDiagnostic(shapeLab.LastDiagnostic);
                 return false;
             }
 
-            marchingCubesLab.EnsureTemporaryOutputTriangleCapacity(temporaryTriangleCapacity);
-            marchingCubesLab.InitMarchingCubesGpu();
-            if (!marchingCubesLab.HasLiveResources)
-            {
-                lastDiagnostic = "Generate blocked: 07 Marching Cubes did not initialize. " +
-                                 FormatLabDiagnostic(marchingCubesLab.LastDiagnostic);
-                return false;
-            }
-
-            marchingCubesLab.ExtractPlanetSurface();
-            ApplyChunkLodSummary(PlanetChunkLodRuntimePlanner.BuildSummaryFromExtraction(
-                marchingCubesLab.LastResult,
-                in fallbackRecipe,
-                in sourceRecipe,
-                in placement,
-                PlanetTrianglePoolRegistry.PlayerPositionWorld,
-                PlanetTrianglePoolRegistry.PlayerForwardWorld));
-            if (marchingCubesLab.LastOverflow)
-            {
-                lastDiagnostic = "Generate blocked: 07 temporary triangle buffer overflow (" +
-                                 FormatBytes(CalculateMarchingCubesTemporaryBufferBytes(temporaryTriangleCapacity)) +
-                                 "). Attempted tris=" + marchingCubesLab.LastTriangleCountAttempted +
-                                 ", capacity tris=" + temporaryTriangleCapacity + ".";
-                return false;
-            }
-
-            if (marchingCubesLab.LastTriangleCountWritten == 0u)
-            {
-                lastDiagnostic = "Generate finished without visible planet surface triangles. Check 07 chunk/shape diagnostics.";
-                return false;
-            }
-
-            paintLab.PaintLastExtractionByChunks(targetMeshFilter, targetMeshRenderer, placement);
+            CollectRuntimeChunkLodsFromCandidateChunks(in fallbackRecipe, in placement);
+            BeginRuntimeChunkLods(in sourceRecipe, true);
 
             if (!paintLab.HasLiveMesh)
             {
-                lastDiagnostic = "Generate finished without visible 09 Environment triangles. " +
+                lastDiagnostic = "Generate finished without visible 09 Environment triangles after initial LOD changes. " +
                                  FormatLabDiagnostic(paintLab.LastDiagnostic);
                 return false;
             }
 
-            int savedCacheChunks = chunkCacheReady
-                ? paintLab.SaveLiveChunksToCache(chunkCache, fallbackLodIndex)
-                : 0;
-            lastDiagnostic = "Generated via runtime flow 06 -> 07 -> 10 chunk paint -> 09. " +
-                             "Fallback LOD" + fallbackLodIndex +
-                             " recipe gridRadius=" + fallbackRecipe.GridRadius +
-                             " worldScale=" + fallbackRecipe.WorldScale.ToString("0.###") +
-                             ". Cached chunks=" + savedCacheChunks + ".";
-            if (!chunkCacheReady)
+            lastDiagnostic = "Generated via runtime LOD changes. Initial currentLOD=-1 desiredLOD=LOD" + fallbackLodIndex +
+                             " changed=" + lastRuntimeLodChangedChunkCount +
+                             " chunks=" + runtimeChunkLods.Count +
+                             " cache=" + (runtimeChunkCacheReady ? "ready" : "skipped") + ".";
+            if (!runtimeChunkCacheReady)
             {
-                lastDiagnostic += " Cache skipped: " + chunkCache.LastDiagnostic;
+                lastDiagnostic += " Cache skipped: " + runtimeChunkCache.LastDiagnostic;
             }
 
             return true;
@@ -219,6 +193,12 @@ namespace MarchingCubesPlanet.Preview
 
             ApplyChunkLodSummary(default);
             cachedChunks.Clear();
+            ClearRuntimeChunkLods();
+            runtimeChunkCache = null;
+            runtimeChunkCacheReady = false;
+            runtimeTargetMeshFilter = null;
+            runtimeTargetMeshRenderer = null;
+            activeRuntimeExtractionLod = -1;
         }
 
         private void ApplyChunkLodSummary(PlanetChunkLodSummary summary)
@@ -228,6 +208,257 @@ namespace MarchingCubesPlanet.Preview
             lastDesiredLod2ChunkCount = summary.lod2Count;
             lastBestChunkLodScore = summary.bestScore;
             lastAverageChunkLodScore = summary.averageScore;
+        }
+
+        private void BeginRuntimeChunkLods(in PlanetRecipe lod1Recipe, bool forceInitialFallbackDesired)
+        {
+            runtimeLod1Recipe = lod1Recipe;
+            hasRuntimeChunkLods = runtimeChunkLods.Count > 0;
+            lastRuntimeLodViewVersion = -1;
+            lastRuntimeLodRefreshTime = 0f;
+            lastRuntimeLodChangedChunkCount = 0;
+            lastRuntimeLodUpdateCount = 0;
+            if (forceInitialFallbackDesired)
+            {
+                ApplyChunkLodSummary(ForceRuntimeDesiredLod(PlanetChunkLodUtility.InitialFallbackLod));
+                lastRuntimeLodChangedChunkCount = ProcessRuntimeChunkLodChanges();
+                lastRuntimeLodUpdateCount++;
+                lastRuntimeLodViewVersion = PlanetTrianglePoolRegistry.PlayerViewVersion;
+                lastRuntimeLodRefreshTime = Time.unscaledTime;
+                return;
+            }
+
+            RefreshRuntimeChunkLods(true);
+        }
+
+        private void RefreshRuntimeChunkLods(bool force)
+        {
+            if (!force && (!runtimeLodUpdatesEnabled || !hasRuntimeChunkLods))
+            {
+                return;
+            }
+
+            PlanetChunkLodSummary summary = PlanetChunkLodRuntimePlanner.EvaluateEntries(
+                runtimeChunkLods,
+                in runtimeLod1Recipe,
+                PlanetTrianglePoolRegistry.PlayerPositionWorld,
+                PlanetTrianglePoolRegistry.PlayerForwardWorld,
+                out int changedLodCount);
+            int viewVersion = PlanetTrianglePoolRegistry.PlayerViewVersion;
+            ApplyChunkLodSummary(summary);
+            int appliedChangeCount = ProcessRuntimeChunkLodChanges();
+            lastRuntimeLodChangedChunkCount = Mathf.Max(changedLodCount, appliedChangeCount);
+            lastRuntimeLodUpdateCount++;
+            lastRuntimeLodViewVersion = viewVersion;
+            lastRuntimeLodRefreshTime = Time.unscaledTime;
+
+        }
+
+        private PlanetChunkLodSummary ForceRuntimeDesiredLod(PlanetChunkLod desiredLod)
+        {
+            PlanetChunkLodSummary summary = default;
+            for (int i = 0; i < runtimeChunkLods.Count; i++)
+            {
+                PlanetChunkLodRuntimeEntry entry = runtimeChunkLods[i];
+                entry.ForceDesiredLod(desiredLod);
+                runtimeChunkLods[i] = entry;
+                summary.Record(new PlanetChunkLodScore(
+                    entry.ChunkId,
+                    desiredLod,
+                    entry.Score,
+                    entry.ProximityScore,
+                    entry.ViewScore,
+                    entry.DistanceChunks,
+                    entry.ViewRayDistanceChunks,
+                    entry.CenterWorld));
+            }
+
+            summary.Finish();
+            return summary;
+        }
+
+        private int ProcessRuntimeChunkLodChanges()
+        {
+            if (!hasRuntimeChunkLods)
+            {
+                return 0;
+            }
+
+            int changedCount = 0;
+            for (int i = 0; i < runtimeChunkLods.Count; i++)
+            {
+                PlanetChunkLodRuntimeEntry entry = runtimeChunkLods[i];
+                if (!entry.NeedsLodChange)
+                {
+                    continue;
+                }
+
+                if (!ApplyRuntimeChunkLodChange(entry))
+                {
+                    continue;
+                }
+
+                entry.MarkCurrentLod(entry.DesiredLod);
+                runtimeChunkLods[i] = entry;
+                changedCount++;
+            }
+
+            return changedCount;
+        }
+
+        private bool ApplyRuntimeChunkLodChange(PlanetChunkLodRuntimeEntry entry)
+        {
+            int lod = (int)entry.DesiredLod;
+            PlanetRecipe lodRecipe = PlanetChunkLodUtility.BuildRecipeForLod(in runtimeLod1Recipe, entry.DesiredLod);
+            string meshId = PlanetMarchingCubesMeshPainter.BuildChunkMeshId(entry.ChunkId);
+
+            if (runtimeChunkCacheReady &&
+                runtimeChunkCache.TryLoadChunkMesh(
+                    entry.ChunkId,
+                    lod,
+                    PlanetChunkCachePayloadMode.MeshOnly,
+                    out PlanetCachedChunkMesh cachedChunk,
+                    out PlanetChunkCacheLoadSummary _))
+            {
+                bool painted = paintLab.PaintNamedMesh(
+                    meshId,
+                    cachedChunk.SurfaceMesh,
+                    cachedChunk.WaterMesh,
+                    runtimeTargetMeshFilter,
+                    runtimeTargetMeshRenderer,
+                    runtimePlacement,
+                    in lodRecipe,
+                    entry.ChunkId);
+                if (!painted)
+                {
+                    cachedChunk.ReleaseMeshes();
+                }
+
+                return painted;
+            }
+
+            return GenerateAndPaintRuntimeChunk(entry, in lodRecipe, lod, meshId);
+        }
+
+        private bool GenerateAndPaintRuntimeChunk(
+            PlanetChunkLodRuntimeEntry entry,
+            in PlanetRecipe lodRecipe,
+            int lod,
+            string meshId)
+        {
+            if (!InitializeRuntimeExtractionForLod(entry.DesiredLod, in lodRecipe))
+            {
+                return false;
+            }
+
+            if (entry.ChunkId < 0 || entry.ChunkId >= marchingCubesLab.LastCandidateChunkCount)
+            {
+                lastDiagnostic = "Runtime LOD change skipped: chunkId outside 07 candidate range. chunkId=" +
+                                 entry.ChunkId + " candidates=" + marchingCubesLab.LastCandidateChunkCount + ".";
+                return false;
+            }
+
+            marchingCubesLab.ExtractCandidateChunkSurface(entry.ChunkId);
+            if (marchingCubesLab.LastOverflow)
+            {
+                lastDiagnostic = "Runtime LOD change blocked: 07 overflow for chunk " + entry.ChunkId +
+                                 " LOD" + lod +
+                                 ". Attempted tris=" + marchingCubesLab.LastTriangleCountAttempted +
+                                 ", capacity tris=" + runtimeTemporaryTriangleCapacity + ".";
+                return false;
+            }
+
+            if (marchingCubesLab.LastTriangleCountWritten == 0u)
+            {
+                paintLab.PaintNamedMesh(
+                    meshId,
+                    null,
+                    null,
+                    runtimeTargetMeshFilter,
+                    runtimeTargetMeshRenderer,
+                    runtimePlacement,
+                    in lodRecipe,
+                    entry.ChunkId);
+                return true;
+            }
+
+            return paintLab.PaintLastExtractionAsNamedMesh(
+                meshId,
+                entry.ChunkId,
+                runtimeTargetMeshFilter,
+                runtimeTargetMeshRenderer,
+                runtimePlacement,
+                in lodRecipe,
+                runtimeChunkCacheReady ? runtimeChunkCache : null,
+                lod);
+        }
+
+        private bool InitializeRuntimeExtractionForLod(PlanetChunkLod lod, in PlanetRecipe lodRecipe)
+        {
+            int lodIndex = (int)lod;
+            if (activeRuntimeExtractionLod == lodIndex &&
+                shapeLab.IsShapeGpuInitialized &&
+                marchingCubesLab.HasLiveResources)
+            {
+                return true;
+            }
+
+            shapeLab.SetRecipe(in lodRecipe);
+            shapeLab.InitShapeGpu();
+            if (!shapeLab.IsShapeGpuInitialized)
+            {
+                lastDiagnostic = "Generate blocked: 06 Shape GPU did not initialize. " +
+                                 FormatLabDiagnostic(shapeLab.LastDiagnostic);
+                activeRuntimeExtractionLod = -1;
+                return false;
+            }
+
+            marchingCubesLab.EnsureTemporaryOutputTriangleCapacity(runtimeTemporaryTriangleCapacity);
+            marchingCubesLab.SetRuntimeChunkSize(PlanetChunkLodUtility.GetChunkSizeForLod(lod));
+            marchingCubesLab.InitMarchingCubesGpu();
+            if (!marchingCubesLab.HasLiveResources)
+            {
+                lastDiagnostic = "Generate blocked: 07 Marching Cubes did not initialize. " +
+                                 FormatLabDiagnostic(marchingCubesLab.LastDiagnostic);
+                activeRuntimeExtractionLod = -1;
+                return false;
+            }
+
+            activeRuntimeExtractionLod = lodIndex;
+            return true;
+        }
+
+        private void CollectRuntimeChunkLodsFromCandidateChunks(
+            in PlanetRecipe renderRecipe,
+            in PlanetPlacement placement)
+        {
+            runtimeChunkLods.Clear();
+            int candidateCount = Mathf.Max(0, (int)marchingCubesLab.LastCandidateChunkCount);
+            float activeChunkSize = Mathf.Max(1, marchingCubesLab.Settings.chunkRange.chunkSize);
+            for (int chunkId = 0; chunkId < candidateCount; chunkId++)
+            {
+                if (!marchingCubesLab.TryGetCandidateChunkOrigin(chunkId, out PlanetMarchingCubesChunkOrigin origin))
+                {
+                    continue;
+                }
+
+                Vector3 centerGrid = new Vector3(
+                    origin.x + activeChunkSize * 0.5f,
+                    origin.y + activeChunkSize * 0.5f,
+                    origin.z + activeChunkSize * 0.5f);
+                Vector3 centerWorld = PlanetCoordinateConverter.GridToWorld(centerGrid, in renderRecipe, in placement);
+                runtimeChunkLods.Add(new PlanetChunkLodRuntimeEntry(chunkId, centerWorld));
+            }
+        }
+
+        private void ClearRuntimeChunkLods()
+        {
+            runtimeChunkLods.Clear();
+            hasRuntimeChunkLods = false;
+            lastRuntimeLodChangedChunkCount = 0;
+            lastRuntimeLodUpdateCount = 0;
+            lastRuntimeLodViewVersion = -1;
+            lastRuntimeLodRefreshTime = 0f;
         }
 
         private static void ReleaseCachedChunkMeshes(List<PlanetCachedChunkMesh> chunks)

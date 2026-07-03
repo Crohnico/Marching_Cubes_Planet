@@ -48,6 +48,21 @@ namespace MarchingCubesPlanet.MarchingCubes
         {
             return Mathf.Max(0.0001f, PlanetMarchingCubesChunkRange.CanonicalChunkSize * lod1Recipe.WorldScale);
         }
+
+        public static int GetChunkSizeForLod(PlanetChunkLod lod)
+        {
+            switch (lod)
+            {
+                case PlanetChunkLod.LOD0:
+                    return PlanetMarchingCubesChunkRange.CanonicalChunkSize * 2;
+                case PlanetChunkLod.LOD1:
+                    return PlanetMarchingCubesChunkRange.CanonicalChunkSize;
+                case PlanetChunkLod.LOD2:
+                    return Mathf.Max(1, PlanetMarchingCubesChunkRange.CanonicalChunkSize / 2);
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(lod), lod, "Unknown planet chunk LOD.");
+            }
+        }
     }
 
     public readonly struct PlanetChunkLodScoringContext
@@ -146,6 +161,57 @@ namespace MarchingCubesPlanet.MarchingCubes
         }
     }
 
+    public struct PlanetChunkLodRuntimeEntry
+    {
+        public PlanetChunkLodRuntimeEntry(int chunkId, Vector3 centerWorld)
+        {
+            ChunkId = chunkId;
+            CenterWorld = centerWorld;
+            CurrentLod = -1;
+            DesiredLod = PlanetChunkLodUtility.InitialFallbackLod;
+            Score = 0f;
+            ProximityScore = 0f;
+            ViewScore = 0f;
+            DistanceChunks = 0f;
+            ViewRayDistanceChunks = 0f;
+        }
+
+        public int ChunkId { get; }
+        public Vector3 CenterWorld { get; }
+        public int CurrentLod { get; private set; }
+        public PlanetChunkLod DesiredLod { get; private set; }
+        public float Score { get; private set; }
+        public float ProximityScore { get; private set; }
+        public float ViewScore { get; private set; }
+        public float DistanceChunks { get; private set; }
+        public float ViewRayDistanceChunks { get; private set; }
+        public bool NeedsLodChange => CurrentLod != (int)DesiredLod;
+
+        public bool ForceDesiredLod(PlanetChunkLod desiredLod)
+        {
+            bool changed = DesiredLod != desiredLod;
+            DesiredLod = desiredLod;
+            return changed || NeedsLodChange;
+        }
+
+        public bool ApplyScore(PlanetChunkLodScore score)
+        {
+            bool changed = DesiredLod != score.DesiredLod;
+            DesiredLod = score.DesiredLod;
+            Score = score.Score;
+            ProximityScore = score.ProximityScore;
+            ViewScore = score.ViewScore;
+            DistanceChunks = score.DistanceChunks;
+            ViewRayDistanceChunks = score.ViewRayDistanceChunks;
+            return changed;
+        }
+
+        public void MarkCurrentLod(PlanetChunkLod lod)
+        {
+            CurrentLod = (int)lod;
+        }
+    }
+
     public static class PlanetChunkLodScorer
     {
         public const float ProximityWeight = 0.70f;
@@ -205,6 +271,106 @@ namespace MarchingCubesPlanet.MarchingCubes
 
     public static class PlanetChunkLodRuntimePlanner
     {
+        public static void CollectEntriesFromExtraction(
+            PlanetMarchingCubesExtractionResult extraction,
+            in PlanetRecipe renderRecipe,
+            in PlanetPlacement placement,
+            List<PlanetChunkLodRuntimeEntry> results)
+        {
+            if (results == null)
+            {
+                throw new ArgumentNullException(nameof(results));
+            }
+
+            results.Clear();
+            if (extraction == null || extraction.VertexCount <= 0)
+            {
+                return;
+            }
+
+            Dictionary<int, ChunkCenterAccumulator> chunks = CollectChunkCentersFromExtraction(extraction);
+            foreach (KeyValuePair<int, ChunkCenterAccumulator> chunk in chunks)
+            {
+                if (chunk.Value.SampleCount <= 0)
+                {
+                    continue;
+                }
+
+                Vector3 centerWorld = PlanetCoordinateConverter.GridToWorld(
+                    chunk.Value.AverageGridCenter,
+                    in renderRecipe,
+                    in placement);
+                results.Add(new PlanetChunkLodRuntimeEntry(chunk.Key, centerWorld));
+            }
+        }
+
+        public static void CollectEntriesFromCachedChunks(
+            IList<PlanetCachedChunkMesh> cachedChunks,
+            Transform meshParentTransform,
+            List<PlanetChunkLodRuntimeEntry> results)
+        {
+            if (results == null)
+            {
+                throw new ArgumentNullException(nameof(results));
+            }
+
+            results.Clear();
+            if (cachedChunks == null || cachedChunks.Count <= 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < cachedChunks.Count; i++)
+            {
+                PlanetCachedChunkMesh cachedChunk = cachedChunks[i];
+                if (cachedChunk == null ||
+                    !TryGetCachedChunkCenterWorld(cachedChunk, meshParentTransform, out Vector3 centerWorld))
+                {
+                    continue;
+                }
+
+                results.Add(new PlanetChunkLodRuntimeEntry(cachedChunk.ChunkId, centerWorld));
+            }
+        }
+
+        public static PlanetChunkLodSummary EvaluateEntries(
+            List<PlanetChunkLodRuntimeEntry> entries,
+            in PlanetRecipe lod1Recipe,
+            Vector3 playerPositionWorld,
+            Vector3 cameraForwardWorld,
+            out int changedLodCount)
+        {
+            changedLodCount = 0;
+            if (entries == null || entries.Count <= 0)
+            {
+                return default;
+            }
+
+            PlanetChunkLodScoringContext context = BuildContext(
+                in lod1Recipe,
+                playerPositionWorld,
+                cameraForwardWorld);
+            PlanetChunkLodSummary summary = default;
+            for (int i = 0; i < entries.Count; i++)
+            {
+                PlanetChunkLodRuntimeEntry entry = entries[i];
+                PlanetChunkLodScore score = PlanetChunkLodScorer.Evaluate(
+                    entry.ChunkId,
+                    entry.CenterWorld,
+                    in context);
+                if (entry.ApplyScore(score))
+                {
+                    changedLodCount++;
+                }
+
+                entries[i] = entry;
+                summary.Record(score);
+            }
+
+            summary.Finish();
+            return summary;
+        }
+
         public static PlanetChunkLodSummary BuildSummaryFromExtraction(
             PlanetMarchingCubesExtractionResult extraction,
             in PlanetRecipe renderRecipe,
@@ -218,27 +384,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                 return default;
             }
 
-            Dictionary<int, ChunkCenterAccumulator> chunks = new Dictionary<int, ChunkCenterAccumulator>();
-            PlanetMarchingCubesVertex[] vertices = extraction.Vertices;
-            int triangleCount = extraction.TriangleCount;
-            for (int sourceTriangleIndex = 0; sourceTriangleIndex < triangleCount; sourceTriangleIndex++)
-            {
-                int vertexIndex = sourceTriangleIndex * 3;
-                if (vertexIndex + 2 >= extraction.VertexCount)
-                {
-                    break;
-                }
-
-                int chunkId = ReadSourceChunkIndex(vertices, vertexIndex);
-                Vector3 centerGrid =
-                    (ReadGridPosition(vertices[vertexIndex]) +
-                     ReadGridPosition(vertices[vertexIndex + 1]) +
-                     ReadGridPosition(vertices[vertexIndex + 2])) * 0.33333334f;
-
-                chunks.TryGetValue(chunkId, out ChunkCenterAccumulator accumulator);
-                accumulator.Add(centerGrid);
-                chunks[chunkId] = accumulator;
-            }
+            Dictionary<int, ChunkCenterAccumulator> chunks = CollectChunkCentersFromExtraction(extraction);
 
             PlanetChunkLodScoringContext context = BuildContext(
                 in lod1Recipe,
@@ -303,6 +449,34 @@ namespace MarchingCubesPlanet.MarchingCubes
                 playerPositionWorld,
                 cameraForwardWorld,
                 baseChunkWorldSize);
+        }
+
+        private static Dictionary<int, ChunkCenterAccumulator> CollectChunkCentersFromExtraction(
+            PlanetMarchingCubesExtractionResult extraction)
+        {
+            Dictionary<int, ChunkCenterAccumulator> chunks = new Dictionary<int, ChunkCenterAccumulator>();
+            PlanetMarchingCubesVertex[] vertices = extraction.Vertices;
+            int triangleCount = extraction.TriangleCount;
+            for (int sourceTriangleIndex = 0; sourceTriangleIndex < triangleCount; sourceTriangleIndex++)
+            {
+                int vertexIndex = sourceTriangleIndex * 3;
+                if (vertexIndex + 2 >= extraction.VertexCount)
+                {
+                    break;
+                }
+
+                int chunkId = ReadSourceChunkIndex(vertices, vertexIndex);
+                Vector3 centerGrid =
+                    (ReadGridPosition(vertices[vertexIndex]) +
+                     ReadGridPosition(vertices[vertexIndex + 1]) +
+                     ReadGridPosition(vertices[vertexIndex + 2])) * 0.33333334f;
+
+                chunks.TryGetValue(chunkId, out ChunkCenterAccumulator accumulator);
+                accumulator.Add(centerGrid);
+                chunks[chunkId] = accumulator;
+            }
+
+            return chunks;
         }
 
         private static bool TryGetCachedChunkCenterWorld(

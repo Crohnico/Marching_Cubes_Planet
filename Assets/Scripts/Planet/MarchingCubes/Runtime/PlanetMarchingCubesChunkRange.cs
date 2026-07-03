@@ -50,9 +50,9 @@ namespace MarchingCubesPlanet.MarchingCubes
 
         public bool Validate(out string message)
         {
-            if (chunkSize != CanonicalChunkSize)
+            if (chunkSize <= 0)
             {
-                message = "chunkSize must remain 64 for canonical 07.";
+                message = "chunkSize must be greater than zero.";
                 return false;
             }
 

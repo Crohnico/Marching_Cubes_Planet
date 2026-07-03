@@ -260,6 +260,93 @@ namespace MarchingCubesPlanet.MarchingCubes
             return true;
         }
 
+        public bool TryLoadChunkMesh(
+            int chunkId,
+            int lod,
+            PlanetChunkCachePayloadMode payloadMode,
+            out PlanetCachedChunkMesh result,
+            out PlanetChunkCacheLoadSummary summary)
+        {
+            int safeChunkId = Mathf.Max(0, chunkId);
+            int safeLod = Mathf.Max(0, lod);
+            result = null;
+            summary = new PlanetChunkCacheLoadSummary(safeLod, payloadMode);
+            summary.RecordRequestedChunk();
+
+            string lodDirectory = GetChunkLodDirectory(safeChunkId, safeLod);
+            if (!Directory.Exists(lodDirectory))
+            {
+                lastDiagnostic = "Chunk cache miss: chunk " + safeChunkId + " LOD" + safeLod + " folder does not exist.";
+                return false;
+            }
+
+            string surfaceMeshPath = Path.Combine(lodDirectory, MeshFileName);
+            string waterMeshPath = Path.Combine(lodDirectory, WaterMeshFileName);
+            if (!File.Exists(surfaceMeshPath) && !File.Exists(waterMeshPath))
+            {
+                lastDiagnostic = "Chunk cache miss: chunk " + safeChunkId + " LOD" + safeLod + " has no .pmesh files.";
+                return false;
+            }
+
+            Mesh surfaceMesh = null;
+            Mesh waterMesh = null;
+            PlanetCachedChunkData surfaceChunkData = null;
+            PlanetCachedChunkData waterChunkData = null;
+
+            if (File.Exists(surfaceMeshPath) &&
+                !TryReadMesh(surfaceMeshPath, "PlanetChunk_" + safeChunkId + "_SurfaceMesh_Cached", out surfaceMesh))
+            {
+                return false;
+            }
+
+            if (surfaceMesh != null &&
+                payloadMode == PlanetChunkCachePayloadMode.MeshAndChunkData &&
+                !TryReadRequiredChunkData(
+                    Path.Combine(lodDirectory, ChunkDataFileName),
+                    safeChunkId,
+                    safeLod,
+                    false,
+                    ref summary,
+                    out surfaceChunkData))
+            {
+                DestroyRuntimeObject(surfaceMesh);
+                return false;
+            }
+
+            if (File.Exists(waterMeshPath) &&
+                !TryReadMesh(waterMeshPath, "PlanetChunk_" + safeChunkId + "_WaterMesh_Cached", out waterMesh))
+            {
+                DestroyRuntimeObject(surfaceMesh);
+                return false;
+            }
+
+            if (waterMesh != null &&
+                payloadMode == PlanetChunkCachePayloadMode.MeshAndChunkData &&
+                !TryReadRequiredChunkData(
+                    Path.Combine(lodDirectory, WaterDataFileName),
+                    safeChunkId,
+                    safeLod,
+                    true,
+                    ref summary,
+                    out waterChunkData))
+            {
+                DestroyRuntimeObject(surfaceMesh);
+                DestroyRuntimeObject(waterMesh);
+                return false;
+            }
+
+            result = new PlanetCachedChunkMesh(
+                safeChunkId,
+                safeLod,
+                surfaceMesh,
+                waterMesh,
+                surfaceChunkData,
+                waterChunkData);
+            summary.RecordLoadedChunk(surfaceMesh != null, waterMesh != null, surfaceChunkData != null, waterChunkData != null);
+            lastDiagnostic = "Chunk cache loaded chunk " + safeChunkId + " LOD" + safeLod + ". mode=" + payloadMode + ".";
+            return true;
+        }
+
         public bool SaveChunk(int chunkId, int lod, Mesh surfaceMesh, Mesh waterMesh)
         {
             if (surfaceMesh == null && waterMesh == null)
@@ -313,6 +400,9 @@ namespace MarchingCubesPlanet.MarchingCubes
             Append(builder, "InitialFallbackLod", (int)PlanetChunkLodUtility.InitialFallbackLod);
             Append(builder, "Lod0GridMultiplier", 2f);
             Append(builder, "Lod2GridMultiplier", 0.5f);
+            Append(builder, "Lod0ChunkSize", PlanetChunkLodUtility.GetChunkSizeForLod(PlanetChunkLod.LOD0));
+            Append(builder, "Lod1ChunkSize", PlanetChunkLodUtility.GetChunkSizeForLod(PlanetChunkLod.LOD1));
+            Append(builder, "Lod2ChunkSize", PlanetChunkLodUtility.GetChunkSizeForLod(PlanetChunkLod.LOD2));
             Append(builder, "GridRadius", recipe.GridRadius);
             Append(builder, "WorldScale", recipe.WorldScale);
             Append(builder, "Seed", recipe.Seed);

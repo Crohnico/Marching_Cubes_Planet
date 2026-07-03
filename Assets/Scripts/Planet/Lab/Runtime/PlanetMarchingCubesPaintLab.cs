@@ -347,6 +347,241 @@ namespace MarchingCubesPlanet.Lab
             return savedChunkCount;
         }
 
+        public bool PaintNamedMesh(
+            string meshId,
+            Mesh surfaceMesh,
+            Mesh waterMesh,
+            MeshFilter targetMeshFilter,
+            MeshRenderer targetMeshRenderer,
+            PlanetPlacement targetPlacement,
+            in PlanetRecipe recipe,
+            int cacheChunkId = -1)
+        {
+            stopwatch.Restart();
+
+            if (targetMeshFilter == null)
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Critical(
+                    "Paint target MeshFilter is missing",
+                    "09 needs a MeshFilter target to display a named mesh.",
+                    "Pass the PlanetRecipePayloadPreview MeshFilter.",
+                    "targetMeshFilter=null");
+                lastAction = "Paint Named Mesh failed.";
+                stopwatch.Stop();
+                return false;
+            }
+
+            if (targetMeshRenderer == null)
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Critical(
+                    "Paint target MeshRenderer is missing",
+                    "09 needs a MeshRenderer target to display a named mesh.",
+                    "Pass the PlanetRecipePayloadPreview MeshRenderer.",
+                    "targetMeshRenderer=null");
+                lastAction = "Paint Named Mesh failed.";
+                stopwatch.Stop();
+                return false;
+            }
+
+            if (!recipe.IsValid(out string recipeMessage))
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "PlanetRecipe is invalid",
+                    recipeMessage,
+                    "Fix the preview recipe before painting a named mesh.",
+                    "recipe invalid");
+                lastAction = "Paint Named Mesh failed.";
+                stopwatch.Stop();
+                return false;
+            }
+
+            if (!settings.Validate(out string settingsMessage))
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "Marching Cubes paint settings are invalid",
+                    settingsMessage,
+                    "Fix paint settings before painting a named mesh.",
+                    settings.ToString());
+                lastAction = "Paint Named Mesh failed.";
+                stopwatch.Stop();
+                return false;
+            }
+
+            activeMeshFilter = targetMeshFilter;
+            activeMeshRenderer = targetMeshRenderer;
+            placement = targetPlacement;
+
+            PlanetMarchingCubesPaintResult result;
+            try
+            {
+                result = painter.PaintNamedMesh(
+                    activeMeshFilter,
+                    activeMeshRenderer,
+                    materialOverride,
+                    meshId,
+                    surfaceMesh,
+                    waterMesh,
+                    in recipe,
+                    settings,
+                    cacheChunkId);
+            }
+            catch (System.Exception exception)
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "Named mesh paint blocked",
+                    exception.Message,
+                    "Send 09 a valid meshId and meshes already prepared by 10.",
+                    "meshId=" + meshId);
+                lastAction = "Paint Named Mesh blocked.";
+                stopwatch.Stop();
+                CaptureMetrics("Paint Named Mesh Blocked", stopwatch.Elapsed.TotalMilliseconds);
+                return false;
+            }
+
+            hasLiveMesh = painter.RuntimeMesh != null ||
+                          painter.RuntimeWaterMesh != null ||
+                          painter.RuntimeChunkMeshCount > 0 ||
+                          painter.RuntimeChunkWaterMeshCount > 0;
+            lastSourceTriangleCount = result.SourceTriangleCount;
+            lastPaintedTriangleCount = result.PaintedTriangleCount;
+            lastPaintedVertexCount = result.PaintedVertexCount;
+            lastWaterTriangleCount = result.WaterTriangleCount;
+            lastWaterVertexCount = result.WaterVertexCount;
+            lastPaintedChunkCount = result.ChunkCount;
+            lastMeshEstimatedBytes = result.MeshEstimatedBytes;
+            lastWaterMeshEstimatedBytes = result.WaterMeshEstimatedBytes;
+            ReregisterRuntimeResources();
+
+            stopwatch.Stop();
+            lastDiagnostic = PlanetLabDiagnostic.Ok(
+                "Named mesh painted",
+                "meshId=" + meshId);
+            lastAction = "Paint Named Mesh finished.";
+            CaptureMetrics("Paint Named Mesh", stopwatch.Elapsed.TotalMilliseconds);
+            return result.HasVisibleMesh;
+        }
+
+        public bool PaintLastExtractionAsNamedMesh(
+            string meshId,
+            int chunkId,
+            MeshFilter targetMeshFilter,
+            MeshRenderer targetMeshRenderer,
+            PlanetPlacement targetPlacement,
+            in PlanetRecipe recipe,
+            PlanetChunkMeshCache cache,
+            int lod)
+        {
+            stopwatch.Restart();
+
+            if (marchingCubesLab == null)
+            {
+                ResolveReferences();
+            }
+
+            if (marchingCubesLab == null)
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Critical(
+                    "Marching Cubes Lab reference is missing",
+                    "09 needs the latest 07 extraction to paint a named mesh.",
+                    "Assign PlanetMarchingCubesLab from the same scene.",
+                    "marchingCubesLab=null");
+                lastAction = "Paint Named Extraction failed.";
+                stopwatch.Stop();
+                return false;
+            }
+
+            if (targetMeshFilter == null || targetMeshRenderer == null)
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Critical(
+                    "Paint target is missing",
+                    "09 needs a MeshFilter and MeshRenderer target to display a named extraction.",
+                    "Pass the PlanetRecipePayloadPreview render target.",
+                    "targetMeshFilter=" + targetMeshFilter + "\ntargetMeshRenderer=" + targetMeshRenderer);
+                lastAction = "Paint Named Extraction failed.";
+                stopwatch.Stop();
+                return false;
+            }
+
+            if (!recipe.IsValid(out string recipeMessage))
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "PlanetRecipe is invalid",
+                    recipeMessage,
+                    "Fix the recipe before painting a named extraction.",
+                    "recipe invalid");
+                lastAction = "Paint Named Extraction failed.";
+                stopwatch.Stop();
+                return false;
+            }
+
+            if (!settings.Validate(out string settingsMessage))
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "Marching Cubes paint settings are invalid",
+                    settingsMessage,
+                    "Fix paint settings before painting a named extraction.",
+                    settings.ToString());
+                lastAction = "Paint Named Extraction failed.";
+                stopwatch.Stop();
+                return false;
+            }
+
+            activeMeshFilter = targetMeshFilter;
+            activeMeshRenderer = targetMeshRenderer;
+            placement = targetPlacement;
+
+            PlanetMarchingCubesPaintResult result;
+            try
+            {
+                result = painter.PaintNamedExtraction(
+                    activeMeshFilter,
+                    activeMeshRenderer,
+                    materialOverride,
+                    meshId,
+                    chunkId,
+                    marchingCubesLab.LastResult,
+                    in recipe,
+                    in placement,
+                    settings,
+                    cache,
+                    lod);
+            }
+            catch (System.Exception exception)
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "Named extraction paint blocked",
+                    exception.Message,
+                    "Check the 07 extraction result for this chunk.",
+                    "meshId=" + meshId + "\nchunkId=" + chunkId + "\nLOD=" + lod);
+                lastAction = "Paint Named Extraction blocked.";
+                stopwatch.Stop();
+                CaptureMetrics("Paint Named Extraction Blocked", stopwatch.Elapsed.TotalMilliseconds);
+                return false;
+            }
+
+            hasLiveMesh = painter.RuntimeMesh != null ||
+                          painter.RuntimeWaterMesh != null ||
+                          painter.RuntimeChunkMeshCount > 0 ||
+                          painter.RuntimeChunkWaterMeshCount > 0;
+            lastSourceTriangleCount = result.SourceTriangleCount;
+            lastPaintedTriangleCount = result.PaintedTriangleCount;
+            lastPaintedVertexCount = result.PaintedVertexCount;
+            lastWaterTriangleCount = result.WaterTriangleCount;
+            lastWaterVertexCount = result.WaterVertexCount;
+            lastPaintedChunkCount = result.ChunkCount;
+            lastMeshEstimatedBytes = result.MeshEstimatedBytes;
+            lastWaterMeshEstimatedBytes = result.WaterMeshEstimatedBytes;
+            ReregisterRuntimeResources();
+
+            stopwatch.Stop();
+            lastDiagnostic = PlanetLabDiagnostic.Ok(
+                "Named extraction painted",
+                "meshId=" + meshId + "\nchunkId=" + chunkId + "\nLOD=" + lod);
+            lastAction = "Paint Named Extraction finished.";
+            CaptureMetrics("Paint Named Extraction", stopwatch.Elapsed.TotalMilliseconds);
+            return result.HasVisibleMesh;
+        }
+
         private void PaintLastExtractionInternal(
             MeshFilter targetMeshFilter,
             MeshRenderer targetMeshRenderer,
@@ -612,6 +847,18 @@ namespace MarchingCubesPlanet.Lab
                     painter.RuntimeSurfaceAtlasPixelCount,
                     4);
             }
+        }
+
+        private void ReregisterRuntimeResources()
+        {
+            MarkReleased(ref surfaceAtlasResourceId);
+            MarkReleased(ref waterMaterialResourceId);
+            MarkReleased(ref materialResourceId);
+            MarkReleased(ref chunkWaterMeshesResourceId);
+            MarkReleased(ref chunkMeshesResourceId);
+            MarkReleased(ref waterMeshResourceId);
+            MarkReleased(ref meshResourceId);
+            RegisterRuntimeResources();
         }
 
         private void CaptureMetrics(string operationName, double operationMs)

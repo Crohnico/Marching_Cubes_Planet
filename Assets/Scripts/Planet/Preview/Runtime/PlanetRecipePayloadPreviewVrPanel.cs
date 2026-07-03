@@ -12,6 +12,7 @@ namespace MarchingCubesPlanet.Preview
         private const string RootName = "PlanetRecipePayloadPreviewDeadlineVR";
         private const string LegacyDebugCanvasName = "PlanetMinimalXrTestCanvas";
         private const float CanvasScale = 0.0025f;
+        private const float DiagnosticsRefreshIntervalSeconds = 0.25f;
 
         [SerializeField] private PlanetRecipePayloadPreview preview;
         [SerializeField] private PlanetRecipePayloadPreviewGenerationFlow generationFlow;
@@ -30,6 +31,7 @@ namespace MarchingCubesPlanet.Preview
 
         private readonly StringBuilder builder = new StringBuilder(2048);
         private string lastPanelDiagnostic;
+        private float nextDiagnosticsRefreshTime;
 
         public PlanetRecipePayloadPreview Preview => preview;
 
@@ -79,6 +81,17 @@ namespace MarchingCubesPlanet.Preview
         private void OnDisable()
         {
             RemoveButtonCallbacks();
+        }
+
+        private void Update()
+        {
+            if (diagnosticsText == null || Time.unscaledTime < nextDiagnosticsRefreshTime)
+            {
+                return;
+            }
+
+            nextDiagnosticsRefreshTime = Time.unscaledTime + DiagnosticsRefreshIntervalSeconds;
+            Refresh();
         }
 
         public void Refresh()
@@ -592,6 +605,10 @@ namespace MarchingCubesPlanet.Preview
                 AppendLine("Desired LOD2 chunks", flow.LastDesiredLod2ChunkCount.ToString());
                 AppendLine("Best chunk LOD score", flow.LastBestChunkLodScore.ToString("0.000"));
                 AppendLine("Average chunk LOD score", flow.LastAverageChunkLodScore.ToString("0.000"));
+                AppendLine("Runtime LOD chunks", flow.RuntimeChunkLodCount.ToString());
+                AppendLine("Runtime LOD updates", flow.LastRuntimeLodUpdateCount.ToString());
+                AppendLine("Runtime LOD changed", flow.LastRuntimeLodChangedChunkCount.ToString());
+                AppendLine("Runtime LOD view version", flow.LastRuntimeLodViewVersion.ToString());
             }
 
             PlanetTrianglePoolMetrics environmentMetrics = PlanetTrianglePoolRegistry.Environment.Metrics;

@@ -138,6 +138,21 @@ LOD1 es la receta base para calcular el planetId.
 Cada LOD se guarda en su carpeta propia dentro de la misma cache de planeta.
 ```
 
+Para que el mismo chunk logico conserve el mismo tamano en mundo, 07 cambia el
+chunkSize en grid segun el LOD:
+
+```text
+LOD2 -> chunkSize 32, WorldScale 123.
+LOD1 -> chunkSize 64, WorldScale 61.5.
+LOD0 -> chunkSize 128, WorldScale 30.75.
+```
+
+Lectura:
+
+```text
+chunkSize * WorldScale se mantiene estable entre LODs.
+```
+
 La primera ruta de implementacion guardara cada chunk por LOD:
 
 ```text
@@ -406,6 +421,26 @@ Regla:
 10 decide el LOD deseado por chunk antes de cargar o generar su mesh.
 ```
 
+### Desired LOD runtime burro
+
+Primera fase runtime sin paquetes ni Transvoxel:
+
+```text
+1. Generate inicializa la tabla de chunks antes de pintar.
+2. Cada chunk arranca con currentLOD = -1.
+3. Cada chunk arranca con desiredLOD = LOD2.
+4. Como currentLOD != desiredLOD, 10 resuelve cada chunk inicial como cambio a LOD2.
+5. 10 registra los chunks visibles actuales y su centro en mundo.
+6. En runtime, 10 recalcula desiredLOD cuando cambia la posicion/mirada del jugador.
+7. 10 mantiene la tabla chunkId -> currentLOD + desiredLOD.
+8. 10 no envia esa tabla a 09 como estado logico.
+9. 09 solo recibe una orden cuando hay mesh/triangulos concretos que pintar,
+   sustituir, liberar o confiscar.
+```
+
+Esta fase permite validar que 10 decide LOD en movimiento y que el primer pintado
+del planeta usa el mismo camino que un cambio posterior de LOD.
+
 ### Cambio de LOD deseado
 
 Si un chunk ya estaba visible con un LOD y mas tarde pasa a necesitar otro LOD,
@@ -633,7 +668,13 @@ Regla:
 
 ```text
 07 expone una ruta de extraccion por candidateChunkIndex.
-La extraccion de un chunk procesa solo ese chunk canonico de 64^3 celdas.
+La extraccion de un chunk procesa solo ese chunk del LOD activo.
+
+```text
+LOD2 -> 32^3 celdas.
+LOD1 -> 64^3 celdas.
+LOD0 -> 128^3 celdas.
+```
 El resultado conserva el chunkId original del candidato.
 ```
 
@@ -762,7 +803,7 @@ El flujo inicial sera:
 9. Si el chunk no existe, 10 pide/genera la data necesaria para ese chunk y LOD.
 10. 10 construye la mesh del chunk si hace falta.
 11. 10 guarda mesh y chunk_data en cache segun corresponda.
-12. 10 pinta/publica ese chunk sustituyendo su representacion LOD2.
+12. 10 pide a 09 pintar/publicar ese chunk sustituyendo su representacion LOD2.
 13. 10 pasa al siguiente paquete sin saturar el sistema.
 ```
 
@@ -814,8 +855,11 @@ La formula inicial de puntuacion sera 70% cercania y 30% mirada.
 Los thresholds iniciales seran LOD0 hasta 3 chunks, LOD1 hasta 6 chunks y LOD2 para el resto del planeta.
 La hysteresis inicial sera LOD0 sale al pasar de 4 chunks y LOD1 sale al pasar de 7 chunks.
 10 asigna LOD0, LOD1 o LOD2 a cada chunk en funcion de esa puntuacion.
+10 recalcula desiredLOD en runtime para los chunks visibles actuales.
+10 mantiene currentLOD y desiredLOD dentro de 10.
+Cuando currentLOD != desiredLOD, 10 resuelve ese chunk y pide a 09 sustituir la mesh por meshId.
 LOD2 se usa como fallback barato inicial.
-LOD2 fallback se prioriza como shell inmediata completa.
+LOD2 fallback se prioriza como primer desiredLOD de todos los chunks, con currentLOD inicial -1.
 Generar o cambiar un chunk solo calcula ese chunk y su halo minimo, nunca el planeta entero.
 La primera ruta guarda mesh y chunk_data por chunkId/LOD.
 10 solo trabaja sobre chunks visibles o candidatos visibles.
