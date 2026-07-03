@@ -10,7 +10,6 @@ namespace MarchingCubesPlanet.Preview
     public sealed class PlanetRecipePayloadPreviewGenerationFlow : MonoBehaviour
     {
         private const int DefaultTemporaryTriangleCapacity = 1000000;
-        private const int InitialChunkCacheLod = 2;
 
         [Header("Runtime Chain")]
         [SerializeField] private PlanetGpuShapeLab shapeLab;
@@ -74,8 +73,12 @@ namespace MarchingCubesPlanet.Preview
             PlanetTrianglePoolRegistry.SetEnvironmentTriangleBudget(safeTriangleBudget);
             PlanetTrianglePoolRegistry.SetFallbackPriorityOriginWorld(priorityOriginWorld);
 
-            shapeLab.SetRecipe(in sourceRecipe);
+            PlanetChunkLod fallbackLod = PlanetChunkLodUtility.InitialFallbackLod;
+            int fallbackLodIndex = (int)fallbackLod;
+            PlanetRecipe fallbackRecipe = PlanetChunkLodUtility.BuildRecipeForLod(in sourceRecipe, fallbackLod);
+            shapeLab.SetRecipe(in fallbackRecipe);
             paintLab.SetPlacement(placement);
+            paintLab.SetChunkLodBaseRecipe(in sourceRecipe);
             paintLab.UsePlanetSurfaceAtlas(temporaryTriangleCapacity);
 
             PlanetChunkMeshCache chunkCache = PlanetChunkMeshCache.CreateDefault();
@@ -83,13 +86,13 @@ namespace MarchingCubesPlanet.Preview
             if (chunkCacheReady &&
                 paintLab.TryPaintCachedChunks(
                     chunkCache,
-                    InitialChunkCacheLod,
+                    fallbackLodIndex,
                     targetMeshFilter,
                     targetMeshRenderer,
                     placement,
-                    in sourceRecipe))
+                    in fallbackRecipe))
             {
-                lastDiagnostic = "Generated from 10 chunk cache LOD" + InitialChunkCacheLod + ". " +
+                lastDiagnostic = "Generated from 10 chunk cache LOD" + fallbackLodIndex + ". " +
                                  chunkCache.LastDiagnostic;
                 return true;
             }
@@ -137,10 +140,13 @@ namespace MarchingCubesPlanet.Preview
             }
 
             int savedCacheChunks = chunkCacheReady
-                ? paintLab.SaveLiveChunksToCache(chunkCache, InitialChunkCacheLod)
+                ? paintLab.SaveLiveChunksToCache(chunkCache, fallbackLodIndex)
                 : 0;
             lastDiagnostic = "Generated via runtime flow 06 -> 07 -> 10 chunk paint -> 09. " +
-                             "Cached LOD" + InitialChunkCacheLod + " chunks=" + savedCacheChunks + ".";
+                             "Fallback LOD" + fallbackLodIndex +
+                             " recipe gridRadius=" + fallbackRecipe.GridRadius +
+                             " worldScale=" + fallbackRecipe.WorldScale.ToString("0.###") +
+                             ". Cached chunks=" + savedCacheChunks + ".";
             if (!chunkCacheReady)
             {
                 lastDiagnostic += " Cache skipped: " + chunkCache.LastDiagnostic;

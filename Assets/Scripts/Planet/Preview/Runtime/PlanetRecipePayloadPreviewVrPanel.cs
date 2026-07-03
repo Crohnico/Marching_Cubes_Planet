@@ -562,6 +562,11 @@ namespace MarchingCubesPlanet.Preview
             if (paintLab != null)
             {
                 AppendLine("Painted chunks", paintLab.LastPaintedChunkCount.ToString());
+                AppendLine("Desired LOD0 chunks", paintLab.LastDesiredLod0ChunkCount.ToString());
+                AppendLine("Desired LOD1 chunks", paintLab.LastDesiredLod1ChunkCount.ToString());
+                AppendLine("Desired LOD2 chunks", paintLab.LastDesiredLod2ChunkCount.ToString());
+                AppendLine("Best chunk LOD score", paintLab.LastBestChunkLodScore.ToString("0.000"));
+                AppendLine("Average chunk LOD score", paintLab.LastAverageChunkLodScore.ToString("0.000"));
                 AppendLine("Painted tris", paintLab.LastPaintedTriangleCount.ToString());
                 AppendLine("Painted vertices", paintLab.LastPaintedVertexCount.ToString());
                 AppendLine("Painted water tris", paintLab.LastWaterTriangleCount.ToString());

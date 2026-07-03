@@ -114,7 +114,25 @@ cache/
 Por ahora se asume:
 
 ```text
-El planeta puede abrirse inicialmente en LOD2 como fallback barato.
+La receta editable actual representa LOD1.
+El planeta se abre inicialmente en LOD2 como fallback barato.
+```
+
+Escala inicial aceptada:
+
+```text
+LOD1 -> GridRadius 130, WorldScale 61.5.
+LOD0 -> GridRadius 130 * 2, WorldScale 61.5 / 2.
+LOD2 -> GridRadius 130 / 2, WorldScale 61.5 * 2.
+```
+
+Regla:
+
+```text
+LOD0, LOD1 y LOD2 mantienen el mismo radio visual.
+El LOD cambia la resolucion logica de muestreo, no el tamano del planeta.
+LOD1 es la receta base para calcular el planetId.
+Cada LOD se guarda en su carpeta propia dentro de la misma cache de planeta.
 ```
 
 La primera ruta de implementacion guardara cada chunk por LOD:
@@ -284,6 +302,15 @@ La puntuacion inicial dependera de:
 30% distancia/alineacion con lo que mira la camara
 ```
 
+Fuente de player/camara:
+
+```text
+La posicion del jugador y la direccion de mirada vienen de un LODAgent.
+El LODAgent empuja un snapshot plano: playerPositionWorld, cameraForwardWorld y version.
+10/09 consumen ese snapshot desde el registry comun, no desde PlanetMinimalXrRig.
+PlanetMinimalXrRig puede mover camara y manos, pero no es la autoridad de LOD.
+```
+
 Formula inicial:
 
 ```text
@@ -320,6 +347,14 @@ Con esa puntuacion, cada chunk recibira un LOD deseado:
 LOD0 -> chunk de maxima prioridad.
 LOD1 -> chunk de prioridad media.
 LOD2 -> chunk de baja prioridad o fallback lejano.
+```
+
+Decision de resolucion:
+
+```text
+LOD1 es la resolucion base de autoria.
+LOD0 duplica la resolucion de LOD1.
+LOD2 usa la mitad de resolucion de LOD1.
 ```
 
 Thresholds iniciales por distancia:
@@ -672,7 +707,7 @@ La formula inicial de puntuacion sera 70% cercania y 30% mirada.
 Los thresholds iniciales seran LOD0 hasta 3 chunks, LOD1 hasta 6 chunks y LOD2 para el resto del planeta.
 La hysteresis inicial sera LOD0 sale al pasar de 4 chunks y LOD1 sale al pasar de 7 chunks.
 10 asigna LOD0, LOD1 o LOD2 a cada chunk en funcion de esa puntuacion.
-LOD2 puede usarse como fallback barato inicial.
+LOD2 se usa como fallback barato inicial.
 Generar o cambiar un chunk solo calcula ese chunk y su halo minimo, nunca el planeta entero.
 La primera ruta guarda mesh y chunk_data por chunkId/LOD.
 10 solo trabaja sobre chunks visibles o candidatos visibles.

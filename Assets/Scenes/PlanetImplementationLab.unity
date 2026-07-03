@@ -4627,6 +4627,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1231763937}
+  - component: {fileID: 774411229}
   - component: {fileID: 1231763936}
   - component: {fileID: 223344556}
   m_Layer: 0
@@ -4636,6 +4637,26 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
+--- !u!114 &774411229
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1231763935}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d03a3d578c6240f2a6e5fe991d17b458, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: MarchingCubesPlanet.TrianglePools::MarchingCubesPlanet.TrianglePools.PlanetLodAgent
+  positionSource: {fileID: 1231763937}
+  viewSource: {fileID: 629667606}
+  minPositionDeltaMeters: 0.025
+  minViewAngleDeltaDegrees: 0.25
+  maxPushIntervalSeconds: 0.1
+  lastPushedPositionWorld: {x: 0, y: 0, z: 0}
+  lastPushedForwardWorld: {x: 0, y: 0, z: 1}
+  pushVersion: 0
 --- !u!114 &1231763936
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -164,6 +164,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                 return bytes;
             }
         }
+        public PlanetChunkLodSummary LastChunkLodSummary { get; private set; }
 
         private sealed class RuntimeChunkMesh
         {
@@ -178,6 +179,11 @@ namespace MarchingCubesPlanet.MarchingCubes
             public int waterVertexCount;
             public long surfaceEstimatedBytes;
             public long waterEstimatedBytes;
+            public PlanetChunkLod desiredLod;
+            public float lodScore;
+            public float lodDistanceChunks;
+            public float lodViewScore;
+            public float lodProximityScore;
         }
 
         public PlanetMarchingCubesPaintResult Paint(
@@ -642,6 +648,31 @@ namespace MarchingCubesPlanet.MarchingCubes
             return savedChunkCount;
         }
 
+        public PlanetChunkLodSummary ScoreRuntimeChunks(in PlanetChunkLodScoringContext context)
+        {
+            PlanetChunkLodSummary summary = default;
+            for (int i = 0; i < runtimeChunks.Count; i++)
+            {
+                RuntimeChunkMesh chunk = runtimeChunks[i];
+                if (chunk == null || !TryGetChunkCenterWorld(chunk, out Vector3 centerWorld))
+                {
+                    continue;
+                }
+
+                PlanetChunkLodScore score = PlanetChunkLodScorer.Evaluate(chunk.chunkIndex, centerWorld, in context);
+                chunk.desiredLod = score.DesiredLod;
+                chunk.lodScore = score.Score;
+                chunk.lodDistanceChunks = score.DistanceChunks;
+                chunk.lodViewScore = score.ViewScore;
+                chunk.lodProximityScore = score.ProximityScore;
+                summary.Record(score);
+            }
+
+            summary.Finish();
+            LastChunkLodSummary = summary;
+            return summary;
+        }
+
         public void Release(MeshFilter meshFilter, MeshRenderer meshRenderer)
         {
             ReleaseMeshOnly(meshFilter);
@@ -734,6 +765,21 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
 
             runtimeChunks.Clear();
+            LastChunkLodSummary = default;
+        }
+
+        private static bool TryGetChunkCenterWorld(RuntimeChunkMesh chunk, out Vector3 centerWorld)
+        {
+            Mesh mesh = chunk.surfaceMesh != null ? chunk.surfaceMesh : chunk.waterMesh;
+            GameObject chunkObject = chunk.surfaceObject != null ? chunk.surfaceObject : chunk.waterObject;
+            if (mesh == null || chunkObject == null)
+            {
+                centerWorld = Vector3.zero;
+                return false;
+            }
+
+            centerWorld = chunkObject.transform.TransformPoint(mesh.bounds.center);
+            return true;
         }
 
         private static void BuildMesh(

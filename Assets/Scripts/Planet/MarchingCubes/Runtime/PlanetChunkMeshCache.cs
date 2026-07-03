@@ -254,6 +254,10 @@ namespace MarchingCubesPlanet.MarchingCubes
         private static string BuildRecipeSignature(in PlanetRecipe recipe)
         {
             StringBuilder builder = new StringBuilder(1024);
+            Append(builder, "BaseRecipeLod", (int)PlanetChunkLodUtility.BaseRecipeLod);
+            Append(builder, "InitialFallbackLod", (int)PlanetChunkLodUtility.InitialFallbackLod);
+            Append(builder, "Lod0GridMultiplier", 2f);
+            Append(builder, "Lod2GridMultiplier", 0.5f);
             Append(builder, "GridRadius", recipe.GridRadius);
             Append(builder, "WorldScale", recipe.WorldScale);
             Append(builder, "Seed", recipe.Seed);

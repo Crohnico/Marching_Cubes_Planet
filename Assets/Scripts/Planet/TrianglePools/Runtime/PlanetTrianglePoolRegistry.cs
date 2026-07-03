@@ -9,7 +9,12 @@ namespace MarchingCubesPlanet.TrianglePools
             new Dictionary<uint, PlanetTrianglePoolController>();
 
         private static PlanetPlayerViewReference playerViewReference;
+        private static PlanetLodAgent lodAgent;
         private static PlanetTriangleDistanceReference distanceReference;
+        private static Vector3 lodAgentPositionWorld;
+        private static Vector3 lodAgentForwardWorld = Vector3.forward;
+        private static int lodAgentViewVersion;
+        private static bool hasLodAgentSnapshot;
         private static Vector3 playerPositionWorld;
         private static Vector3 playerForwardWorld = Vector3.forward;
         private static int playerViewVersion;
@@ -17,15 +22,20 @@ namespace MarchingCubesPlanet.TrianglePools
         private static Vector3 fallbackPriorityOriginWorld;
         private static bool hasFallbackPriorityOriginWorld;
 
+        public static bool HasLodAgent => lodAgent != null;
+        public static bool HasLodAgentSnapshot => hasLodAgentSnapshot;
         public static bool HasPlayerViewReference => playerViewReference != null;
         public static bool HasPlayerViewSnapshot => hasPlayerViewSnapshot;
-        public static bool HasPlayerViewData => hasPlayerViewSnapshot ||
+        public static bool HasPlayerViewData => hasLodAgentSnapshot ||
+                                                hasPlayerViewSnapshot ||
                                                 distanceReference != null;
         public static bool HasPriorityOriginData => HasPlayerViewData ||
                                                     hasFallbackPriorityOriginWorld;
         public static bool HasDistanceReference => distanceReference != null;
 
-        public static Vector3 PlayerPositionWorld => hasPlayerViewSnapshot
+        public static Vector3 PlayerPositionWorld => hasLodAgentSnapshot
+            ? lodAgentPositionWorld
+            : hasPlayerViewSnapshot
             ? playerPositionWorld
             : distanceReference != null
                 ? distanceReference.Position
@@ -33,15 +43,19 @@ namespace MarchingCubesPlanet.TrianglePools
                     ? fallbackPriorityOriginWorld
                     : Vector3.zero;
 
-        public static Vector3 PlayerForwardWorld => hasPlayerViewSnapshot
+        public static Vector3 PlayerForwardWorld => hasLodAgentSnapshot
+            ? lodAgentForwardWorld
+            : hasPlayerViewSnapshot
             ? playerForwardWorld
             : distanceReference != null
                 ? distanceReference.Forward
                 : Vector3.forward;
 
-        public static int PlayerViewVersion => playerViewVersion;
+        public static int PlayerViewVersion => hasLodAgentSnapshot ? lodAgentViewVersion : playerViewVersion;
 
-        public static Vector3 PriorityOriginWorld => hasPlayerViewSnapshot
+        public static Vector3 PriorityOriginWorld => hasLodAgentSnapshot
+            ? lodAgentPositionWorld
+            : hasPlayerViewSnapshot
             ? playerPositionWorld
             : distanceReference != null
                 ? distanceReference.Position
@@ -54,6 +68,46 @@ namespace MarchingCubesPlanet.TrianglePools
 
         public static PlanetTrianglePoolController Particles =>
             GetOrCreate(PlanetTriangleArtistId.ParticlesValue);
+
+        public static void RegisterLodAgent(PlanetLodAgent agent)
+        {
+            if (agent != null)
+            {
+                lodAgent = agent;
+            }
+        }
+
+        public static void UnregisterLodAgent(PlanetLodAgent agent)
+        {
+            if (lodAgent == agent)
+            {
+                lodAgent = null;
+                hasLodAgentSnapshot = false;
+            }
+        }
+
+        public static void PushLodAgentView(
+            PlanetLodAgent agent,
+            Vector3 positionWorld,
+            Vector3 forwardWorld,
+            int version)
+        {
+            if (agent == null || lodAgent != null && lodAgent != agent)
+            {
+                return;
+            }
+
+            lodAgent = agent;
+            if (forwardWorld.sqrMagnitude <= 0.0001f)
+            {
+                forwardWorld = Vector3.forward;
+            }
+
+            lodAgentPositionWorld = positionWorld;
+            lodAgentForwardWorld = forwardWorld.normalized;
+            lodAgentViewVersion = version;
+            hasLodAgentSnapshot = true;
+        }
 
         public static void RegisterPlayerViewReference(PlanetPlayerViewReference reference)
         {

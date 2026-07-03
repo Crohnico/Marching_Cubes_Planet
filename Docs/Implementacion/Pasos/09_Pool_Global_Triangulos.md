@@ -509,7 +509,7 @@ No convierte a 09 en sistema de camara, player, vision o LOD.
 Referencia player/camara:
 
 ```text
-PlanetPlayerViewReference vive en la camara del jugador o en el objeto que represente su vista.
+PlanetLodAgent vive en el jugador o en el objeto que represente su vista.
 Su unica funcion es empujar a 09 un snapshot plano: playerPositionWorld, cameraForwardWorld y version.
 El push ocurre solo cuando hay movimiento, giro o vence un intervalo maximo configurado.
 09 guarda el ultimo snapshot para que 10 y los flujos de prueba tengan una fuente comun de posicion/mirada.
@@ -1749,8 +1749,9 @@ El bootstrap se llama PlanetTrianglePoolBootstrap.
 El registry se llama PlanetTrianglePoolRegistry.
 La referencia de prioridad de Lab se llama PlanetTrianglePriorityReferenceLab.
 PlanetTrianglePriorityReferenceLab puede vivir en el Player de la escena solo para fabricar priorityScore de pruebas.
-La referencia runtime de player/camara se llama PlanetPlayerViewReference.
-PlanetPlayerViewReference vive preferentemente en la camara del jugador y empuja posicion, forward y version a PlanetTrianglePoolRegistry.
+La referencia runtime de player/camara para 10 se llama PlanetLodAgent.
+PlanetLodAgent vive preferentemente en el jugador, con fuente de posicion en el jugador y fuente de mirada en la camara.
+PlanetPlayerViewReference queda como fallback legacy mientras existan escenas antiguas.
 PlanetTrianglePoolRegistry puede exponer ese snapshot plano a productores como 10.
 El snapshot de player/camara no convierte a 09 en sistema de LOD, frustum, vision ni mirada.
 Las requests de pintado a 09 reciben priorityScore como dato plano, no camara, XR Rig, Transform ni GameObject en GPU.

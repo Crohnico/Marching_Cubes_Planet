@@ -41,7 +41,8 @@ namespace MarchingCubesPlanet.Lab.Editor
             camera.nearClipPlane = 0.05f;
             camera.farClipPlane = 20000f;
             headObject.AddComponent<AudioListener>();
-            headObject.AddComponent<PlanetPlayerViewReference>();
+            PlanetLodAgent lodAgent = root.AddComponent<PlanetLodAgent>();
+            lodAgent.SetSources(root.transform, headObject.transform);
             TrySetTag(headObject, "MainCamera");
 
             Transform leftMarker = CreateHandMarker(root.transform, "LeftHandMarker", new Vector3(-0.25f, 1.25f, 0.45f), new Color(0.2f, 0.7f, 1f));

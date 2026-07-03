@@ -6,6 +6,7 @@ namespace MarchingCubesPlanet.TrianglePools
     public sealed class PlanetTrianglePoolBootstrap : MonoBehaviour
     {
         [SerializeField] private PlanetTriangleBudgetProfile[] activeProfiles;
+        [SerializeField] private PlanetLodAgent lodAgent;
         [SerializeField] private PlanetPlayerViewReference playerViewReference;
         [SerializeField] private PlanetTriangleDistanceReference distanceReference;
 
@@ -16,6 +17,17 @@ namespace MarchingCubesPlanet.TrianglePools
 
         public void Init()
         {
+            if (lodAgent == null)
+            {
+                lodAgent = FindFirstObjectByType<PlanetLodAgent>();
+            }
+
+            if (lodAgent != null)
+            {
+                PlanetTrianglePoolRegistry.RegisterLodAgent(lodAgent);
+                lodAgent.ForcePush();
+            }
+
             if (playerViewReference == null)
             {
                 playerViewReference = FindFirstObjectByType<PlanetPlayerViewReference>();

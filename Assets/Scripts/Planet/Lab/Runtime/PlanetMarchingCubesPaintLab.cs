@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Collections.Generic;
 using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.MarchingCubes;
+using MarchingCubesPlanet.TrianglePools;
 using UnityEngine;
 
 namespace MarchingCubesPlanet.Lab
@@ -22,6 +23,8 @@ namespace MarchingCubesPlanet.Lab
 
         [Header("Paint")]
         [SerializeField] private PlanetMarchingCubesPaintSettings settings = PlanetMarchingCubesPaintSettings.Default();
+        [SerializeField] private PlanetRecipe chunkLodBaseRecipe = PlanetRecipe.Default();
+        [SerializeField] private bool hasChunkLodBaseRecipe;
 
         [Header("State")]
         [SerializeField] private bool hasLiveMesh;
@@ -31,6 +34,11 @@ namespace MarchingCubesPlanet.Lab
         [SerializeField] private int lastWaterTriangleCount;
         [SerializeField] private int lastWaterVertexCount;
         [SerializeField] private int lastPaintedChunkCount;
+        [SerializeField] private int lastDesiredLod0ChunkCount;
+        [SerializeField] private int lastDesiredLod1ChunkCount;
+        [SerializeField] private int lastDesiredLod2ChunkCount;
+        [SerializeField] private float lastBestChunkLodScore;
+        [SerializeField] private float lastAverageChunkLodScore;
         [SerializeField] private long lastMeshEstimatedBytes;
         [SerializeField] private long lastWaterMeshEstimatedBytes;
         [SerializeField] private string lastAction;
@@ -67,6 +75,11 @@ namespace MarchingCubesPlanet.Lab
         public int LastWaterTriangleCount => lastWaterTriangleCount;
         public int LastWaterVertexCount => lastWaterVertexCount;
         public int LastPaintedChunkCount => lastPaintedChunkCount;
+        public int LastDesiredLod0ChunkCount => lastDesiredLod0ChunkCount;
+        public int LastDesiredLod1ChunkCount => lastDesiredLod1ChunkCount;
+        public int LastDesiredLod2ChunkCount => lastDesiredLod2ChunkCount;
+        public float LastBestChunkLodScore => lastBestChunkLodScore;
+        public float LastAverageChunkLodScore => lastAverageChunkLodScore;
         public long LastMeshEstimatedBytes => lastMeshEstimatedBytes;
         public long LastWaterMeshEstimatedBytes => lastWaterMeshEstimatedBytes;
 
@@ -177,6 +190,12 @@ namespace MarchingCubesPlanet.Lab
         public void SetPlacement(PlanetPlacement value)
         {
             placement = value;
+        }
+
+        public void SetChunkLodBaseRecipe(in PlanetRecipe lod1Recipe)
+        {
+            chunkLodBaseRecipe = lod1Recipe;
+            hasChunkLodBaseRecipe = true;
         }
 
         public void PaintLastExtraction()
@@ -300,6 +319,7 @@ namespace MarchingCubesPlanet.Lab
                     in recipe,
                     settings);
                 ApplyResultSummary(result);
+                ApplyChunkLodScoring(in recipe);
                 RegisterRuntimeResources();
             }
             catch (System.Exception exception)
@@ -414,6 +434,8 @@ namespace MarchingCubesPlanet.Lab
             }
 
             ApplyResultSummary(result);
+            PlanetRecipe scoringRecipe = shapeLab.Recipe;
+            ApplyChunkLodScoring(in scoringRecipe);
             RegisterRuntimeResources();
 
             stopwatch.Stop();
@@ -458,6 +480,11 @@ namespace MarchingCubesPlanet.Lab
             lastWaterTriangleCount = 0;
             lastWaterVertexCount = 0;
             lastPaintedChunkCount = 0;
+            lastDesiredLod0ChunkCount = 0;
+            lastDesiredLod1ChunkCount = 0;
+            lastDesiredLod2ChunkCount = 0;
+            lastBestChunkLodScore = 0f;
+            lastAverageChunkLodScore = 0f;
             lastMeshEstimatedBytes = 0L;
             lastWaterMeshEstimatedBytes = 0L;
 
@@ -487,6 +514,22 @@ namespace MarchingCubesPlanet.Lab
             lastPaintedChunkCount = result.ChunkCount;
             lastMeshEstimatedBytes = result.MeshEstimatedBytes;
             lastWaterMeshEstimatedBytes = result.WaterMeshEstimatedBytes;
+        }
+
+        private void ApplyChunkLodScoring(in PlanetRecipe renderRecipe)
+        {
+            PlanetRecipe lod1Recipe = hasChunkLodBaseRecipe ? chunkLodBaseRecipe : renderRecipe;
+            float baseChunkWorldSize = PlanetChunkLodUtility.CalculateBaseChunkWorldSize(in lod1Recipe);
+            PlanetChunkLodScoringContext context = new PlanetChunkLodScoringContext(
+                PlanetTrianglePoolRegistry.PlayerPositionWorld,
+                PlanetTrianglePoolRegistry.PlayerForwardWorld,
+                baseChunkWorldSize);
+            PlanetChunkLodSummary summary = painter.ScoreRuntimeChunks(in context);
+            lastDesiredLod0ChunkCount = summary.lod0Count;
+            lastDesiredLod1ChunkCount = summary.lod1Count;
+            lastDesiredLod2ChunkCount = summary.lod2Count;
+            lastBestChunkLodScore = summary.bestScore;
+            lastAverageChunkLodScore = summary.averageScore;
         }
 
         private void RegisterRuntimeResources()
@@ -595,6 +638,11 @@ namespace MarchingCubesPlanet.Lab
                    "\npaintedTriangleCount=" + lastPaintedTriangleCount +
                    "\npaintedVertexCount=" + lastPaintedVertexCount +
                    "\npaintedChunkCount=" + lastPaintedChunkCount +
+                   "\ndesiredLOD0ChunkCount=" + lastDesiredLod0ChunkCount +
+                   "\ndesiredLOD1ChunkCount=" + lastDesiredLod1ChunkCount +
+                   "\ndesiredLOD2ChunkCount=" + lastDesiredLod2ChunkCount +
+                   "\nbestChunkLodScore=" + lastBestChunkLodScore.ToString("0.000") +
+                   "\naverageChunkLodScore=" + lastAverageChunkLodScore.ToString("0.000") +
                    "\nwaterTriangleCount=" + lastWaterTriangleCount +
                    "\nwaterVertexCount=" + lastWaterVertexCount +
                    "\nmeshEstimatedBytes=" + lastMeshEstimatedBytes +
