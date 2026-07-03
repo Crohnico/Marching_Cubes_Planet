@@ -39,6 +39,12 @@ namespace MarchingCubesPlanet.Lab
         [SerializeField] private int lastDesiredLod2ChunkCount;
         [SerializeField] private float lastBestChunkLodScore;
         [SerializeField] private float lastAverageChunkLodScore;
+        [SerializeField] private PlanetChunkCachePayloadMode lastChunkCachePayloadMode;
+        [SerializeField] private int lastChunkCacheRequestedChunkCount;
+        [SerializeField] private int lastChunkCacheLoadedChunkCount;
+        [SerializeField] private int lastChunkCacheMeshOnlyLoadCount;
+        [SerializeField] private int lastChunkCacheChunkDataLoadCount;
+        [SerializeField] private int lastChunkCacheMissingChunkDataCount;
         [SerializeField] private long lastMeshEstimatedBytes;
         [SerializeField] private long lastWaterMeshEstimatedBytes;
         [SerializeField] private string lastAction;
@@ -80,6 +86,12 @@ namespace MarchingCubesPlanet.Lab
         public int LastDesiredLod2ChunkCount => lastDesiredLod2ChunkCount;
         public float LastBestChunkLodScore => lastBestChunkLodScore;
         public float LastAverageChunkLodScore => lastAverageChunkLodScore;
+        public PlanetChunkCachePayloadMode LastChunkCachePayloadMode => lastChunkCachePayloadMode;
+        public int LastChunkCacheRequestedChunkCount => lastChunkCacheRequestedChunkCount;
+        public int LastChunkCacheLoadedChunkCount => lastChunkCacheLoadedChunkCount;
+        public int LastChunkCacheMeshOnlyLoadCount => lastChunkCacheMeshOnlyLoadCount;
+        public int LastChunkCacheChunkDataLoadCount => lastChunkCacheChunkDataLoadCount;
+        public int LastChunkCacheMissingChunkDataCount => lastChunkCacheMissingChunkDataCount;
         public long LastMeshEstimatedBytes => lastMeshEstimatedBytes;
         public long LastWaterMeshEstimatedBytes => lastWaterMeshEstimatedBytes;
 
@@ -292,8 +304,10 @@ namespace MarchingCubesPlanet.Lab
                 return false;
             }
 
-            if (!cache.TryLoadAllChunkMeshes(lod, cachedChunks))
+            PlanetChunkCachePayloadMode payloadMode = PlanetChunkCachePayloadMode.MeshOnly;
+            if (!cache.TryLoadAllChunkMeshes(lod, payloadMode, cachedChunks, out PlanetChunkCacheLoadSummary cacheLoadSummary))
             {
+                ApplyChunkCacheLoadSummary(cacheLoadSummary);
                 lastDiagnostic = PlanetLabDiagnostic.Warning(
                     "Chunk cache miss",
                     cache.LastDiagnostic,
@@ -305,6 +319,7 @@ namespace MarchingCubesPlanet.Lab
                 return false;
             }
 
+            ApplyChunkCacheLoadSummary(cacheLoadSummary);
             activeMeshFilter = targetMeshFilter;
             activeMeshRenderer = targetMeshRenderer;
             placement = targetPlacement;
@@ -485,6 +500,12 @@ namespace MarchingCubesPlanet.Lab
             lastDesiredLod2ChunkCount = 0;
             lastBestChunkLodScore = 0f;
             lastAverageChunkLodScore = 0f;
+            lastChunkCachePayloadMode = PlanetChunkCachePayloadMode.MeshOnly;
+            lastChunkCacheRequestedChunkCount = 0;
+            lastChunkCacheLoadedChunkCount = 0;
+            lastChunkCacheMeshOnlyLoadCount = 0;
+            lastChunkCacheChunkDataLoadCount = 0;
+            lastChunkCacheMissingChunkDataCount = 0;
             lastMeshEstimatedBytes = 0L;
             lastWaterMeshEstimatedBytes = 0L;
 
@@ -530,6 +551,16 @@ namespace MarchingCubesPlanet.Lab
             lastDesiredLod2ChunkCount = summary.lod2Count;
             lastBestChunkLodScore = summary.bestScore;
             lastAverageChunkLodScore = summary.averageScore;
+        }
+
+        private void ApplyChunkCacheLoadSummary(PlanetChunkCacheLoadSummary summary)
+        {
+            lastChunkCachePayloadMode = summary.PayloadMode;
+            lastChunkCacheRequestedChunkCount = summary.RequestedChunkCount;
+            lastChunkCacheLoadedChunkCount = summary.LoadedChunkCount;
+            lastChunkCacheMeshOnlyLoadCount = summary.MeshOnlyLoadCount;
+            lastChunkCacheChunkDataLoadCount = summary.ChunkDataLoadCount;
+            lastChunkCacheMissingChunkDataCount = summary.MissingChunkDataCount;
         }
 
         private void RegisterRuntimeResources()
@@ -643,6 +674,12 @@ namespace MarchingCubesPlanet.Lab
                    "\ndesiredLOD2ChunkCount=" + lastDesiredLod2ChunkCount +
                    "\nbestChunkLodScore=" + lastBestChunkLodScore.ToString("0.000") +
                    "\naverageChunkLodScore=" + lastAverageChunkLodScore.ToString("0.000") +
+                   "\nchunkCachePayloadMode=" + lastChunkCachePayloadMode +
+                   "\nchunkCacheRequestedChunkCount=" + lastChunkCacheRequestedChunkCount +
+                   "\nchunkCacheLoadedChunkCount=" + lastChunkCacheLoadedChunkCount +
+                   "\nchunkCacheMeshOnlyLoadCount=" + lastChunkCacheMeshOnlyLoadCount +
+                   "\nchunkCacheChunkDataLoadCount=" + lastChunkCacheChunkDataLoadCount +
+                   "\nchunkCacheMissingChunkDataCount=" + lastChunkCacheMissingChunkDataCount +
                    "\nwaterTriangleCount=" + lastWaterTriangleCount +
                    "\nwaterVertexCount=" + lastWaterVertexCount +
                    "\nmeshEstimatedBytes=" + lastMeshEstimatedBytes +

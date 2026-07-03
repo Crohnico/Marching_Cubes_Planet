@@ -535,6 +535,30 @@ Regla:
 No cargar chunk_data si el mesh basta para pintar el chunk actual.
 ```
 
+Implementacion inicial:
+
+```text
+10 tiene dos modos explicitos de carga desde cache:
+
+MeshOnly -> carga solo .pmesh y water.pmesh.
+MeshAndChunkData -> carga .pmesh y exige .pchunk asociado.
+```
+
+Decision:
+
+```text
+Mientras no exista todavia Transvoxel activo ni vecinos con LOD distinto, Generate usa MeshOnly.
+MeshOnly no falla si falta chunk_data.pchunk, porque no necesita datos de borde.
+MeshAndChunkData falla si falta chunk_data.pchunk o water_data.pchunk para una mesh que se quiere usar con datos internos.
+```
+
+Regla de diagnostico:
+
+```text
+El panel debe mostrar cuantos chunks cargaron solo mesh y cuantos cargaron chunk_data.
+Esto permite validar desde Generate que el camino barato no esta leyendo datos internos sin necesidad.
+```
+
 ## Paso 5 - Trabajo por paquetes de chunks
 
 10 no debe generar, cargar ni instanciar todos los chunks visibles de golpe.
@@ -714,6 +738,7 @@ La primera ruta guarda mesh y chunk_data por chunkId/LOD.
 10 no itera sobre chunks sin mesh visible.
 10 carga solo .pmesh cuando no necesita operar con datos internos del chunk.
 10 carga .pchunk cuando necesita resolver Transvoxel o bordes por cambio de LOD.
+Generate usa MeshOnly hasta que exista una necesidad real de Transvoxel o cambio de LOD entre vecinos.
 10 procesa chunks por paquetes para no saturar el sistema.
 El paquete inicial de trabajo tendra 5 o 6 chunks.
 No se fija presupuesto por frame, disco o RAM hasta medir la primera ruta.

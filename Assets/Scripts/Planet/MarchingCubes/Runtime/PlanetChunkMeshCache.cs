@@ -147,11 +147,26 @@ namespace MarchingCubesPlanet.MarchingCubes
 
         public bool TryLoadAllChunkMeshes(int lod, List<PlanetCachedChunkMesh> results)
         {
+            return TryLoadAllChunkMeshes(
+                lod,
+                PlanetChunkCachePayloadMode.MeshOnly,
+                results,
+                out PlanetChunkCacheLoadSummary _);
+        }
+
+        public bool TryLoadAllChunkMeshes(
+            int lod,
+            PlanetChunkCachePayloadMode payloadMode,
+            List<PlanetCachedChunkMesh> results,
+            out PlanetChunkCacheLoadSummary summary)
+        {
             if (results == null)
             {
                 throw new ArgumentNullException(nameof(results));
             }
 
+            int safeLod = Mathf.Max(0, lod);
+            summary = new PlanetChunkCacheLoadSummary(safeLod, payloadMode);
             results.Clear();
             if (!Directory.Exists(ChunksPath))
             {
@@ -159,30 +174,44 @@ namespace MarchingCubesPlanet.MarchingCubes
                 return false;
             }
 
-            string[] chunkDirectories = Directory.GetDirectories(ChunksPath);
-            Array.Sort(chunkDirectories, StringComparer.Ordinal);
-            for (int i = 0; i < chunkDirectories.Length; i++)
+            List<string> lodDirectories = CollectLodDirectoriesWithMeshes(safeLod);
+            for (int i = 0; i < lodDirectories.Count; i++)
             {
-                string chunkName = Path.GetFileName(chunkDirectories[i]);
+                string chunkName = Path.GetFileName(Path.GetDirectoryName(lodDirectories[i]));
                 if (!int.TryParse(chunkName, NumberStyles.Integer, CultureInfo.InvariantCulture, out int chunkId))
                 {
                     continue;
                 }
 
-                string lodDirectory = Path.Combine(chunkDirectories[i], "LOD" + Mathf.Max(0, lod));
+                summary.RecordRequestedChunk();
+                string lodDirectory = lodDirectories[i];
                 string surfaceMeshPath = Path.Combine(lodDirectory, MeshFileName);
-                if (!File.Exists(surfaceMeshPath))
-                {
-                    continue;
-                }
-
-                if (!TryReadMesh(surfaceMeshPath, "PlanetChunk_" + chunkId + "_SurfaceMesh_Cached", out Mesh surfaceMesh))
+                Mesh surfaceMesh = null;
+                PlanetCachedChunkData surfaceChunkData = null;
+                if (File.Exists(surfaceMeshPath) &&
+                    !TryReadMesh(surfaceMeshPath, "PlanetChunk_" + chunkId + "_SurfaceMesh_Cached", out surfaceMesh))
                 {
                     ReleaseLoadedMeshes(results);
                     return false;
                 }
 
+                if (surfaceMesh != null &&
+                    payloadMode == PlanetChunkCachePayloadMode.MeshAndChunkData &&
+                    !TryReadRequiredChunkData(
+                        Path.Combine(lodDirectory, ChunkDataFileName),
+                        chunkId,
+                        safeLod,
+                        false,
+                        ref summary,
+                        out surfaceChunkData))
+                {
+                    DestroyRuntimeObject(surfaceMesh);
+                    ReleaseLoadedMeshes(results);
+                    return false;
+                }
+
                 Mesh waterMesh = null;
+                PlanetCachedChunkData waterChunkData = null;
                 string waterMeshPath = Path.Combine(lodDirectory, WaterMeshFileName);
                 if (File.Exists(waterMeshPath) &&
                     !TryReadMesh(waterMeshPath, "PlanetChunk_" + chunkId + "_WaterMesh_Cached", out waterMesh))
@@ -192,16 +221,42 @@ namespace MarchingCubesPlanet.MarchingCubes
                     return false;
                 }
 
-                results.Add(new PlanetCachedChunkMesh(chunkId, lod, surfaceMesh, waterMesh));
+                if (waterMesh != null &&
+                    payloadMode == PlanetChunkCachePayloadMode.MeshAndChunkData &&
+                    !TryReadRequiredChunkData(
+                        Path.Combine(lodDirectory, WaterDataFileName),
+                        chunkId,
+                        safeLod,
+                        true,
+                        ref summary,
+                        out waterChunkData))
+                {
+                    DestroyRuntimeObject(surfaceMesh);
+                    DestroyRuntimeObject(waterMesh);
+                    ReleaseLoadedMeshes(results);
+                    return false;
+                }
+
+                results.Add(new PlanetCachedChunkMesh(
+                    chunkId,
+                    safeLod,
+                    surfaceMesh,
+                    waterMesh,
+                    surfaceChunkData,
+                    waterChunkData));
+                summary.RecordLoadedChunk(surfaceMesh != null, waterMesh != null, surfaceChunkData != null, waterChunkData != null);
             }
 
             if (results.Count <= 0)
             {
-                lastDiagnostic = "Chunk cache miss: no LOD" + Mathf.Max(0, lod) + " .pmesh files were found.";
+                lastDiagnostic = "Chunk cache miss: no LOD" + safeLod + " .pmesh files were found.";
                 return false;
             }
 
-            lastDiagnostic = "Chunk cache loaded " + results.Count + " chunks for LOD" + Mathf.Max(0, lod) + ".";
+            lastDiagnostic = "Chunk cache loaded " + results.Count + " chunks for LOD" + safeLod +
+                             ". mode=" + payloadMode +
+                             " meshOnlyLoads=" + summary.MeshOnlyLoadCount +
+                             " chunkDataLoads=" + summary.ChunkDataLoadCount + ".";
             return true;
         }
 
@@ -465,6 +520,126 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
         }
 
+        private List<string> CollectLodDirectoriesWithMeshes(int lod)
+        {
+            List<string> lodDirectories = new List<string>();
+            if (!Directory.Exists(ChunksPath))
+            {
+                return lodDirectories;
+            }
+
+            string lodFolderName = "LOD" + Mathf.Max(0, lod);
+            string[] meshFiles = Directory.GetFiles(ChunksPath, "*.pmesh", SearchOption.AllDirectories);
+            Array.Sort(meshFiles, StringComparer.Ordinal);
+            for (int i = 0; i < meshFiles.Length; i++)
+            {
+                string fileName = Path.GetFileName(meshFiles[i]);
+                if (!string.Equals(fileName, MeshFileName, StringComparison.Ordinal) &&
+                    !string.Equals(fileName, WaterMeshFileName, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                string lodDirectory = Path.GetDirectoryName(meshFiles[i]);
+                if (string.IsNullOrEmpty(lodDirectory) ||
+                    !string.Equals(Path.GetFileName(lodDirectory), lodFolderName, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (!ContainsPath(lodDirectories, lodDirectory))
+                {
+                    lodDirectories.Add(lodDirectory);
+                }
+            }
+
+            return lodDirectories;
+        }
+
+        private static bool ContainsPath(List<string> paths, string path)
+        {
+            for (int i = 0; i < paths.Count; i++)
+            {
+                if (string.Equals(paths[i], path, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryReadRequiredChunkData(
+            string path,
+            int expectedChunkId,
+            int expectedLod,
+            bool expectedIsWater,
+            ref PlanetChunkCacheLoadSummary summary,
+            out PlanetCachedChunkData data)
+        {
+            data = null;
+            if (!File.Exists(path))
+            {
+                summary.RecordMissingChunkData();
+                lastDiagnostic = "Chunk cache load failed: required .pchunk is missing. path=" + path;
+                return false;
+            }
+
+            if (!TryReadChunkData(path, expectedChunkId, expectedLod, expectedIsWater, out data))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool TryReadChunkData(
+            string path,
+            int expectedChunkId,
+            int expectedLod,
+            bool expectedIsWater,
+            out PlanetCachedChunkData data)
+        {
+            data = null;
+            try
+            {
+                using (BinaryReader reader = new BinaryReader(File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read)))
+                {
+                    int chunkId = reader.ReadInt32();
+                    int lod = reader.ReadInt32();
+                    bool isWater = reader.ReadBoolean();
+                    int vertexCount = reader.ReadInt32();
+                    int triangleCount = reader.ReadInt32();
+                    Bounds bounds = ReadBounds(reader);
+                    int borderPayloadCount = reader.ReadInt32();
+
+                    if (chunkId != expectedChunkId || lod != expectedLod || isWater != expectedIsWater)
+                    {
+                        lastDiagnostic = "Chunk cache load failed: .pchunk identity mismatch in " + path;
+                        return false;
+                    }
+
+                    if (vertexCount < 0 || triangleCount < 0 || borderPayloadCount < 0)
+                    {
+                        lastDiagnostic = "Chunk cache load failed: invalid .pchunk counts in " + path;
+                        return false;
+                    }
+
+                    data = new PlanetCachedChunkData(chunkId, lod, isWater, vertexCount, triangleCount, bounds, borderPayloadCount);
+                    LogLoad(
+                        "Loaded chunk data from disk: " + path +
+                        " triangles=" + triangleCount +
+                        " borderPayloadCount=" + borderPayloadCount);
+                    return true;
+                }
+            }
+            catch (Exception exception)
+            {
+                lastDiagnostic = "Chunk cache load failed for " + path + ": " + exception.Message;
+                return false;
+            }
+        }
+
         private static void WriteChunkData(string path, int chunkId, int lod, Mesh mesh, bool isWater)
         {
             int vertexCount = mesh != null ? mesh.vertexCount : 0;
@@ -568,17 +743,33 @@ namespace MarchingCubesPlanet.MarchingCubes
     public sealed class PlanetCachedChunkMesh
     {
         public PlanetCachedChunkMesh(int chunkId, int lod, Mesh surfaceMesh, Mesh waterMesh)
+            : this(chunkId, lod, surfaceMesh, waterMesh, null, null)
+        {
+        }
+
+        public PlanetCachedChunkMesh(
+            int chunkId,
+            int lod,
+            Mesh surfaceMesh,
+            Mesh waterMesh,
+            PlanetCachedChunkData surfaceChunkData,
+            PlanetCachedChunkData waterChunkData)
         {
             ChunkId = chunkId;
             Lod = lod;
             SurfaceMesh = surfaceMesh;
             WaterMesh = waterMesh;
+            SurfaceChunkData = surfaceChunkData;
+            WaterChunkData = waterChunkData;
         }
 
         public int ChunkId { get; }
         public int Lod { get; }
         public Mesh SurfaceMesh { get; private set; }
         public Mesh WaterMesh { get; private set; }
+        public PlanetCachedChunkData SurfaceChunkData { get; }
+        public PlanetCachedChunkData WaterChunkData { get; }
+        public bool HasAnyChunkData => SurfaceChunkData != null || WaterChunkData != null;
         public int SurfaceVertexCount => SurfaceMesh != null ? SurfaceMesh.vertexCount : 0;
         public int SurfaceTriangleCount => SurfaceMesh != null ? (int)SurfaceMesh.GetIndexCount(0) / 3 : 0;
         public int WaterVertexCount => WaterMesh != null ? WaterMesh.vertexCount : 0;
@@ -614,5 +805,107 @@ namespace MarchingCubesPlanet.MarchingCubes
                 UnityEngine.Object.DestroyImmediate(mesh);
             }
         }
+    }
+
+    public enum PlanetChunkCachePayloadMode
+    {
+        MeshOnly = 0,
+        MeshAndChunkData = 1
+    }
+
+    public struct PlanetChunkCacheLoadSummary
+    {
+        public PlanetChunkCacheLoadSummary(int lod, PlanetChunkCachePayloadMode payloadMode)
+        {
+            Lod = lod;
+            PayloadMode = payloadMode;
+            RequestedChunkCount = 0;
+            LoadedChunkCount = 0;
+            SurfaceMeshLoadCount = 0;
+            WaterMeshLoadCount = 0;
+            MeshOnlyLoadCount = 0;
+            ChunkDataLoadCount = 0;
+            MissingChunkDataCount = 0;
+        }
+
+        public int Lod { get; }
+        public PlanetChunkCachePayloadMode PayloadMode { get; }
+        public int RequestedChunkCount { get; private set; }
+        public int LoadedChunkCount { get; private set; }
+        public int SurfaceMeshLoadCount { get; private set; }
+        public int WaterMeshLoadCount { get; private set; }
+        public int MeshOnlyLoadCount { get; private set; }
+        public int ChunkDataLoadCount { get; private set; }
+        public int MissingChunkDataCount { get; private set; }
+
+        public void RecordRequestedChunk()
+        {
+            RequestedChunkCount++;
+        }
+
+        public void RecordLoadedChunk(bool hasSurfaceMesh, bool hasWaterMesh, bool hasSurfaceChunkData, bool hasWaterChunkData)
+        {
+            LoadedChunkCount++;
+            if (hasSurfaceMesh)
+            {
+                SurfaceMeshLoadCount++;
+            }
+
+            if (hasWaterMesh)
+            {
+                WaterMeshLoadCount++;
+            }
+
+            int chunkDataCount = 0;
+            if (hasSurfaceChunkData)
+            {
+                chunkDataCount++;
+            }
+
+            if (hasWaterChunkData)
+            {
+                chunkDataCount++;
+            }
+
+            ChunkDataLoadCount += chunkDataCount;
+            if (chunkDataCount == 0)
+            {
+                MeshOnlyLoadCount++;
+            }
+        }
+
+        public void RecordMissingChunkData()
+        {
+            MissingChunkDataCount++;
+        }
+    }
+
+    public sealed class PlanetCachedChunkData
+    {
+        public PlanetCachedChunkData(
+            int chunkId,
+            int lod,
+            bool isWater,
+            int vertexCount,
+            int triangleCount,
+            Bounds bounds,
+            int borderPayloadCount)
+        {
+            ChunkId = chunkId;
+            Lod = lod;
+            IsWater = isWater;
+            VertexCount = vertexCount;
+            TriangleCount = triangleCount;
+            Bounds = bounds;
+            BorderPayloadCount = borderPayloadCount;
+        }
+
+        public int ChunkId { get; }
+        public int Lod { get; }
+        public bool IsWater { get; }
+        public int VertexCount { get; }
+        public int TriangleCount { get; }
+        public Bounds Bounds { get; }
+        public int BorderPayloadCount { get; }
     }
 }

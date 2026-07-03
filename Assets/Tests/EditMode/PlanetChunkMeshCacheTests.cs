@@ -86,12 +86,89 @@ namespace MarchingCubesPlanet.Lab.Tests
             Assert.AreEqual(1, loadedChunks[0].SurfaceTriangleCount);
             Assert.AreEqual(3, loadedChunks[0].WaterVertexCount);
             Assert.AreEqual(1, loadedChunks[0].WaterTriangleCount);
+            Assert.IsFalse(loadedChunks[0].HasAnyChunkData);
             Assert.AreEqual(new Vector3(0f, 0f, 0f), loadedChunks[0].SurfaceMesh.vertices[0]);
             Assert.AreEqual(new Vector3(0f, -0.25f, 0f), loadedChunks[0].WaterMesh.vertices[0]);
 
             loadedChunks[0].ReleaseMeshes();
             UnityEngine.Object.DestroyImmediate(surfaceMesh);
             UnityEngine.Object.DestroyImmediate(waterMesh);
+        }
+
+        [Test]
+        public void MeshAndChunkDataLoadReadsMinimalChunkData()
+        {
+            string root = CreateTempRoot();
+            PlanetChunkMeshCache cache = new PlanetChunkMeshCache(root);
+            Assert.IsTrue(cache.Prepare(PlanetRecipe.Default()), cache.LastDiagnostic);
+
+            Mesh surfaceMesh = CreateTriangleMesh("surface", 0f);
+            Mesh waterMesh = CreateTriangleMesh("water", -0.25f);
+            Assert.IsTrue(cache.SaveChunk(7, 2, surfaceMesh, waterMesh), cache.LastDiagnostic);
+
+            List<PlanetCachedChunkMesh> loadedChunks = new List<PlanetCachedChunkMesh>();
+            Assert.IsTrue(
+                cache.TryLoadAllChunkMeshes(
+                    2,
+                    PlanetChunkCachePayloadMode.MeshAndChunkData,
+                    loadedChunks,
+                    out PlanetChunkCacheLoadSummary summary),
+                cache.LastDiagnostic);
+
+            Assert.AreEqual(1, loadedChunks.Count);
+            Assert.AreEqual(PlanetChunkCachePayloadMode.MeshAndChunkData, summary.PayloadMode);
+            Assert.AreEqual(1, summary.LoadedChunkCount);
+            Assert.AreEqual(0, summary.MeshOnlyLoadCount);
+            Assert.AreEqual(2, summary.ChunkDataLoadCount);
+            Assert.IsNotNull(loadedChunks[0].SurfaceChunkData);
+            Assert.IsNotNull(loadedChunks[0].WaterChunkData);
+            Assert.AreEqual(7, loadedChunks[0].SurfaceChunkData.ChunkId);
+            Assert.AreEqual(2, loadedChunks[0].SurfaceChunkData.Lod);
+            Assert.IsFalse(loadedChunks[0].SurfaceChunkData.IsWater);
+            Assert.AreEqual(1, loadedChunks[0].SurfaceChunkData.TriangleCount);
+            Assert.AreEqual(0, loadedChunks[0].SurfaceChunkData.BorderPayloadCount);
+            Assert.IsTrue(loadedChunks[0].WaterChunkData.IsWater);
+
+            loadedChunks[0].ReleaseMeshes();
+            UnityEngine.Object.DestroyImmediate(surfaceMesh);
+            UnityEngine.Object.DestroyImmediate(waterMesh);
+        }
+
+        [Test]
+        public void MeshOnlyLoadDoesNotRequireChunkData()
+        {
+            string root = CreateTempRoot();
+            PlanetChunkMeshCache cache = new PlanetChunkMeshCache(root);
+            Assert.IsTrue(cache.Prepare(PlanetRecipe.Default()), cache.LastDiagnostic);
+
+            Mesh surfaceMesh = CreateTriangleMesh("surface", 0f);
+            Assert.IsTrue(cache.SaveChunk(7, 2, surfaceMesh, null), cache.LastDiagnostic);
+
+            string lodDirectory = cache.GetChunkLodDirectory(7, 2);
+            File.Delete(Path.Combine(lodDirectory, PlanetChunkMeshCache.ChunkDataFileName));
+
+            List<PlanetCachedChunkMesh> loadedChunks = new List<PlanetCachedChunkMesh>();
+            Assert.IsTrue(
+                cache.TryLoadAllChunkMeshes(
+                    2,
+                    PlanetChunkCachePayloadMode.MeshOnly,
+                    loadedChunks,
+                    out PlanetChunkCacheLoadSummary meshOnlySummary),
+                cache.LastDiagnostic);
+            Assert.AreEqual(1, loadedChunks.Count);
+            Assert.AreEqual(1, meshOnlySummary.MeshOnlyLoadCount);
+            Assert.IsFalse(loadedChunks[0].HasAnyChunkData);
+            loadedChunks[0].ReleaseMeshes();
+
+            Assert.IsFalse(
+                cache.TryLoadAllChunkMeshes(
+                    2,
+                    PlanetChunkCachePayloadMode.MeshAndChunkData,
+                    loadedChunks,
+                    out PlanetChunkCacheLoadSummary chunkDataSummary));
+            Assert.AreEqual(1, chunkDataSummary.MissingChunkDataCount);
+
+            UnityEngine.Object.DestroyImmediate(surfaceMesh);
         }
 
         private string CreateTempRoot()

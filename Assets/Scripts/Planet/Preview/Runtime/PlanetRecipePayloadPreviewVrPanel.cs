@@ -567,6 +567,10 @@ namespace MarchingCubesPlanet.Preview
                 AppendLine("Desired LOD2 chunks", paintLab.LastDesiredLod2ChunkCount.ToString());
                 AppendLine("Best chunk LOD score", paintLab.LastBestChunkLodScore.ToString("0.000"));
                 AppendLine("Average chunk LOD score", paintLab.LastAverageChunkLodScore.ToString("0.000"));
+                AppendLine("Cache payload mode", paintLab.LastChunkCachePayloadMode.ToString());
+                AppendLine("Cache loaded chunks", paintLab.LastChunkCacheLoadedChunkCount.ToString());
+                AppendLine("Cache mesh-only loads", paintLab.LastChunkCacheMeshOnlyLoadCount.ToString());
+                AppendLine("Cache chunk-data loads", paintLab.LastChunkCacheChunkDataLoadCount.ToString());
                 AppendLine("Painted tris", paintLab.LastPaintedTriangleCount.ToString());
                 AppendLine("Painted vertices", paintLab.LastPaintedVertexCount.ToString());
                 AppendLine("Painted water tris", paintLab.LastWaterTriangleCount.ToString());
