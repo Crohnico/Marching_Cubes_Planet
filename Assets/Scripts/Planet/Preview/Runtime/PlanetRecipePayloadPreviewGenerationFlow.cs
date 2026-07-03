@@ -24,6 +24,7 @@ namespace MarchingCubesPlanet.Preview
         [Header("Runtime LOD")]
         [SerializeField] private bool runtimeLodUpdatesEnabled = true;
         [SerializeField] private float runtimeLodRefreshIntervalSeconds = 0.1f;
+        [SerializeField] private PlanetChunkLodActivationProfile runtimeLodActivationProfile;
 
         [Header("State")]
         [SerializeField] private string lastDiagnostic;
@@ -268,17 +269,15 @@ namespace MarchingCubesPlanet.Preview
             if (forceInitialFallbackDesired)
             {
                 ApplyChunkLodSummary(ForceRuntimeDesiredLod(PlanetChunkLodUtility.InitialFallbackLod));
-                Debug.Log(LogPrefix + "All chunks forced to desiredLOD=" + (int)PlanetChunkLodUtility.InitialFallbackLod +
-                          " desiredLod0=" + lastDesiredLod0ChunkCount +
-                          " desiredLod1=" + lastDesiredLod1ChunkCount +
-                          " desiredLod2=" + lastDesiredLod2ChunkCount);
                 lastRuntimeLodChangedChunkCount = ProcessRuntimeChunkLodChanges();
                 lastRuntimeLodUpdateCount++;
                 lastRuntimeLodViewVersion = PlanetTrianglePoolRegistry.PlayerViewVersion;
                 lastRuntimeLodRefreshTime = Time.unscaledTime;
-                hasRuntimeChunkLods = false;
+                hasRuntimeChunkLods = runtimeChunkLods.Count > 0;
                 Debug.Log(LogPrefix + "Initial fallback processing done changed=" + lastRuntimeLodChangedChunkCount +
                           " runtimeUpdates=" + lastRuntimeLodUpdateCount +
+                          " initializedChunks=" + CountInitializedRuntimeChunks() +
+                          "/" + runtimeChunkLods.Count +
                           " hasRuntimeChunkLods=" + hasRuntimeChunkLods);
                 return;
             }
@@ -298,6 +297,7 @@ namespace MarchingCubesPlanet.Preview
                 in runtimeLod1Recipe,
                 PlanetTrianglePoolRegistry.PlayerPositionWorld,
                 PlanetTrianglePoolRegistry.PlayerForwardWorld,
+                ResolveRuntimeLodActivationConfig(),
                 out int changedLodCount);
             int viewVersion = PlanetTrianglePoolRegistry.PlayerViewVersion;
             ApplyChunkLodSummary(summary);
@@ -336,45 +336,56 @@ namespace MarchingCubesPlanet.Preview
         {
             if (!hasRuntimeChunkLods)
             {
-                Debug.LogWarning(LogPrefix + "ProcessRuntimeChunkLodChanges skipped because hasRuntimeChunkLods=false count=" + runtimeChunkLods.Count);
                 return 0;
             }
 
             int changedCount = 0;
-            Debug.Log(LogPrefix + "ProcessRuntimeChunkLodChanges start count=" + runtimeChunkLods.Count);
             for (int i = 0; i < runtimeChunkLods.Count; i++)
             {
                 PlanetChunkLodRuntimeEntry entry = runtimeChunkLods[i];
                 if (!entry.NeedsLodChange)
                 {
-                    Debug.Log(LogPrefix + "Chunk skip no LOD change chunkId=" + entry.ChunkId +
-                              " currentLOD=" + entry.CurrentLod +
-                              " desiredLOD=" + (int)entry.DesiredLod);
                     continue;
                 }
 
-                Debug.Log(LogPrefix + "Chunk change start index=" + i +
-                          " chunkId=" + entry.ChunkId +
-                          " currentLOD=" + entry.CurrentLod +
-                          " desiredLOD=" + (int)entry.DesiredLod);
                 if (!ApplyRuntimeChunkLodChange(entry))
                 {
-                    Debug.LogWarning(LogPrefix + "Chunk change failed chunkId=" + entry.ChunkId +
-                                     " desiredLOD=" + (int)entry.DesiredLod +
-                                     " diagnostic=" + lastDiagnostic);
                     continue;
                 }
 
-                entry.MarkCurrentLod(entry.DesiredLod);
+                entry.MarkInitialized(entry.DesiredLod);
                 runtimeChunkLods[i] = entry;
                 changedCount++;
-                Debug.Log(LogPrefix + "Chunk change applied chunkId=" + entry.ChunkId +
-                          " currentLOD=" + entry.CurrentLod +
-                          " changedCount=" + changedCount);
             }
 
-            Debug.Log(LogPrefix + "ProcessRuntimeChunkLodChanges end changed=" + changedCount + " total=" + runtimeChunkLods.Count);
             return changedCount;
+        }
+
+        private PlanetChunkLodActivationConfig ResolveRuntimeLodActivationConfig()
+        {
+            if (runtimeLodActivationProfile == null)
+            {
+                runtimeLodActivationProfile = Resources.Load<PlanetChunkLodActivationProfile>(
+                    PlanetChunkLodActivationProfile.DefaultResourcesPath);
+            }
+
+            return runtimeLodActivationProfile != null
+                ? runtimeLodActivationProfile.ToConfig()
+                : PlanetChunkLodActivationConfig.Default();
+        }
+
+        private int CountInitializedRuntimeChunks()
+        {
+            int initializedCount = 0;
+            for (int i = 0; i < runtimeChunkLods.Count; i++)
+            {
+                if (runtimeChunkLods[i].IsInitialized)
+                {
+                    initializedCount++;
+                }
+            }
+
+            return initializedCount;
         }
 
         private bool ApplyRuntimeChunkLodChange(PlanetChunkLodRuntimeEntry entry)
@@ -382,10 +393,6 @@ namespace MarchingCubesPlanet.Preview
             int lod = (int)entry.DesiredLod;
             PlanetRecipe lodRecipe = PlanetChunkLodUtility.BuildRecipeForLod(in runtimeLod1Recipe, entry.DesiredLod);
             string meshId = PlanetMarchingCubesMeshPainter.BuildChunkMeshId(entry.ChunkId);
-            Debug.Log(LogPrefix + "ApplyRuntimeChunkLodChange chunkId=" + entry.ChunkId +
-                      " desiredLOD=" + lod +
-                      " meshId=" + meshId +
-                      " cacheReady=" + runtimeChunkCacheReady);
 
             if (runtimeChunkCacheReady &&
                 runtimeChunkCache.TryLoadChunkMesh(
@@ -395,7 +402,6 @@ namespace MarchingCubesPlanet.Preview
                     out PlanetCachedChunkMesh cachedChunk,
                     out PlanetChunkCacheLoadSummary _))
             {
-                Debug.Log(LogPrefix + "Cache hit chunkId=" + entry.ChunkId + " lod=" + lod);
                 bool painted = paintLab.PaintNamedMesh(
                     meshId,
                     cachedChunk.SurfaceMesh,
@@ -405,11 +411,6 @@ namespace MarchingCubesPlanet.Preview
                     runtimePlacement,
                     in lodRecipe,
                     entry.ChunkId);
-                Debug.Log(LogPrefix + "Cache paint result chunkId=" + entry.ChunkId +
-                          " lod=" + lod +
-                          " painted=" + painted +
-                          " surfaceMesh=" + (cachedChunk.SurfaceMesh != null) +
-                          " waterMesh=" + (cachedChunk.WaterMesh != null));
                 if (!painted)
                 {
                     cachedChunk.ReleaseMeshes();
@@ -418,7 +419,6 @@ namespace MarchingCubesPlanet.Preview
                 return painted;
             }
 
-            Debug.Log(LogPrefix + "Cache miss/generate path chunkId=" + entry.ChunkId + " lod=" + lod);
             return GenerateAndPaintRuntimeChunk(entry, in lodRecipe, lod, meshId);
         }
 
@@ -445,15 +445,6 @@ namespace MarchingCubesPlanet.Preview
             }
 
             marchingCubesLab.ExtractCandidateChunkSurface(entry.ChunkId);
-            Debug.Log(LogPrefix + "Extracted chunkId=" + entry.ChunkId +
-                      " lod=" + lod +
-                      " candidateChunks=" + marchingCubesLab.LastCandidateChunkCount +
-                      " processedChunks=" + marchingCubesLab.LastProcessedChunkCount +
-                      " processedCells=" + marchingCubesLab.LastProcessedCellCount +
-                      " trisAttempted=" + marchingCubesLab.LastTriangleCountAttempted +
-                      " trisWritten=" + marchingCubesLab.LastTriangleCountWritten +
-                      " overflow=" + marchingCubesLab.LastOverflow +
-                      " invalidCase=" + marchingCubesLab.LastInvalidCase);
             if (marchingCubesLab.LastOverflow)
             {
                 lastDiagnostic = "Runtime LOD change blocked: 07 overflow for chunk " + entry.ChunkId +
@@ -490,14 +481,6 @@ namespace MarchingCubesPlanet.Preview
                 in lodRecipe,
                 runtimeChunkCacheReady ? runtimeChunkCache : null,
                 lod);
-            Debug.Log(LogPrefix + "Generated chunk paint result chunkId=" + entry.ChunkId +
-                      " lod=" + lod +
-                      " painted=" + paintedExtraction +
-                      " paintHasLiveMesh=" + paintLab.HasLiveMesh +
-                      " paintedChunks=" + paintLab.LastPaintedChunkCount +
-                      " paintedTris=" + paintLab.LastPaintedTriangleCount +
-                      " waterTris=" + paintLab.LastWaterTriangleCount +
-                      " paintAction=" + paintLab.LastAction);
             return paintedExtraction;
         }
 
@@ -508,7 +491,6 @@ namespace MarchingCubesPlanet.Preview
                 shapeLab.IsShapeGpuInitialized &&
                 marchingCubesLab.HasLiveResources)
             {
-                Debug.Log(LogPrefix + "Reuse extraction resources lod=" + lodIndex);
                 return true;
             }
 
@@ -570,10 +552,6 @@ namespace MarchingCubesPlanet.Preview
                     origin.z + activeChunkSize * 0.5f);
                 Vector3 centerWorld = PlanetCoordinateConverter.GridToWorld(centerGrid, in renderRecipe, in placement);
                 runtimeChunkLods.Add(new PlanetChunkLodRuntimeEntry(chunkId, centerWorld));
-                Debug.Log(LogPrefix + "Runtime chunk registered chunkId=" + chunkId +
-                          " origin=" + origin +
-                          " centerGrid=" + centerGrid +
-                          " centerWorld=" + centerWorld);
             }
             Debug.Log(LogPrefix + "Collect runtime chunks end count=" + runtimeChunkLods.Count);
         }

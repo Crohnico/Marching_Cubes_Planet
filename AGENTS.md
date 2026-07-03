@@ -7,25 +7,12 @@ Antes de tocar codigo, arquitectura, runtime, inicializacion, datos, render, mem
 Regla:
 
 ```text
-Leer todos los documentos .md dentro de Docs antes de actuar.
-```
-
-Si en el futuro hay muchos documentos, leer como minimo:
-
+Leer los documentos:
 - El documento general de definicion tecnica.
 - El documento especifico del sistema que se vaya a tocar.
 - Cualquier documento enlazado desde esos documentos.
+```
 
-## Documentos actuales
-
-- `Docs/Definicion_Tecnica_Proyecto.md`
-- `Docs/Calculo_Funcional_Datos_Planeta.md`
-- `Docs/Teoria_Implementacion.md`
-- `Docs/Implementacion_Funcional.md`
-- `Docs/01_PlanetImplementationLab.md`
-- `Docs/02_ComputeShaderLab.md`
-- `Docs/03_Coordenadas_Y_Receta.md`
-- `Docs/04_Gestion_RAM_VRAM.md`
 
 ## Documento estanco
 
