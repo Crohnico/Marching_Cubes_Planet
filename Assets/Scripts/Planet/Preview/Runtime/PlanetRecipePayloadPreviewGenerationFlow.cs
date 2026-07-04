@@ -174,7 +174,7 @@ namespace MarchingCubesPlanet.Preview
                       " chunkSize=" + marchingCubesLab.Settings.chunkRange.chunkSize +
                       " temporaryTriangleCapacity=" + marchingCubesLab.Settings.temporaryOutputTriangleCapacity);
 
-            CollectRuntimeChunkLodsFromCandidateChunks(in fallbackRecipe, in placement);
+            CollectRuntimeChunkLodsFromCandidateChunks(in fallbackRecipe, in sourceRecipe, in placement);
             Debug.Log(LogPrefix + "Runtime chunk table collected count=" + runtimeChunkLods.Count +
                       " mcCandidateChunks=" + marchingCubesLab.LastCandidateChunkCount);
             BeginRuntimeChunkLods(in sourceRecipe, true);
@@ -392,7 +392,7 @@ namespace MarchingCubesPlanet.Preview
         {
             int lod = (int)entry.DesiredLod;
             PlanetRecipe lodRecipe = PlanetChunkLodUtility.BuildRecipeForLod(in runtimeLod1Recipe, entry.DesiredLod);
-            string meshId = PlanetMarchingCubesMeshPainter.BuildChunkMeshId(entry.ChunkId);
+            string meshId = BuildStableChunkMeshId(entry.ChunkOrigin);
 
             if (runtimeChunkCacheReady &&
                 runtimeChunkCache.TryLoadChunkMesh(
@@ -436,15 +436,16 @@ namespace MarchingCubesPlanet.Preview
                 return false;
             }
 
-            if (entry.ChunkId < 0 || entry.ChunkId >= runtimeCandidateChunkCount)
+            PlanetMarchingCubesChunkOrigin lodChunkOrigin = ConvertChunkOrigin(
+                entry.ChunkOrigin,
+                in runtimeLod1Recipe,
+                in lodRecipe);
+            if (!TryFindCandidateChunkIndex(lodChunkOrigin, out int candidateChunkIndex))
             {
-                lastDiagnostic = "Runtime LOD change skipped: chunkId outside 07 candidate range. chunkId=" +
-                                 entry.ChunkId + " candidates=" + runtimeCandidateChunkCount + ".";
-                Debug.LogError(LogPrefix + lastDiagnostic);
                 return false;
             }
 
-            marchingCubesLab.ExtractCandidateChunkSurface(entry.ChunkId);
+            marchingCubesLab.ExtractCandidateChunkSurface(candidateChunkIndex);
             if (marchingCubesLab.LastOverflow)
             {
                 lastDiagnostic = "Runtime LOD change blocked: 07 overflow for chunk " + entry.ChunkId +
@@ -522,6 +523,7 @@ namespace MarchingCubesPlanet.Preview
             }
 
             activeRuntimeExtractionLod = lodIndex;
+            runtimeCandidateChunkCount = Mathf.Max(0, (int)marchingCubesLab.LastCandidateChunkCount);
             Debug.Log(LogPrefix + "Extraction resources ready lod=" + lodIndex +
                       " candidateChunks=" + marchingCubesLab.LastCandidateChunkCount +
                       " chunkSize=" + marchingCubesLab.Settings.chunkRange.chunkSize);
@@ -530,6 +532,7 @@ namespace MarchingCubesPlanet.Preview
 
         private void CollectRuntimeChunkLodsFromCandidateChunks(
             in PlanetRecipe renderRecipe,
+            in PlanetRecipe lod1Recipe,
             in PlanetPlacement placement)
         {
             runtimeChunkLods.Clear();
@@ -551,9 +554,63 @@ namespace MarchingCubesPlanet.Preview
                     origin.y + activeChunkSize * 0.5f,
                     origin.z + activeChunkSize * 0.5f);
                 Vector3 centerWorld = PlanetCoordinateConverter.GridToWorld(centerGrid, in renderRecipe, in placement);
-                runtimeChunkLods.Add(new PlanetChunkLodRuntimeEntry(chunkId, centerWorld));
+                PlanetMarchingCubesChunkOrigin baseOrigin = ConvertChunkOrigin(origin, in renderRecipe, in lod1Recipe);
+                int stableChunkId = BuildStableChunkId(baseOrigin);
+                runtimeChunkLods.Add(new PlanetChunkLodRuntimeEntry(stableChunkId, baseOrigin, centerWorld));
             }
             Debug.Log(LogPrefix + "Collect runtime chunks end count=" + runtimeChunkLods.Count);
+        }
+
+        private bool TryFindCandidateChunkIndex(PlanetMarchingCubesChunkOrigin origin, out int candidateChunkIndex)
+        {
+            int candidateCount = runtimeCandidateChunkCount;
+            for (int i = 0; i < candidateCount; i++)
+            {
+                if (!marchingCubesLab.TryGetCandidateChunkOrigin(i, out PlanetMarchingCubesChunkOrigin candidateOrigin))
+                {
+                    continue;
+                }
+
+                if (candidateOrigin.x == origin.x &&
+                    candidateOrigin.y == origin.y &&
+                    candidateOrigin.z == origin.z)
+                {
+                    candidateChunkIndex = i;
+                    return true;
+                }
+            }
+
+            candidateChunkIndex = -1;
+            return false;
+        }
+
+        private static PlanetMarchingCubesChunkOrigin ConvertChunkOrigin(
+            PlanetMarchingCubesChunkOrigin origin,
+            in PlanetRecipe fromRecipe,
+            in PlanetRecipe toRecipe)
+        {
+            float scale = fromRecipe.WorldScale / Mathf.Max(0.0001f, toRecipe.WorldScale);
+            return new PlanetMarchingCubesChunkOrigin(
+                Mathf.RoundToInt(origin.x * scale),
+                Mathf.RoundToInt(origin.y * scale),
+                Mathf.RoundToInt(origin.z * scale));
+        }
+
+        private static int BuildStableChunkId(PlanetMarchingCubesChunkOrigin origin)
+        {
+            unchecked
+            {
+                int hash = 17;
+                hash = hash * 31 + origin.x;
+                hash = hash * 31 + origin.y;
+                hash = hash * 31 + origin.z;
+                return hash & 0x7fffffff;
+            }
+        }
+
+        private static string BuildStableChunkMeshId(PlanetMarchingCubesChunkOrigin origin)
+        {
+            return "chunk_" + origin.x + "_" + origin.y + "_" + origin.z;
         }
 
         private void ClearRuntimeChunkLods()

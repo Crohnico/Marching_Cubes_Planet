@@ -206,8 +206,14 @@ namespace MarchingCubesPlanet.MarchingCubes
     public struct PlanetChunkLodRuntimeEntry
     {
         public PlanetChunkLodRuntimeEntry(int chunkId, Vector3 centerWorld)
+            : this(chunkId, default, centerWorld)
+        {
+        }
+
+        public PlanetChunkLodRuntimeEntry(int chunkId, PlanetMarchingCubesChunkOrigin chunkOrigin, Vector3 centerWorld)
         {
             ChunkId = chunkId;
+            ChunkOrigin = chunkOrigin;
             CenterWorld = centerWorld;
             IsInitialized = false;
             CurrentLod = -1;
@@ -220,6 +226,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         }
 
         public int ChunkId { get; }
+        public PlanetMarchingCubesChunkOrigin ChunkOrigin { get; }
         public Vector3 CenterWorld { get; }
         public bool IsInitialized { get; private set; }
         public int CurrentLod { get; private set; }
