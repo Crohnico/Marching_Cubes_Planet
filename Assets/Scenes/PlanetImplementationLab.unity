@@ -2183,6 +2183,26 @@ Canvas:
   m_SortingLayerID: 0
   m_SortingOrder: 0
   m_TargetDisplay: 0
+--- !u!114 &774411229
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1231763935}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d03a3d578c6240f2a6e5fe991d17b458, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MarchingCubesPlanet.TrianglePools::MarchingCubesPlanet.TrianglePools.PlanetLodAgent
+  positionSource: {fileID: 1231763937}
+  viewSource: {fileID: 629667606}
+  minPositionDeltaMeters: 0.025
+  minViewAngleDeltaDegrees: 0.25
+  maxPushIntervalSeconds: 0.1
+  lastPushedPositionWorld: {x: 0, y: 0, z: 0}
+  lastPushedForwardWorld: {x: 0, y: 0, z: 1}
+  pushVersion: 0
 --- !u!1 &824281196
 GameObject:
   m_ObjectHideFlags: 0
@@ -3524,6 +3544,7 @@ MonoBehaviour:
   lastVertexCountWritten: 0
   lastOverflow: 0
   lastInvalidCase: 0
+  lastExtractedCandidateChunkIndex: -1
   lastAction: 
   lastSnapshot:
     operationName: 
@@ -3622,6 +3643,17 @@ MonoBehaviour:
   lastPaintedVertexCount: 0
   lastWaterTriangleCount: 0
   lastWaterVertexCount: 0
+  lastPaintedChunkCount: 0
+  lastChunkCachePayloadMode: 0
+  lastChunkCacheRequestedChunkCount: 0
+  lastChunkCacheLoadedChunkCount: 0
+  lastChunkCacheMeshOnlyLoadCount: 0
+  lastChunkCacheChunkDataLoadCount: 0
+  lastChunkCacheMissingChunkDataCount: 0
+  lastChunkWorkPackageMode: 0
+  lastChunkWorkPackageSize: 0
+  lastChunkWorkPackageCount: 0
+  lastChunkWorkImmediateShell: 0
   lastMeshEstimatedBytes: 0
   lastWaterMeshEstimatedBytes: 0
   lastAction: 
@@ -4630,6 +4662,7 @@ GameObject:
   - component: {fileID: 774411229}
   - component: {fileID: 1231763936}
   - component: {fileID: 223344556}
+  - component: {fileID: 1231763938}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -4637,26 +4670,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &774411229
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1231763935}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d03a3d578c6240f2a6e5fe991d17b458, type: 3}
-  m_Name:
-  m_EditorClassIdentifier: MarchingCubesPlanet.TrianglePools::MarchingCubesPlanet.TrianglePools.PlanetLodAgent
-  positionSource: {fileID: 1231763937}
-  viewSource: {fileID: 629667606}
-  minPositionDeltaMeters: 0.025
-  minViewAngleDeltaDegrees: 0.25
-  maxPushIntervalSeconds: 0.1
-  lastPushedPositionWorld: {x: 0, y: 0, z: 0}
-  lastPushedForwardWorld: {x: 0, y: 0, z: 1}
-  pushVersion: 0
 --- !u!114 &1231763936
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4704,6 +4717,24 @@ Transform:
   - {fileID: 901484399}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1231763938
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1231763935}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4af1316a501d4f94db60c4e3fa9ad3e4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MarchingCubesPlanet.Preview::MarchingCubesPlanet.Preview.PlanetChunkLodActivationGizmo
+  centerSource: {fileID: 1231763937}
+  activationProfile: {fileID: 11400000, guid: e12f67c2df33a8b4a9e9d2f550a0f21d, type: 2}
+  drawWhenNotSelected: 1
+  lod0Color: {r: 1, g: 0.25, b: 0.15, a: 0.85}
+  lod1Color: {r: 1, g: 0.85, b: 0.1, a: 0.85}
+  lod2Color: {r: 0.25, g: 0.55, b: 1, a: 0.45}
 --- !u!1 &1238021186
 GameObject:
   m_ObjectHideFlags: 0
@@ -5706,6 +5737,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: MarchingCubesPlanet.Preview::MarchingCubesPlanet.Preview.PlanetRecipePayloadPreviewVrPanel
   preview: {fileID: 2000400002}
+  generationFlow: {fileID: 0}
   applyPayload126kButton: {fileID: 752497949}
   applyPayload250kButton: {fileID: 1161398026}
   applyPayload500kButton: {fileID: 1452884498}
@@ -6380,7 +6412,7 @@ MonoBehaviour:
   recipe:
     gridRadius: 130
     worldScale: 54
-    seed: 21586
+    seed: 16579
     isoLevel: 0
     voronoiDivision: 80
     continentCells: 51
@@ -6421,8 +6453,6 @@ MonoBehaviour:
       z: 0
     planetRotation: {x: 0, y: 0, z: 0, w: 1}
   requestedTrianglePayload: 126000
-  colorMode: 2
-  materialOverride: {fileID: 0}
   resourceRegistry: {fileID: 1146611496}
   memoryLab: {fileID: 1000250001}
   memoryBudget:
@@ -6659,13 +6689,7 @@ MonoBehaviour:
       recommendedAction: 
       relatedMetrics: 
   snapshotComparisonSummary: 
-  derivedGeodesicFrequency: 79
-  derivedTriangleCount: 124820
-  derivedVertexCount: 374460
-  derivedIndexCount: 374460
   derivedWorldRadius: 7020
-  derivedSurfaceRadius: 7020
-  hasLiveMesh: 0
   lastDiagnostic: 
 --- !u!1 &2038297193
 GameObject:
