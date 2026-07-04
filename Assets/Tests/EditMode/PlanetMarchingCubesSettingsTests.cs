@@ -12,7 +12,7 @@ namespace MarchingCubesPlanet.Lab.Tests
         {
             PlanetMarchingCubesChunkRange range = PlanetMarchingCubesChunkRange.Default();
 
-            Assert.AreEqual(64, range.chunkSize);
+            Assert.AreEqual(32, range.chunkSize);
             Assert.AreEqual(1, range.cellSizeGrid);
             Assert.AreEqual(4, range.safetyMargin);
             Assert.AreEqual(0, range.maxCandidateChunks);
@@ -56,7 +56,7 @@ namespace MarchingCubesPlanet.Lab.Tests
             settings.EnsureDefaults();
 
             Assert.IsTrue(settings.Validate(out string message), message);
-            Assert.AreEqual(64, settings.chunkRange.chunkSize);
+            Assert.AreEqual(32, settings.chunkRange.chunkSize);
             Assert.AreEqual(1, settings.chunkRange.cellSizeGrid);
             Assert.AreEqual(4, settings.chunkRange.safetyMargin);
             Assert.AreEqual(1000000, settings.temporaryOutputTriangleCapacity);
@@ -112,10 +112,10 @@ namespace MarchingCubesPlanet.Lab.Tests
 
             Assert.Greater(chunks.Length, 0);
             Assert.AreEqual(chunks.Length, stats.CandidateChunkCount);
-            Assert.AreEqual((long)chunks.Length * 64L * 64L * 64L, stats.CandidateCellCount);
-            Assert.AreEqual(0, chunks[0].x % 64);
-            Assert.AreEqual(0, chunks[0].y % 64);
-            Assert.AreEqual(0, chunks[0].z % 64);
+            Assert.AreEqual((long)chunks.Length * 32L * 32L * 32L, stats.CandidateCellCount);
+            Assert.AreEqual(0, chunks[0].x % 32);
+            Assert.AreEqual(0, chunks[0].y % 32);
+            Assert.AreEqual(0, chunks[0].z % 32);
         }
 
         [Test]
