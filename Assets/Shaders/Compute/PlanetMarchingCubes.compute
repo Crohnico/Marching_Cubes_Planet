@@ -29,6 +29,7 @@ StructuredBuffer<int> _MarchingCubesTriTable;
 
 uint _MarchingCubesCellCount;
 uint _MarchingCubesCellStartIndex;
+uint _MarchingCubesCellEndIndex;
 uint _MarchingCubesChunkSize;
 uint _MarchingCubesChunkIndexBase;
 uint _MarchingCubesMaxTriangleCount;
@@ -162,7 +163,7 @@ void PlanetMcEmitCube(uint cellIndex, float3 cornerPositions[8], float cornerDen
 void CS_ExtractChunkedCartesianSurface(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
     uint cellIndex = _MarchingCubesCellStartIndex + dispatchThreadId.x;
-    if (cellIndex >= _MarchingCubesCellCount)
+    if (cellIndex >= _MarchingCubesCellCount || cellIndex >= _MarchingCubesCellEndIndex)
     {
         return;
     }

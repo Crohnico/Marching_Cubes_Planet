@@ -77,6 +77,7 @@ namespace MarchingCubesPlanet.Preview
         private PlanetRecipe activeRuntimeLodRecipe;
         private string activeRuntimeLodMeshId;
         private int activeRuntimeLodCandidateChunkIndex = -1;
+        private bool activeRuntimeLodExtractionStarted;
 
         public string LastDiagnostic => lastDiagnostic;
         public int LastDesiredLod0ChunkCount => lastDesiredLod0ChunkCount;
@@ -536,7 +537,8 @@ namespace MarchingCubesPlanet.Preview
             int processedCount = 0;
             int actionCount = 0;
             int maxActionCount = Mathf.Max(1, activationConfig.runtimeLodActionsPerFrame);
-            while (actionCount < maxActionCount)
+            int maxRequestCount = Mathf.Max(1, activationConfig.maxRuntimeLodRequestsPerUpdate);
+            while (actionCount < maxActionCount && processedCount < maxRequestCount)
             {
                 if (!hasActiveRuntimeLodRequest &&
                     !TryBeginRuntimeLodRequest())
@@ -671,6 +673,7 @@ namespace MarchingCubesPlanet.Preview
             }
 
             activeRuntimeLodRequestPhase = RuntimeLodRequestPhase.ExtractSurface;
+            activeRuntimeLodExtractionStarted = false;
             return true;
         }
 
@@ -678,7 +681,31 @@ namespace MarchingCubesPlanet.Preview
         {
             PlanetChunkLodRuntimeEntry entry = runtimeChunkLods[activeRuntimeLodRequest.EntryIndex];
             int lod = (int)activeRuntimeLodRequest.RequestedLod;
-            marchingCubesLab.ExtractCandidateChunkSurface(activeRuntimeLodCandidateChunkIndex);
+            if (!activeRuntimeLodExtractionStarted)
+            {
+                if (!marchingCubesLab.BeginCandidateChunkSurfaceExtraction(activeRuntimeLodCandidateChunkIndex))
+                {
+                    FailActiveRuntimeLodRequest();
+                    return true;
+                }
+
+                activeRuntimeLodExtractionStarted = true;
+            }
+
+            PlanetChunkLodActivationConfig activationConfig = ResolveRuntimeLodActivationConfig();
+            if (!marchingCubesLab.ContinueCandidateChunkSurfaceExtraction(
+                    activationConfig.runtimeLodCellsPerFrame,
+                    out bool extractionCompleted))
+            {
+                FailActiveRuntimeLodRequest();
+                return true;
+            }
+
+            if (!extractionCompleted)
+            {
+                return true;
+            }
+
             if (marchingCubesLab.LastOverflow)
             {
                 lastDiagnostic = "Runtime LOD change blocked: 07 overflow for chunk " + entry.ChunkId +
@@ -785,6 +812,11 @@ namespace MarchingCubesPlanet.Preview
             activeRuntimeLodRecipe = default;
             activeRuntimeLodMeshId = null;
             activeRuntimeLodCandidateChunkIndex = -1;
+            activeRuntimeLodExtractionStarted = false;
+            if (marchingCubesLab != null)
+            {
+                marchingCubesLab.CancelCandidateChunkSurfaceExtraction();
+            }
         }
 
         private int EvaluateRuntimeChunkLodIndexes(

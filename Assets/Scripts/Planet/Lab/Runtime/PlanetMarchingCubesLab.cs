@@ -299,6 +299,86 @@ namespace MarchingCubesPlanet.Lab
             CaptureMetrics("Extract Candidate Chunk Surface", stopwatch.Elapsed.TotalMilliseconds);
         }
 
+        public bool BeginCandidateChunkSurfaceExtraction(int candidateChunkIndex)
+        {
+            stopwatch.Restart();
+
+            if (!extractor.IsInitialized)
+            {
+                InitMarchingCubesGpu();
+            }
+
+            if (!extractor.IsInitialized)
+            {
+                stopwatch.Stop();
+                return false;
+            }
+
+            if (candidateChunkIndex < 0 || candidateChunkIndex >= extractor.CandidateChunkCount)
+            {
+                stopwatch.Stop();
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "Candidate chunk extraction blocked",
+                    "Requested chunk index is outside the current 07 candidate list.",
+                    "Choose a candidateChunkIndex between 0 and " + Mathf.Max(0, extractor.CandidateChunkCount - 1) + ".",
+                    "candidateChunkIndex=" + candidateChunkIndex +
+                    "\ncandidateChunkCount=" + extractor.CandidateChunkCount);
+                lastAction = "Begin Candidate Chunk Surface Extraction blocked.";
+                CaptureMetrics("Begin Candidate Chunk Surface Extraction Blocked", stopwatch.Elapsed.TotalMilliseconds);
+                return false;
+            }
+
+            extractor.BeginCandidateChunkSurfaceExtraction(candidateChunkIndex);
+            lastExtractedCandidateChunkIndex = candidateChunkIndex;
+            stopwatch.Stop();
+            lastAction = "Begin Candidate Chunk Surface Extraction finished.";
+            CaptureMetrics("Begin Candidate Chunk Surface Extraction", stopwatch.Elapsed.TotalMilliseconds);
+            return true;
+        }
+
+        public bool ContinueCandidateChunkSurfaceExtraction(int cellBudget, out bool completed)
+        {
+            stopwatch.Restart();
+            completed = false;
+            if (!extractor.ContinueActiveExtraction(
+                    cellBudget,
+                    out completed,
+                    out PlanetMarchingCubesExtractionResult result))
+            {
+                stopwatch.Stop();
+                return false;
+            }
+
+            if (!completed)
+            {
+                stopwatch.Stop();
+                lastAction = "Continue Candidate Chunk Surface Extraction pending.";
+                CaptureMetrics("Continue Candidate Chunk Surface Extraction", stopwatch.Elapsed.TotalMilliseconds);
+                return true;
+            }
+
+            lastResult = result;
+            ApplyResultSummary(lastResult);
+
+            stopwatch.Stop();
+            string chunkOriginMetrics = extractor.TryGetCandidateChunkOrigin(lastExtractedCandidateChunkIndex, out PlanetMarchingCubesChunkOrigin origin)
+                ? "\nchunkOrigin=" + origin
+                : string.Empty;
+            lastDiagnostic = PlanetLabDiagnostic.Ok(
+                "Single candidate chunk surface extracted",
+                BuildResultMetrics() +
+                "\ncandidateChunkIndex=" + lastExtractedCandidateChunkIndex +
+                chunkOriginMetrics);
+            lastAction = "Continue Candidate Chunk Surface Extraction finished.";
+            CaptureMetrics("Continue Candidate Chunk Surface Extraction", stopwatch.Elapsed.TotalMilliseconds);
+            return true;
+        }
+
+        public void CancelCandidateChunkSurfaceExtraction()
+        {
+            extractor.CancelActiveExtraction();
+        }
+
         public bool TryGetCandidateChunkOrigin(int candidateChunkIndex, out PlanetMarchingCubesChunkOrigin origin)
         {
             return extractor.TryGetCandidateChunkOrigin(candidateChunkIndex, out origin);

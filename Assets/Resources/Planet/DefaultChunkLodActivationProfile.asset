@@ -17,3 +17,5 @@ MonoBehaviour:
   lod0MaxDistanceWorld: 1500
   lod1MaxDistanceWorld: 7000
   runtimeLodActionsPerFrame: 1
+  maxRuntimeLodRequestsPerUpdate: 1
+  runtimeLodCellsPerFrame: 5000
