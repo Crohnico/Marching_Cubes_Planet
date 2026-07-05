@@ -1175,17 +1175,14 @@ namespace MarchingCubesPlanet.MarchingCubes
 
         private static void LogCreate(string message)
         {
-            Debug.Log(FormatColor(CreateColor, "CREATE " + message));
         }
 
         private static void LogDelete(string message)
         {
-            Debug.Log(FormatColor(DeleteColor, "DELETE " + message));
         }
 
         private static void LogLoad(string message)
         {
-            Debug.Log(FormatColor(LoadColor, "LOAD " + message));
         }
 
         private static string FormatColor(string color, string message)

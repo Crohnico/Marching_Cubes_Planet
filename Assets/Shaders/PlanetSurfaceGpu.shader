@@ -23,7 +23,7 @@ Shader "MarchingCubesPlanet/Planet/SurfaceGpu"
         {
             Name "ForwardLitGpu"
             Tags { "LightMode" = "UniversalForward" }
-            Cull Off
+            Cull Back
             ZWrite On
             ZTest LEqual
             Blend One Zero
