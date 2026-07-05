@@ -55,6 +55,7 @@ namespace MarchingCubesPlanet.TrianglePools
         public int VertexCapacity => vertexCapacity;
         public int ActiveVertexCount => activeVertexCount;
         public int HighWatermarkVertexCount => highWatermarkVertexCount;
+        public int LastPublishedVertexCount { get; private set; }
         public long EstimatedGpuBytes => vertexCapacity * (long)PlanetTriangleGpuVertex.Stride;
         public bool HasVisibleData => vertexBuffer != null && highWatermarkVertexCount > 0 && activeVertexCount > 0;
 
@@ -146,6 +147,7 @@ namespace MarchingCubesPlanet.TrianglePools
 
         public bool Publish(uint meshId, IList<PlanetTriangleGpuVertex> vertices, int vertexCount, Bounds bounds, Material source)
         {
+            LastPublishedVertexCount = 0;
             if (vertices == null)
             {
                 return false;
@@ -166,73 +168,43 @@ namespace MarchingCubesPlanet.TrianglePools
                 return false;
             }
 
-            int existingIndex = FindPublicationIndex(meshId);
-            if (existingIndex >= 0)
+            ReleasePublication(meshId, false);
+            int remainingVertexCount = vertexCount;
+            int sourceVertexStart = 0;
+            while (remainingVertexCount > 0 &&
+                   TryAllocateVertexRange(remainingVertexCount, out int vertexStart, out int allocatedVertexCount))
             {
-                Publication existing = publications[existingIndex];
-                if (vertexCount <= existing.vertexCapacity)
-                {
-                    WriteVertices(vertices, vertexCount, existing.vertexStart);
-                    if (vertexCount < existing.vertexCount)
-                    {
-                        ClearRange(existing.vertexStart + vertexCount, existing.vertexCount - vertexCount);
-                    }
-
-                    activeVertexCount = Mathf.Max(0, activeVertexCount - existing.vertexCount + vertexCount);
-                    existing.vertexCount = vertexCount;
-                    existing.bounds = bounds;
-                    publications[existingIndex] = existing;
-                    RebuildBounds();
-                    UpdateRenderer();
-                    return true;
-                }
-
-                if (!TryAllocateVertexRange(vertexCount, out int expandedVertexStart))
-                {
-                    Debug.LogWarning(
-                        "[09 GPU] Not enough GPU triangle buffer space. Keeping previous publication. artistId=" + artistId +
-                        " requestedVertices=" + vertexCount +
-                        " previousCapacity=" + existing.vertexCapacity +
-                        " capacity=" + vertexCapacity +
-                        " highWatermark=" + highWatermarkVertexCount);
-                    return false;
-                }
-
-                WriteVertices(vertices, vertexCount, expandedVertexStart);
-                ClearRange(existing.vertexStart, existing.vertexCount);
-                AddFreeRange(existing.vertexStart, existing.vertexCapacity);
-                activeVertexCount = Mathf.Max(0, activeVertexCount - existing.vertexCount + vertexCount);
-                existing.vertexStart = expandedVertexStart;
-                existing.vertexCount = vertexCount;
-                existing.vertexCapacity = vertexCount;
-                existing.bounds = bounds;
-                publications[existingIndex] = existing;
-                highWatermarkVertexCount = Mathf.Max(highWatermarkVertexCount, expandedVertexStart + vertexCount);
-                RebuildBounds();
-                UpdateRenderer();
-                return true;
+                WriteVertices(vertices, sourceVertexStart, allocatedVertexCount, vertexStart);
+                AddPublication(meshId, vertexStart, allocatedVertexCount, bounds);
+                activeVertexCount += allocatedVertexCount;
+                LastPublishedVertexCount += allocatedVertexCount;
+                sourceVertexStart += allocatedVertexCount;
+                remainingVertexCount -= allocatedVertexCount;
             }
 
-            if (!TryAllocateVertexRange(vertexCount, out int vertexStart))
+            if (LastPublishedVertexCount <= 0)
             {
                 Debug.LogWarning(
                     "[09 GPU] Not enough GPU triangle buffer space. artistId=" + artistId +
                     " requestedVertices=" + vertexCount +
                     " capacity=" + vertexCapacity +
                     " highWatermark=" + highWatermarkVertexCount);
+                RebuildBounds();
+                UpdateRenderer();
                 return false;
             }
 
-            WriteVertices(vertices, vertexCount, vertexStart);
-            AddPublication(meshId, vertexStart, vertexCount, bounds);
-            activeVertexCount += vertexCount;
-            highWatermarkVertexCount = Mathf.Max(highWatermarkVertexCount, vertexStart + vertexCount);
-            IncludeBounds(bounds);
+            RebuildBounds();
             UpdateRenderer();
             return true;
         }
 
         public int ReleasePublication(uint meshId)
+        {
+            return ReleasePublication(meshId, true);
+        }
+
+        private int ReleasePublication(uint meshId, bool updateRenderer)
         {
             int released = 0;
             for (int i = 0; i < publications.Count; i++)
@@ -251,8 +223,12 @@ namespace MarchingCubesPlanet.TrianglePools
                 released += publication.vertexCount / 3;
             }
 
-            RebuildBounds();
-            UpdateRenderer();
+            if (updateRenderer)
+            {
+                RebuildBounds();
+                UpdateRenderer();
+            }
+
             return released;
         }
 
@@ -328,19 +304,21 @@ namespace MarchingCubesPlanet.TrianglePools
                 VertexBufferPropertyName);
         }
 
-        private bool TryAllocateVertexRange(int vertexCount, out int vertexStart)
+        private bool TryAllocateVertexRange(int requestedVertexCount, out int vertexStart, out int allocatedVertexCount)
         {
             for (int i = 0; i < freeRanges.Count; i++)
             {
                 FreeRange range = freeRanges[i];
-                if (range.count < vertexCount)
+                allocatedVertexCount = Mathf.Min(requestedVertexCount, range.count);
+                allocatedVertexCount -= allocatedVertexCount % 3;
+                if (allocatedVertexCount <= 0)
                 {
                     continue;
                 }
 
                 vertexStart = range.start;
-                range.start += vertexCount;
-                range.count -= vertexCount;
+                range.start += allocatedVertexCount;
+                range.count -= allocatedVertexCount;
                 if (range.count <= 0)
                 {
                     freeRanges.RemoveAt(i);
@@ -353,27 +331,17 @@ namespace MarchingCubesPlanet.TrianglePools
                 return true;
             }
 
-            if (highWatermarkVertexCount + vertexCount > vertexCapacity)
+            allocatedVertexCount = Mathf.Min(requestedVertexCount, vertexCapacity - highWatermarkVertexCount);
+            allocatedVertexCount -= allocatedVertexCount % 3;
+            if (allocatedVertexCount <= 0)
             {
                 vertexStart = 0;
                 return false;
             }
 
             vertexStart = highWatermarkVertexCount;
+            highWatermarkVertexCount += allocatedVertexCount;
             return true;
-        }
-
-        private int FindPublicationIndex(uint meshId)
-        {
-            for (int i = 0; i < publications.Count; i++)
-            {
-                if (publications[i].occupied && publications[i].meshId == meshId)
-                {
-                    return i;
-                }
-            }
-
-            return -1;
         }
 
         private void AddPublication(uint meshId, int vertexStart, int vertexCount, Bounds bounds)
@@ -408,12 +376,16 @@ namespace MarchingCubesPlanet.TrianglePools
             });
         }
 
-        private void WriteVertices(IList<PlanetTriangleGpuVertex> vertices, int vertexCount, int vertexStart)
+        private void WriteVertices(
+            IList<PlanetTriangleGpuVertex> vertices,
+            int sourceVertexStart,
+            int vertexCount,
+            int vertexStart)
         {
             EnsureUploadScratch(vertexCount);
             for (int i = 0; i < vertexCount; i++)
             {
-                uploadScratch[i] = vertices[i];
+                uploadScratch[i] = vertices[sourceVertexStart + i];
             }
 
             vertexBuffer.SetData(uploadScratch, 0, vertexStart, vertexCount);

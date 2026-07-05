@@ -1507,8 +1507,29 @@ namespace MarchingCubesPlanet.MarchingCubes
             gpuUploadVertices.Clear();
             bool hasBounds = false;
             int indexCount = indices.Count - indices.Count % 3;
+            int sourceTriangleCount = indexCount / 3;
+            Vector3 priorityOriginWorld = PlanetTrianglePoolRegistry.PriorityOriginWorld;
+            trianglePoolWriter.Draw(
+                sourceTriangleCount,
+                triangleIndex => EvaluateCachedTriangleScore(
+                    vertices,
+                    indices,
+                    triangleIndex,
+                    localToWorld,
+                    priorityOriginWorld),
+                _ => 1,
+                PlanetTriangleOwnerId.PlanetSurfaceValue,
+                meshId);
+
             for (int i = 0; i < indexCount; i++)
             {
+                int sourceTriangleIndex = i / 3;
+                if (!trianglePoolWriter.IsSourceTriangleSelected(sourceTriangleIndex))
+                {
+                    i += 2 - i % 3;
+                    continue;
+                }
+
                 int vertexIndex = indices[i];
                 if (vertexIndex < 0 || vertexIndex >= vertices.Count)
                 {
@@ -1543,12 +1564,53 @@ namespace MarchingCubesPlanet.MarchingCubes
                 bounds = localToWorld != null ? TransformBounds(localToWorld, localBounds) : localBounds;
             }
 
-            return PlanetTrianglePoolRegistry.Environment.GpuBackend.Publish(
+            PlanetTriangleGpuBackend gpuBackend = PlanetTrianglePoolRegistry.Environment.GpuBackend;
+            bool published = gpuBackend.Publish(
                 meshId,
                 gpuUploadVertices,
                 publishedVertexCount,
                 bounds,
                 material);
+            publishedVertexCount = gpuBackend.LastPublishedVertexCount;
+            return published;
+        }
+
+        private static float EvaluateCachedTriangleScore(
+            List<Vector3> vertices,
+            List<int> indices,
+            int sourceTriangleIndex,
+            Transform localToWorld,
+            Vector3 priorityOriginWorld)
+        {
+            int indexStart = sourceTriangleIndex * 3;
+            Vector3 center = Vector3.zero;
+            int validVertexCount = 0;
+            for (int corner = 0; corner < 3; corner++)
+            {
+                int index = indexStart + corner;
+                if (index < 0 || index >= indices.Count)
+                {
+                    continue;
+                }
+
+                int vertexIndex = indices[index];
+                if (vertexIndex < 0 || vertexIndex >= vertices.Count)
+                {
+                    continue;
+                }
+
+                center += vertices[vertexIndex];
+                validVertexCount++;
+            }
+
+            if (validVertexCount <= 0)
+            {
+                return float.MaxValue;
+            }
+
+            center /= validVertexCount;
+            Vector3 worldCenter = localToWorld != null ? localToWorld.TransformPoint(center) : center;
+            return (worldCenter - priorityOriginWorld).sqrMagnitude;
         }
 
         private static void IncludePointInBounds(ref Bounds bounds, ref bool hasBounds, Vector3 point)
