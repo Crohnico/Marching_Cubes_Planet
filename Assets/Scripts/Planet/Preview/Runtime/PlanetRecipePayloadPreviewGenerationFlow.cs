@@ -557,7 +557,12 @@ namespace MarchingCubesPlanet.Preview
             runtimeLodAffectedChunkIndexes.Clear();
             runtimeLodAffectedChunkIndexSet.Clear();
             CollectRuntimeLodRangeDiffIndexes(previousCenter, nextCenter, previousLod1Radius, nextLod1Radius);
+            CollectRuntimeLodRangeDiffIndexes(previousCenter, nextCenter, previousLod1Radius + 1f, nextLod1Radius + 1f);
             CollectRuntimeLodRangeDiffIndexes(previousCenter, nextCenter, previousLod0Radius, nextLod0Radius);
+            if (previousLod0Radius >= 0f || nextLod0Radius >= 0f)
+            {
+                CollectRuntimeLodRangeDiffIndexes(previousCenter, nextCenter, previousLod0Radius + 1f, nextLod0Radius + 1f);
+            }
         }
 
         private void CollectRuntimeLodRangeDiffIndexes(
