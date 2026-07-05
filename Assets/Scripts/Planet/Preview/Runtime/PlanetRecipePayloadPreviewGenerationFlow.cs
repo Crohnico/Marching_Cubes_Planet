@@ -748,9 +748,6 @@ namespace MarchingCubesPlanet.Preview
 
             if (marchingCubesLab.LastTriangleCountWritten == 0u)
             {
-                Debug.LogWarning(LogPrefix + "Chunk extracted zero triangles chunkId=" + entry.ChunkId +
-                                 " lod=" + lod +
-                                 ". Publishing empty named mesh through existing path.");
                 paintLab.PaintNamedMesh(
                     meshId,
                     null,
@@ -845,7 +842,6 @@ namespace MarchingCubesPlanet.Preview
             {
                 if (!marchingCubesLab.TryGetCandidateChunkOrigin(chunkId, out PlanetMarchingCubesChunkOrigin origin))
                 {
-                    Debug.LogWarning(LogPrefix + "Candidate chunk origin missing chunkId=" + chunkId);
                     continue;
                 }
 
