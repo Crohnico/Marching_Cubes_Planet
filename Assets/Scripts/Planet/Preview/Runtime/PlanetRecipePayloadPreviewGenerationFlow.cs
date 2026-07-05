@@ -209,6 +209,12 @@ namespace MarchingCubesPlanet.Preview
             Debug.Log(LogPrefix + "Runtime chunk table collected count=" + runtimeChunkLods.Count +
                       " mcCandidateChunks=" + marchingCubesLab.LastCandidateChunkCount);
             BeginRuntimeChunkLods(in sourceRecipe, true);
+            if (!paintLab.PaintGlobalWater(targetMeshFilter, targetMeshRenderer, placement, in sourceRecipe))
+            {
+                Debug.LogWarning(LogPrefix + "Global water paint skipped. " +
+                                 FormatLabDiagnostic(paintLab.LastDiagnostic));
+            }
+
             Debug.Log(LogPrefix + "LOD2 pass finished changed=" + lastRuntimeLodChangedChunkCount +
                       " runtimeChunks=" + runtimeChunkLods.Count +
                       " paintHasLiveMesh=" + paintLab.HasLiveMesh +
@@ -216,7 +222,7 @@ namespace MarchingCubesPlanet.Preview
                       " paintedTris=" + paintLab.LastPaintedTriangleCount +
                       " waterTris=" + paintLab.LastWaterTriangleCount);
 
-            if (!paintLab.HasLiveMesh)
+            if (paintLab.RuntimeTerrainVertexCount <= 0)
             {
                 lastDiagnostic = "Generate finished without visible 09 Environment triangles after initial LOD changes. " +
                                  FormatLabDiagnostic(paintLab.LastDiagnostic);

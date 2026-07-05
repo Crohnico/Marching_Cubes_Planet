@@ -1735,7 +1735,7 @@ Camera:
     y: 0
     width: 1
     height: 1
-  near clip plane: 0.05
+  near clip plane: 0.2
   far clip plane: 20000
   field of view: 60
   orthographic: 0
@@ -6412,7 +6412,7 @@ MonoBehaviour:
   recipe:
     gridRadius: 130
     worldScale: 54
-    seed: 16579
+    seed: 13379
     isoLevel: 0
     voronoiDivision: 80
     continentCells: 51

@@ -57,25 +57,25 @@ Cada chunk tendra:
 chunkId
 LOD
 mesh de terreno
-segmento de agua si aplica
 ```
 
-Regla:
+Simplificacion runtime vigente:
 
 ```text
-El terreno de un chunk y su agua asociada forman la unidad visible inicial.
+El agua no se publica por chunk durante esta fase.
+Generate publica un unico batch GPU/procedural de agua a nivel del mar para todo el planeta.
+Los chunks de 10 solo publican terreno.
 ```
 
-Si un chunk no tiene agua, solo publica su mesh de terreno.
-
-Si un chunk tiene agua, publica tambien su segmento de agua.
-
-Decision:
+Motivo:
 
 ```text
-Terreno y agua son partes del mismo chunk logico.
-Terreno y agua se guardan y publican como dos meshes separadas.
-El chunk mantiene la relacion entre ambas meshes.
+Reducir variables y coste runtime mientras se depuran los tirones de LOD dinamico.
+Evitar millones de segmentos/meshes de agua asociadas a chunks.
+El agua chunked queda TBD hasta decidir si vuelve como backend GPU separado,
+cache derivada o sistema especifico de ocean/render.
+La ruta provisional usa el backend GPU de 09 para no mezclar agua MeshRenderer
+con terreno procedural.
 ```
 
 ## Paso 2 - Cache directa a disco
@@ -857,8 +857,8 @@ confiscar.
 ```text
 10 trabaja por chunks.
 10 no publica directamente una mesh completa unica del planeta.
-Cada chunk puede tener terreno y segmento de agua.
-Terreno y agua pertenecen al mismo chunk logico, pero son dos meshes separadas.
+Cada chunk publica terreno.
+El agua runtime vigente es un unico batch GPU/procedural global a nivel del mar.
 10 tendra cache en disco.
 El ID de cache depende de seed + recipe.
 Si el ID de cache no coincide, se invalida la cache anterior.

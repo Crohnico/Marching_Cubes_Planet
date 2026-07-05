@@ -9,11 +9,17 @@ namespace MarchingCubesPlanet.TrianglePools
     {
         private const string BackendObjectName = "PlanetTriangleGpuBackend_";
         private const string SurfaceGpuShaderName = "MarchingCubesPlanet/Planet/SurfaceGpu";
+        private const string WaterGpuShaderName = "MarchingCubesPlanet/Planet/WaterGpu";
         private const string VertexBufferPropertyName = "_PlanetTriangleVertices";
         private const string SurfaceAtlasTexturePropertyName = "_PlanetSurfaceAtlas";
         private const string UseSurfaceAtlasPropertyName = "_UsePlanetSurfaceAtlas";
         private const string BaseMapTexturePropertyName = "_BaseMap";
         private const string MainTexturePropertyName = "_MainTex";
+        private const string BaseColorPropertyName = "_BaseColor";
+        private const string ColorPropertyName = "_Color";
+        private const string SpecColorPropertyName = "_SpecColor";
+        private const string SmoothnessPropertyName = "_Smoothness";
+        private const string MetallicPropertyName = "_Metallic";
 
         private struct Publication
         {
@@ -35,16 +41,22 @@ namespace MarchingCubesPlanet.TrianglePools
         private readonly List<Publication> publications = new List<Publication>(256);
         private readonly List<FreeRange> freeRanges = new List<FreeRange>(256);
         private GraphicsBuffer vertexBuffer;
+        private GraphicsBuffer waterVertexBuffer;
         private PlanetTriangleGpuVertex[] uploadScratch;
         private PlanetTriangleGpuVertex[] clearScratch;
         private Material material;
+        private Material waterMaterial;
         private Material sourceMaterial;
+        private Material waterSourceMaterial;
         private GameObject renderObject;
         private PlanetTriangleGpuRenderer renderer;
         private Bounds worldBounds;
+        private Bounds waterWorldBounds;
         private int vertexCapacity;
+        private int waterVertexCapacity;
         private int highWatermarkVertexCount;
         private int activeVertexCount;
+        private int waterVertexCount;
         private bool hasBounds;
 
         public PlanetTriangleGpuBackend(uint artistId)
@@ -57,7 +69,9 @@ namespace MarchingCubesPlanet.TrianglePools
         public int HighWatermarkVertexCount => highWatermarkVertexCount;
         public int LastPublishedVertexCount { get; private set; }
         public long EstimatedGpuBytes => vertexCapacity * (long)PlanetTriangleGpuVertex.Stride;
+        public long EstimatedWaterGpuBytes => waterVertexCapacity * (long)PlanetTriangleGpuVertex.Stride;
         public bool HasVisibleData => vertexBuffer != null && highWatermarkVertexCount > 0 && activeVertexCount > 0;
+        public bool HasVisibleWaterData => waterVertexBuffer != null && waterVertexCount > 0;
 
         public void EnsureInitialized(int totalTriangleBudget)
         {
@@ -199,9 +213,52 @@ namespace MarchingCubesPlanet.TrianglePools
             return true;
         }
 
+        public bool PublishWater(IList<PlanetTriangleGpuVertex> vertices, int vertexCount, Bounds bounds, Material source)
+        {
+            if (vertices == null)
+            {
+                return false;
+            }
+
+            vertexCount = Mathf.Max(0, Mathf.Min(vertexCount, vertices.Count));
+            vertexCount -= vertexCount % 3;
+            if (vertexCount <= 0)
+            {
+                ReleaseWaterPublication();
+                return true;
+            }
+
+            EnsureRenderer();
+            EnsureWaterCapacity(vertexCount);
+            SetWaterMaterial(source);
+            if (waterVertexBuffer == null || waterMaterial == null)
+            {
+                return false;
+            }
+
+            WriteWaterVertices(vertices, vertexCount);
+            waterVertexCount = vertexCount;
+            waterWorldBounds = bounds;
+            UpdateRenderer();
+            return true;
+        }
+
         public int ReleasePublication(uint meshId)
         {
             return ReleasePublication(meshId, true);
+        }
+
+        public void ReleaseWaterPublication()
+        {
+            if (waterVertexBuffer != null && waterVertexCount > 0)
+            {
+                EnsureClearScratch(waterVertexCount);
+                waterVertexBuffer.SetData(clearScratch, 0, 0, waterVertexCount);
+            }
+
+            waterVertexCount = 0;
+            waterWorldBounds = default;
+            UpdateRenderer();
         }
 
         private int ReleasePublication(uint meshId, bool updateRenderer)
@@ -245,6 +302,7 @@ namespace MarchingCubesPlanet.TrianglePools
             highWatermarkVertexCount = 0;
             hasBounds = false;
             worldBounds = default;
+            ReleaseWaterPublication();
             UpdateRenderer();
         }
 
@@ -263,6 +321,18 @@ namespace MarchingCubesPlanet.TrianglePools
                 material = null;
             }
 
+            if (waterVertexBuffer != null)
+            {
+                waterVertexBuffer.Release();
+                waterVertexBuffer = null;
+            }
+
+            if (waterMaterial != null)
+            {
+                UnityEngine.Object.Destroy(waterMaterial);
+                waterMaterial = null;
+            }
+
             if (renderObject != null)
             {
                 UnityEngine.Object.Destroy(renderObject);
@@ -271,7 +341,10 @@ namespace MarchingCubesPlanet.TrianglePools
             }
 
             vertexCapacity = 0;
+            waterVertexCapacity = 0;
+            waterVertexCount = 0;
             sourceMaterial = null;
+            waterSourceMaterial = null;
         }
 
         private void EnsureRenderer()
@@ -302,6 +375,96 @@ namespace MarchingCubesPlanet.TrianglePools
                 highWatermarkVertexCount,
                 hasBounds ? worldBounds : new Bounds(Vector3.zero, Vector3.one),
                 VertexBufferPropertyName);
+            renderer.ConfigureWater(
+                waterVertexBuffer,
+                waterMaterial,
+                waterVertexCount,
+                waterVertexCount > 0 ? waterWorldBounds : new Bounds(Vector3.zero, Vector3.one),
+                VertexBufferPropertyName);
+        }
+
+        private void EnsureWaterCapacity(int requestedVertexCapacity)
+        {
+            requestedVertexCapacity = Mathf.Max(3, requestedVertexCapacity);
+            requestedVertexCapacity -= requestedVertexCapacity % 3;
+            if (waterVertexBuffer != null && waterVertexCapacity >= requestedVertexCapacity)
+            {
+                return;
+            }
+
+            if (waterVertexBuffer != null)
+            {
+                waterVertexBuffer.Release();
+                waterVertexBuffer = null;
+            }
+
+            waterVertexCapacity = requestedVertexCapacity;
+            waterVertexBuffer = new GraphicsBuffer(
+                GraphicsBuffer.Target.Structured,
+                waterVertexCapacity,
+                PlanetTriangleGpuVertex.Stride)
+            {
+                name = "PlanetTriangleGpuWaterVertexBuffer_" + artistId
+            };
+        }
+
+        private void SetWaterMaterial(Material value)
+        {
+            if (value == null)
+            {
+                return;
+            }
+
+            waterSourceMaterial = value;
+            Shader shader = Shader.Find(WaterGpuShaderName);
+            if (shader == null)
+            {
+                Debug.LogError("Missing GPU water shader: " + WaterGpuShaderName);
+                return;
+            }
+
+            if (waterMaterial == null)
+            {
+                waterMaterial = new Material(shader)
+                {
+                    name = "PlanetTriangleGpu_Water_Runtime"
+                };
+            }
+            else
+            {
+                waterMaterial.shader = shader;
+            }
+
+            CopyWaterMaterialProperties(value, waterMaterial);
+            waterMaterial.renderQueue = (int)RenderQueue.Transparent;
+        }
+
+        private static void CopyWaterMaterialProperties(Material source, Material target)
+        {
+            if (source == null || target == null)
+            {
+                return;
+            }
+
+            Color baseColor = source.HasProperty(BaseColorPropertyName)
+                ? source.GetColor(BaseColorPropertyName)
+                : source.HasProperty(ColorPropertyName)
+                    ? source.GetColor(ColorPropertyName)
+                    : new Color(0.08f, 0.42f, 0.72f, 0.78f);
+            Color specColor = source.HasProperty(SpecColorPropertyName)
+                ? source.GetColor(SpecColorPropertyName)
+                : new Color(0.18f, 0.26f, 0.30f, 1f);
+            float smoothness = source.HasProperty(SmoothnessPropertyName)
+                ? source.GetFloat(SmoothnessPropertyName)
+                : 0.72f;
+            float metallic = source.HasProperty(MetallicPropertyName)
+                ? source.GetFloat(MetallicPropertyName)
+                : 0f;
+
+            target.SetColor(BaseColorPropertyName, baseColor);
+            target.SetColor(SpecColorPropertyName, specColor);
+            target.SetFloat(SmoothnessPropertyName, smoothness);
+            target.SetFloat(MetallicPropertyName, metallic);
         }
 
         private bool TryAllocateVertexRange(int requestedVertexCount, out int vertexStart, out int allocatedVertexCount)
@@ -389,6 +552,17 @@ namespace MarchingCubesPlanet.TrianglePools
             }
 
             vertexBuffer.SetData(uploadScratch, 0, vertexStart, vertexCount);
+        }
+
+        private void WriteWaterVertices(IList<PlanetTriangleGpuVertex> vertices, int vertexCount)
+        {
+            EnsureUploadScratch(vertexCount);
+            for (int i = 0; i < vertexCount; i++)
+            {
+                uploadScratch[i] = vertices[i];
+            }
+
+            waterVertexBuffer.SetData(uploadScratch, 0, 0, vertexCount);
         }
 
         private void AddFreeRange(int start, int count)

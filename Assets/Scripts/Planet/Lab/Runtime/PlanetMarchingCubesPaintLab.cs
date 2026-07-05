@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Collections.Generic;
 using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.MarchingCubes;
+using MarchingCubesPlanet.TrianglePools;
 using UnityEngine;
 
 namespace MarchingCubesPlanet.Lab
@@ -69,6 +70,9 @@ namespace MarchingCubesPlanet.Lab
         public PlanetLabMetricsSnapshot LastSnapshot => lastSnapshot;
         public string LastAction => lastAction;
         public bool HasLiveMesh => hasLiveMesh;
+        public int RuntimeTerrainVertexCount => painter.RuntimeMesh != null
+            ? painter.RuntimeMesh.vertexCount + painter.RuntimeChunkVertexCount
+            : painter.RuntimeChunkVertexCount;
         public int LastSourceTriangleCount => lastSourceTriangleCount;
         public int LastPaintedTriangleCount => lastPaintedTriangleCount;
         public int LastPaintedVertexCount => lastPaintedVertexCount;
@@ -440,6 +444,7 @@ namespace MarchingCubesPlanet.Lab
 
             hasLiveMesh = painter.RuntimeMesh != null ||
                           painter.RuntimeWaterMesh != null ||
+                          painter.HasVisibleGpuWater ||
                           painter.RuntimeChunkMeshCount > 0 ||
                           painter.RuntimeChunkWaterMeshCount > 0;
             lastSourceTriangleCount = result.SourceTriangleCount;
@@ -568,6 +573,7 @@ namespace MarchingCubesPlanet.Lab
 
             hasLiveMesh = painter.RuntimeMesh != null ||
                           painter.RuntimeWaterMesh != null ||
+                          painter.HasVisibleGpuWater ||
                           painter.RuntimeChunkMeshCount > 0 ||
                           painter.RuntimeChunkWaterMeshCount > 0;
             lastSourceTriangleCount = result.SourceTriangleCount;
@@ -691,6 +697,7 @@ namespace MarchingCubesPlanet.Lab
 
             hasLiveMesh = painter.RuntimeMesh != null ||
                           painter.RuntimeWaterMesh != null ||
+                          painter.HasVisibleGpuWater ||
                           painter.RuntimeChunkMeshCount > 0 ||
                           painter.RuntimeChunkWaterMeshCount > 0;
             lastSourceTriangleCount = result.SourceTriangleCount;
@@ -709,6 +716,97 @@ namespace MarchingCubesPlanet.Lab
                 "meshId=" + meshId + "\nchunkId=" + chunkId + "\nLOD=" + lod);
             lastAction = "Paint Named Extraction finished.";
             CaptureMetrics("Paint Named Extraction", stopwatch.Elapsed.TotalMilliseconds);
+            return result.HasVisibleMesh;
+        }
+
+        public bool PaintGlobalWater(
+            MeshFilter targetMeshFilter,
+            MeshRenderer targetMeshRenderer,
+            PlanetPlacement targetPlacement,
+            in PlanetRecipe recipe)
+        {
+            stopwatch.Restart();
+
+            if (targetMeshFilter == null || targetMeshRenderer == null)
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Critical(
+                    "Paint target is missing",
+                    "09 needs a MeshFilter and MeshRenderer target to display global water.",
+                    "Pass the PlanetRecipePayloadPreview render target.",
+                    "targetMeshFilter=" + targetMeshFilter + "\ntargetMeshRenderer=" + targetMeshRenderer);
+                lastAction = "Paint Global Water failed.";
+                stopwatch.Stop();
+                return false;
+            }
+
+            if (!recipe.IsValid(out string recipeMessage))
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "PlanetRecipe is invalid",
+                    recipeMessage,
+                    "Fix the recipe before painting global water.",
+                    "recipe invalid");
+                lastAction = "Paint Global Water failed.";
+                stopwatch.Stop();
+                return false;
+            }
+
+            if (!settings.Validate(out string settingsMessage))
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "Marching Cubes paint settings are invalid",
+                    settingsMessage,
+                    "Fix paint settings before painting global water.",
+                    settings.ToString());
+                lastAction = "Paint Global Water failed.";
+                stopwatch.Stop();
+                return false;
+            }
+
+            activeMeshFilter = targetMeshFilter;
+            activeMeshRenderer = targetMeshRenderer;
+            placement = targetPlacement;
+
+            PlanetMarchingCubesPaintResult result;
+            try
+            {
+                result = painter.PaintGlobalWater(
+                    activeMeshFilter,
+                    activeMeshRenderer,
+                    in recipe,
+                    in placement,
+                    settings);
+            }
+            catch (System.Exception exception)
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "Global water paint blocked",
+                    exception.Message,
+                    "Check the recipe and water material.",
+                    "targetMeshFilter=" + targetMeshFilter + "\ntargetMeshRenderer=" + targetMeshRenderer);
+                lastAction = "Paint Global Water blocked.";
+                stopwatch.Stop();
+                CaptureMetrics("Paint Global Water Blocked", stopwatch.Elapsed.TotalMilliseconds);
+                return false;
+            }
+
+            hasLiveMesh = painter.RuntimeMesh != null ||
+                          painter.RuntimeWaterMesh != null ||
+                          painter.HasVisibleGpuWater ||
+                          painter.RuntimeChunkMeshCount > 0 ||
+                          painter.RuntimeChunkWaterMeshCount > 0;
+            lastWaterTriangleCount = result.WaterTriangleCount;
+            lastWaterVertexCount = result.WaterVertexCount;
+            lastWaterMeshEstimatedBytes = result.WaterMeshEstimatedBytes;
+            ReregisterRuntimeResources();
+
+            stopwatch.Stop();
+            lastDiagnostic = PlanetLabDiagnostic.Ok(
+                "Global water painted",
+                "waterTriangleCount=" + result.WaterTriangleCount +
+                "\nwaterVertexCount=" + result.WaterVertexCount);
+            lastAction = "Paint Global Water finished.";
+            CaptureMetrics("Paint Global Water", stopwatch.Elapsed.TotalMilliseconds);
             return result.HasVisibleMesh;
         }
 
@@ -921,6 +1019,16 @@ namespace MarchingCubesPlanet.Lab
                     lastWaterMeshEstimatedBytes,
                     lastWaterVertexCount,
                     0);
+            }
+            else if (painter.HasVisibleGpuWater)
+            {
+                waterMeshResourceId = resourceRegistry.RegisterResource(
+                    "PlanetMarchingCubesPaint GPU Water Buffer",
+                    PlanetLabResourceType.GraphicsBuffer,
+                    OwnerName,
+                    painter.RuntimeGpuWaterEstimatedBytes,
+                    lastWaterVertexCount,
+                    PlanetTriangleGpuVertex.Stride);
             }
 
             if (painter.RuntimeChunkMeshCount > 0)

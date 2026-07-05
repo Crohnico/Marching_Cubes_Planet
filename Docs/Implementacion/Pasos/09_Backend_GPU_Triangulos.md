@@ -249,6 +249,15 @@ Puede ser otro batch/material dentro de Environment.
 No se mezcla con superficie si necesita shader/material distinto.
 ```
 
+Decision provisional de validacion:
+
+```text
+El agua global de 10 se publica como segundo batch procedural de Environment.
+Usa su propio GraphicsBuffer pequeno y material/shader WaterGpu.
+No consume el presupuesto de triangulos de terreno de 09.
+No vuelve a generar segmentos de agua por chunk.
+```
+
 ## Uso de compute
 
 Compute entra para trabajo de datos:
