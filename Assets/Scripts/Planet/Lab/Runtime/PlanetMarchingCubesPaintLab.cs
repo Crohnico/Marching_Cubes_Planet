@@ -461,6 +461,136 @@ namespace MarchingCubesPlanet.Lab
             return result.HasVisibleMesh;
         }
 
+        public bool PaintNamedCachedMesh(
+            string meshId,
+            PlanetChunkMeshCache cache,
+            int cacheChunkId,
+            int cacheLod,
+            MeshFilter targetMeshFilter,
+            MeshRenderer targetMeshRenderer,
+            PlanetPlacement targetPlacement,
+            in PlanetRecipe recipe)
+        {
+            stopwatch.Restart();
+
+            if (targetMeshFilter == null)
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Critical(
+                    "Paint target MeshFilter is missing",
+                    "09 needs a MeshFilter target to display a named cached mesh.",
+                    "Pass the PlanetRecipePayloadPreview MeshFilter.",
+                    "targetMeshFilter=null");
+                lastAction = "Paint Named Cached Mesh failed.";
+                stopwatch.Stop();
+                return false;
+            }
+
+            if (targetMeshRenderer == null)
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Critical(
+                    "Paint target MeshRenderer is missing",
+                    "09 needs a MeshRenderer target to display a named cached mesh.",
+                    "Pass the PlanetRecipePayloadPreview MeshRenderer.",
+                    "targetMeshRenderer=null");
+                lastAction = "Paint Named Cached Mesh failed.";
+                stopwatch.Stop();
+                return false;
+            }
+
+            if (cache == null)
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "Chunk cache is missing",
+                    "09 cannot load a named cached mesh without a cache instance.",
+                    "Pass the active PlanetChunkMeshCache.",
+                    "cache=null");
+                lastAction = "Paint Named Cached Mesh failed.";
+                stopwatch.Stop();
+                return false;
+            }
+
+            if (!recipe.IsValid(out string recipeMessage))
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "PlanetRecipe is invalid",
+                    recipeMessage,
+                    "Fix the preview recipe before painting a named cached mesh.",
+                    "recipe invalid");
+                lastAction = "Paint Named Cached Mesh failed.";
+                stopwatch.Stop();
+                return false;
+            }
+
+            if (!settings.Validate(out string settingsMessage))
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "Marching Cubes paint settings are invalid",
+                    settingsMessage,
+                    "Fix paint settings before painting a named cached mesh.",
+                    settings.ToString());
+                lastAction = "Paint Named Cached Mesh failed.";
+                stopwatch.Stop();
+                return false;
+            }
+
+            activeMeshFilter = targetMeshFilter;
+            activeMeshRenderer = targetMeshRenderer;
+            placement = targetPlacement;
+
+            PlanetMarchingCubesPaintResult result;
+            try
+            {
+                result = painter.PaintNamedCachedMesh(
+                    activeMeshFilter,
+                    activeMeshRenderer,
+                    materialOverride,
+                    meshId,
+                    cache,
+                    cacheChunkId,
+                    cacheLod,
+                    in recipe,
+                    settings);
+            }
+            catch (System.Exception exception)
+            {
+                lastDiagnostic = PlanetLabDiagnostic.Warning(
+                    "Named cached mesh paint blocked",
+                    exception.Message,
+                    "Send 09 a valid meshId, cache, chunkId and LOD.",
+                    "meshId=" + meshId +
+                    "\nchunkId=" + cacheChunkId +
+                    "\nlod=" + cacheLod);
+                lastAction = "Paint Named Cached Mesh blocked.";
+                stopwatch.Stop();
+                CaptureMetrics("Paint Named Cached Mesh Blocked", stopwatch.Elapsed.TotalMilliseconds);
+                return false;
+            }
+
+            hasLiveMesh = painter.RuntimeMesh != null ||
+                          painter.RuntimeWaterMesh != null ||
+                          painter.RuntimeChunkMeshCount > 0 ||
+                          painter.RuntimeChunkWaterMeshCount > 0;
+            lastSourceTriangleCount = result.SourceTriangleCount;
+            lastPaintedTriangleCount = result.PaintedTriangleCount;
+            lastPaintedVertexCount = result.PaintedVertexCount;
+            lastWaterTriangleCount = result.WaterTriangleCount;
+            lastWaterVertexCount = result.WaterVertexCount;
+            lastPaintedChunkCount = result.ChunkCount;
+            lastMeshEstimatedBytes = result.MeshEstimatedBytes;
+            lastWaterMeshEstimatedBytes = result.WaterMeshEstimatedBytes;
+            ReregisterRuntimeResources();
+
+            stopwatch.Stop();
+            lastDiagnostic = PlanetLabDiagnostic.Ok(
+                "Named cached mesh painted",
+                "meshId=" + meshId +
+                "\nchunkId=" + cacheChunkId +
+                "\nlod=" + cacheLod);
+            lastAction = "Paint Named Cached Mesh finished.";
+            CaptureMetrics("Paint Named Cached Mesh", stopwatch.Elapsed.TotalMilliseconds);
+            return result.HasVisibleMesh;
+        }
+
         public bool PaintLastExtractionAsNamedMesh(
             string meshId,
             int chunkId,

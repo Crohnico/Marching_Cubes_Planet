@@ -625,29 +625,16 @@ namespace MarchingCubesPlanet.Preview
             int lod = (int)activeRuntimeLodRequest.RequestedLod;
 
             if (runtimeChunkCacheReady &&
-                runtimeChunkCache.TryLoadChunkMesh(
+                paintLab.PaintNamedCachedMesh(
+                    activeRuntimeLodMeshId,
+                    runtimeChunkCache,
                     entry.ChunkId,
                     lod,
-                    PlanetChunkCachePayloadMode.MeshOnly,
-                    out PlanetCachedChunkMesh cachedChunk,
-                    out PlanetChunkCacheLoadSummary _))
-            {
-                bool painted = paintLab.PaintNamedMesh(
-                    activeRuntimeLodMeshId,
-                    cachedChunk.SurfaceMesh,
-                    cachedChunk.WaterMesh,
                     runtimeTargetMeshFilter,
                     runtimeTargetMeshRenderer,
                     runtimePlacement,
-                    in activeRuntimeLodRecipe,
-                    entry.ChunkId);
-                if (!painted)
-                {
-                    cachedChunk.ReleaseMeshes();
-                    FailActiveRuntimeLodRequest();
-                    return true;
-                }
-
+                    in activeRuntimeLodRecipe))
+            {
                 CompleteActiveRuntimeLodRequest();
                 completedRequest = true;
                 return true;
@@ -1061,28 +1048,17 @@ namespace MarchingCubesPlanet.Preview
             string meshId = BuildStableChunkMeshId(entry.ChunkOrigin);
 
             if (runtimeChunkCacheReady &&
-                runtimeChunkCache.TryLoadChunkMesh(
+                paintLab.PaintNamedCachedMesh(
+                    meshId,
+                    runtimeChunkCache,
                     entry.ChunkId,
                     lod,
-                    PlanetChunkCachePayloadMode.MeshOnly,
-                    out PlanetCachedChunkMesh cachedChunk,
-                    out PlanetChunkCacheLoadSummary _))
-            {
-                bool painted = paintLab.PaintNamedMesh(
-                    meshId,
-                    cachedChunk.SurfaceMesh,
-                    cachedChunk.WaterMesh,
                     runtimeTargetMeshFilter,
                     runtimeTargetMeshRenderer,
                     runtimePlacement,
-                    in lodRecipe,
-                    entry.ChunkId);
-                if (!painted)
-                {
-                    cachedChunk.ReleaseMeshes();
-                }
-
-                return painted;
+                    in lodRecipe))
+            {
+                return true;
             }
 
             return GenerateAndPaintRuntimeChunk(entry, in lodRecipe, lod, meshId);

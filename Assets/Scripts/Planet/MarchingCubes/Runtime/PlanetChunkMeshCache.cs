@@ -25,6 +25,11 @@ namespace MarchingCubesPlanet.MarchingCubes
 
         private string planetId;
         private string lastDiagnostic;
+        private readonly List<Vector3> meshCacheVertices = new List<Vector3>(65536);
+        private readonly List<Vector3> meshCacheNormals = new List<Vector3>(65536);
+        private readonly List<Vector2> meshCacheUvs = new List<Vector2>(65536);
+        private readonly List<Color32> meshCacheColors = new List<Color32>(65536);
+        private readonly List<int> meshCacheIndices = new List<int>(65536);
 
         public PlanetChunkMeshCache(string rootPath)
         {
@@ -363,6 +368,123 @@ namespace MarchingCubesPlanet.MarchingCubes
             return true;
         }
 
+        public bool TryGetChunkMeshAvailability(
+            int chunkId,
+            int lod,
+            out bool hasSurfaceMesh,
+            out bool hasWaterMesh)
+        {
+            int safeChunkId = Mathf.Max(0, chunkId);
+            int safeLod = Mathf.Max(0, lod);
+            string lodDirectory = GetChunkLodDirectory(safeChunkId, safeLod);
+            hasSurfaceMesh = File.Exists(Path.Combine(lodDirectory, MeshFileName));
+            hasWaterMesh = File.Exists(Path.Combine(lodDirectory, WaterMeshFileName));
+            if (!hasSurfaceMesh && !hasWaterMesh)
+            {
+                lastDiagnostic = "Chunk cache miss: chunk " + safeChunkId + " LOD" + safeLod + " has no .pmesh files.";
+                return false;
+            }
+
+            return true;
+        }
+
+        public bool TryLoadChunkMeshInto(
+            int chunkId,
+            int lod,
+            PlanetChunkCachePayloadMode payloadMode,
+            Mesh surfaceTarget,
+            Mesh waterTarget,
+            out bool loadedSurfaceMesh,
+            out bool loadedWaterMesh,
+            out PlanetChunkCacheLoadSummary summary)
+        {
+            int safeChunkId = Mathf.Max(0, chunkId);
+            int safeLod = Mathf.Max(0, lod);
+            loadedSurfaceMesh = false;
+            loadedWaterMesh = false;
+            summary = new PlanetChunkCacheLoadSummary(safeLod, payloadMode);
+            summary.RecordRequestedChunk();
+
+            string lodDirectory = GetChunkLodDirectory(safeChunkId, safeLod);
+            if (!Directory.Exists(lodDirectory))
+            {
+                lastDiagnostic = "Chunk cache miss: chunk " + safeChunkId + " LOD" + safeLod + " folder does not exist.";
+                return false;
+            }
+
+            string surfaceMeshPath = Path.Combine(lodDirectory, MeshFileName);
+            string waterMeshPath = Path.Combine(lodDirectory, WaterMeshFileName);
+            bool hasSurfaceMesh = File.Exists(surfaceMeshPath);
+            bool hasWaterMesh = File.Exists(waterMeshPath);
+            if (!hasSurfaceMesh && !hasWaterMesh)
+            {
+                lastDiagnostic = "Chunk cache miss: chunk " + safeChunkId + " LOD" + safeLod + " has no .pmesh files.";
+                return false;
+            }
+
+            if (hasSurfaceMesh)
+            {
+                if (surfaceTarget == null)
+                {
+                    lastDiagnostic = "Chunk cache load failed: surface target mesh is missing for chunk " + safeChunkId + " LOD" + safeLod + ".";
+                    return false;
+                }
+
+                if (!TryReadMeshInto(surfaceMeshPath, "PlanetChunk_" + safeChunkId + "_SurfaceMesh_Cached", surfaceTarget))
+                {
+                    return false;
+                }
+
+                loadedSurfaceMesh = true;
+            }
+
+            if (loadedSurfaceMesh &&
+                payloadMode == PlanetChunkCachePayloadMode.MeshAndChunkData &&
+                !TryReadRequiredChunkData(
+                    Path.Combine(lodDirectory, ChunkDataFileName),
+                    safeChunkId,
+                    safeLod,
+                    false,
+                    ref summary,
+                    out _))
+            {
+                return false;
+            }
+
+            if (hasWaterMesh)
+            {
+                if (waterTarget == null)
+                {
+                    lastDiagnostic = "Chunk cache load failed: water target mesh is missing for chunk " + safeChunkId + " LOD" + safeLod + ".";
+                    return false;
+                }
+
+                if (!TryReadMeshInto(waterMeshPath, "PlanetChunk_" + safeChunkId + "_WaterMesh_Cached", waterTarget))
+                {
+                    return false;
+                }
+
+                loadedWaterMesh = true;
+            }
+
+            if (loadedWaterMesh &&
+                payloadMode == PlanetChunkCachePayloadMode.MeshAndChunkData &&
+                !TryReadRequiredChunkData(
+                    Path.Combine(lodDirectory, WaterDataFileName),
+                    safeChunkId,
+                    safeLod,
+                    true,
+                    ref summary,
+                    out _))
+            {
+                return false;
+            }
+
+            summary.RecordLoadedChunk(loadedSurfaceMesh, loadedWaterMesh, false, false);
+            lastDiagnostic = "Chunk cache loaded chunk " + safeChunkId + " LOD" + safeLod + " into existing meshes. mode=" + payloadMode + ".";
+            return true;
+        }
+
         public bool SaveChunk(int chunkId, int lod, Mesh surfaceMesh, Mesh waterMesh)
         {
             if (surfaceMesh == null && waterMesh == null)
@@ -465,52 +587,57 @@ namespace MarchingCubesPlanet.MarchingCubes
             builder.Append(name).Append('=').Append(value.ToString("R", CultureInfo.InvariantCulture)).Append(';');
         }
 
-        private static void WriteMesh(string path, Mesh mesh)
+        private void WriteMesh(string path, Mesh mesh)
         {
-            Vector3[] vertices = mesh.vertices;
-            Vector3[] normals = mesh.normals;
-            Vector2[] uvs = mesh.uv;
-            Color32[] colors = mesh.colors32;
-            int[] indices = mesh.GetIndices(0);
-            bool hasNormals = normals != null && normals.Length == vertices.Length;
-            bool hasUvs = uvs != null && uvs.Length == vertices.Length;
-            bool hasColors = colors != null && colors.Length == vertices.Length;
+            meshCacheVertices.Clear();
+            meshCacheNormals.Clear();
+            meshCacheUvs.Clear();
+            meshCacheColors.Clear();
+            meshCacheIndices.Clear();
+            mesh.GetVertices(meshCacheVertices);
+            mesh.GetNormals(meshCacheNormals);
+            mesh.GetUVs(0, meshCacheUvs);
+            mesh.GetColors(meshCacheColors);
+            mesh.GetTriangles(meshCacheIndices, 0);
+            bool hasNormals = meshCacheNormals.Count == meshCacheVertices.Count;
+            bool hasUvs = meshCacheUvs.Count == meshCacheVertices.Count;
+            bool hasColors = meshCacheColors.Count == meshCacheVertices.Count;
 
             using (BinaryWriter writer = new BinaryWriter(File.Open(path, FileMode.Create, FileAccess.Write, FileShare.None)))
             {
-                writer.Write(vertices.Length);
-                writer.Write(indices.Length);
+                writer.Write(meshCacheVertices.Count);
+                writer.Write(meshCacheIndices.Count);
                 WriteBounds(writer, mesh.bounds);
                 writer.Write(hasNormals);
                 writer.Write(hasUvs);
                 writer.Write(hasColors);
 
-                for (int i = 0; i < vertices.Length; i++)
+                for (int i = 0; i < meshCacheVertices.Count; i++)
                 {
-                    WriteVector3(writer, vertices[i]);
+                    WriteVector3(writer, meshCacheVertices[i]);
                 }
 
                 if (hasNormals)
                 {
-                    for (int i = 0; i < normals.Length; i++)
+                    for (int i = 0; i < meshCacheNormals.Count; i++)
                     {
-                        WriteVector3(writer, normals[i]);
+                        WriteVector3(writer, meshCacheNormals[i]);
                     }
                 }
 
                 if (hasUvs)
                 {
-                    for (int i = 0; i < uvs.Length; i++)
+                    for (int i = 0; i < meshCacheUvs.Count; i++)
                     {
-                        WriteVector2(writer, uvs[i]);
+                        WriteVector2(writer, meshCacheUvs[i]);
                     }
                 }
 
                 if (hasColors)
                 {
-                    for (int i = 0; i < colors.Length; i++)
+                    for (int i = 0; i < meshCacheColors.Count; i++)
                     {
-                        Color32 color = colors[i];
+                        Color32 color = meshCacheColors[i];
                         writer.Write(color.r);
                         writer.Write(color.g);
                         writer.Write(color.b);
@@ -518,9 +645,9 @@ namespace MarchingCubesPlanet.MarchingCubes
                     }
                 }
 
-                for (int i = 0; i < indices.Length; i++)
+                for (int i = 0; i < meshCacheIndices.Count; i++)
                 {
-                    writer.Write(indices[i]);
+                    writer.Write(meshCacheIndices[i]);
                 }
             }
         }
@@ -528,6 +655,36 @@ namespace MarchingCubesPlanet.MarchingCubes
         private bool TryReadMesh(string path, string meshName, out Mesh mesh)
         {
             mesh = null;
+            try
+            {
+                mesh = new Mesh
+                {
+                    name = meshName
+                };
+                if (!TryReadMeshInto(path, meshName, mesh))
+                {
+                    DestroyRuntimeObject(mesh);
+                    mesh = null;
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception exception)
+            {
+                lastDiagnostic = "Chunk cache load failed for " + path + ": " + exception.Message;
+                if (mesh != null)
+                {
+                    DestroyRuntimeObject(mesh);
+                    mesh = null;
+                }
+
+                return false;
+            }
+        }
+
+        private bool TryReadMeshInto(string path, string meshName, Mesh mesh)
+        {
             try
             {
                 using (BinaryReader reader = new BinaryReader(File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read)))
@@ -545,70 +702,61 @@ namespace MarchingCubesPlanet.MarchingCubes
                         return false;
                     }
 
-                    Vector3[] vertices = new Vector3[vertexCount];
+                    PrepareMeshCacheBuffers(vertexCount, indexCount);
                     for (int i = 0; i < vertexCount; i++)
                     {
-                        vertices[i] = ReadVector3(reader);
+                        meshCacheVertices.Add(ReadVector3(reader));
                     }
 
-                    Vector3[] normals = null;
                     if (hasNormals)
                     {
-                        normals = new Vector3[vertexCount];
                         for (int i = 0; i < vertexCount; i++)
                         {
-                            normals[i] = ReadVector3(reader);
+                            meshCacheNormals.Add(ReadVector3(reader));
                         }
                     }
 
-                    Vector2[] uvs = null;
                     if (hasUvs)
                     {
-                        uvs = new Vector2[vertexCount];
                         for (int i = 0; i < vertexCount; i++)
                         {
-                            uvs[i] = ReadVector2(reader);
+                            meshCacheUvs.Add(ReadVector2(reader));
                         }
                     }
 
-                    Color32[] colors = null;
                     if (hasColors)
                     {
-                        colors = new Color32[vertexCount];
                         for (int i = 0; i < vertexCount; i++)
                         {
-                            colors[i] = new Color32(reader.ReadByte(), reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
+                            meshCacheColors.Add(new Color32(reader.ReadByte(), reader.ReadByte(), reader.ReadByte(), reader.ReadByte()));
                         }
                     }
 
-                    int[] indices = new int[indexCount];
                     for (int i = 0; i < indexCount; i++)
                     {
-                        indices[i] = reader.ReadInt32();
+                        meshCacheIndices.Add(reader.ReadInt32());
                     }
 
-                    mesh = new Mesh
+                    mesh.name = meshName;
+                    mesh.indexFormat = vertexCount > ushort.MaxValue ? IndexFormat.UInt32 : IndexFormat.UInt16;
+                    mesh.Clear();
+                    mesh.SetVertices(meshCacheVertices);
+                    if (hasNormals)
                     {
-                        name = meshName,
-                        indexFormat = vertexCount > ushort.MaxValue ? IndexFormat.UInt32 : IndexFormat.UInt16
-                    };
-                    mesh.vertices = vertices;
-                    if (normals != null)
-                    {
-                        mesh.normals = normals;
+                        mesh.SetNormals(meshCacheNormals);
                     }
 
-                    if (uvs != null)
+                    if (hasUvs)
                     {
-                        mesh.uv = uvs;
+                        mesh.SetUVs(0, meshCacheUvs);
                     }
 
-                    if (colors != null)
+                    if (hasColors)
                     {
-                        mesh.colors32 = colors;
+                        mesh.SetColors(meshCacheColors);
                     }
 
-                    mesh.SetIndices(indices, MeshTopology.Triangles, 0, true);
+                    mesh.SetTriangles(meshCacheIndices, 0, true);
                     mesh.bounds = bounds;
                     LogLoad("Loaded mesh from disk: " + path + " vertices=" + vertexCount + " indices=" + indexCount);
                     return true;
@@ -617,13 +765,29 @@ namespace MarchingCubesPlanet.MarchingCubes
             catch (Exception exception)
             {
                 lastDiagnostic = "Chunk cache load failed for " + path + ": " + exception.Message;
-                if (mesh != null)
-                {
-                    DestroyRuntimeObject(mesh);
-                    mesh = null;
-                }
-
                 return false;
+            }
+        }
+
+        private void PrepareMeshCacheBuffers(int vertexCapacity, int indexCapacity)
+        {
+            EnsureListCapacity(meshCacheVertices, vertexCapacity);
+            EnsureListCapacity(meshCacheNormals, vertexCapacity);
+            EnsureListCapacity(meshCacheUvs, vertexCapacity);
+            EnsureListCapacity(meshCacheColors, vertexCapacity);
+            EnsureListCapacity(meshCacheIndices, indexCapacity);
+            meshCacheVertices.Clear();
+            meshCacheNormals.Clear();
+            meshCacheUvs.Clear();
+            meshCacheColors.Clear();
+            meshCacheIndices.Clear();
+        }
+
+        private static void EnsureListCapacity<T>(List<T> list, int capacity)
+        {
+            if (list.Capacity < capacity)
+            {
+                list.Capacity = capacity;
             }
         }
 
