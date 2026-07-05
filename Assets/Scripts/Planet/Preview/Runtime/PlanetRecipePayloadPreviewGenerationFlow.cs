@@ -47,6 +47,14 @@ namespace MarchingCubesPlanet.Preview
         private readonly HashSet<int> runtimeLodAffectedChunkIndexSet = new HashSet<int>();
         private readonly PlanetChunkLodRequestQueue runtimeLodRequestQueue = new PlanetChunkLodRequestQueue();
 
+        private enum RuntimeLodRequestPhase
+        {
+            None = 0,
+            Prepare = 1,
+            ExtractSurface = 2,
+            PaintMesh = 3
+        }
+
         private PlanetRecipe runtimeLod1Recipe = PlanetRecipe.Default();
         private PlanetPlacement runtimePlacement = PlanetPlacement.Default();
         private MeshFilter runtimeTargetMeshFilter;
@@ -63,6 +71,12 @@ namespace MarchingCubesPlanet.Preview
         private Vector3 lastRuntimeLodCenterChunkCoords;
         private float lastRuntimeLod0RadiusChunks = -1f;
         private float lastRuntimeLod1RadiusChunks = -1f;
+        private bool hasActiveRuntimeLodRequest;
+        private PlanetChunkLodRequest activeRuntimeLodRequest;
+        private RuntimeLodRequestPhase activeRuntimeLodRequestPhase;
+        private PlanetRecipe activeRuntimeLodRecipe;
+        private string activeRuntimeLodMeshId;
+        private int activeRuntimeLodCandidateChunkIndex = -1;
 
         public string LastDiagnostic => lastDiagnostic;
         public int LastDesiredLod0ChunkCount => lastDesiredLod0ChunkCount;
@@ -435,7 +449,7 @@ namespace MarchingCubesPlanet.Preview
                 changedRequestCount += SynchronizeRuntimeChunkLodRequest(i);
             }
 
-            runtimeLodPendingRequestCount = runtimeLodRequestQueue.PendingCount;
+            runtimeLodPendingRequestCount = CountRuntimeLodPendingRequests();
             return changedRequestCount;
         }
 
@@ -458,7 +472,7 @@ namespace MarchingCubesPlanet.Preview
                 changedRequestCount += SynchronizeRuntimeChunkLodRequest(entryIndex);
             }
 
-            runtimeLodPendingRequestCount = runtimeLodRequestQueue.PendingCount;
+            runtimeLodPendingRequestCount = CountRuntimeLodPendingRequests();
             return changedRequestCount;
         }
 
@@ -514,38 +528,32 @@ namespace MarchingCubesPlanet.Preview
             if (!hasRuntimeChunkLods)
             {
                 runtimeLodPendingRequestCount = 0;
+                ClearActiveRuntimeLodRequest();
                 return 0;
             }
 
-            int processedCount = 0;
             PlanetChunkLodActivationConfig activationConfig = ResolveRuntimeLodActivationConfig();
-            int maxRequestCount = Mathf.Max(1, activationConfig.maxRuntimeLodRequestsPerUpdate);
-            while (processedCount < maxRequestCount &&
-                   runtimeLodRequestQueue.TryDequeue(out PlanetChunkLodRequest request))
+            int processedCount = 0;
+            int actionCount = 0;
+            int maxActionCount = Mathf.Max(1, activationConfig.runtimeLodActionsPerFrame);
+            while (actionCount < maxActionCount)
             {
-                if (request.EntryIndex < 0 || request.EntryIndex >= runtimeChunkLods.Count)
+                if (!hasActiveRuntimeLodRequest &&
+                    !TryBeginRuntimeLodRequest())
                 {
-                    continue;
+                    break;
                 }
 
-                PlanetChunkLodRuntimeEntry entry = runtimeChunkLods[request.EntryIndex];
-                if (!entry.HasRequestedLod ||
-                    entry.RequestedLod != (int)request.RequestedLod ||
-                    entry.DesiredLod != request.RequestedLod)
+                if (!AdvanceActiveRuntimeLodRequest(out bool completedRequest))
                 {
-                    continue;
+                    break;
                 }
 
-                if (!ApplyRuntimeChunkLodChange(entry))
+                actionCount++;
+                if (completedRequest)
                 {
-                    entry.ClearRequested();
-                    runtimeChunkLods[request.EntryIndex] = entry;
-                    continue;
+                    processedCount++;
                 }
-
-                entry.MarkInitialized(request.RequestedLod);
-                runtimeChunkLods[request.EntryIndex] = entry;
-                processedCount++;
             }
 
             if (processedCount > 0)
@@ -554,8 +562,229 @@ namespace MarchingCubesPlanet.Preview
                 lastRuntimeLodChangedChunkCount = processedCount;
             }
 
-            runtimeLodPendingRequestCount = runtimeLodRequestQueue.PendingCount;
+            runtimeLodPendingRequestCount = CountRuntimeLodPendingRequests();
             return processedCount;
+        }
+
+        private bool TryBeginRuntimeLodRequest()
+        {
+            while (runtimeLodRequestQueue.TryDequeue(out PlanetChunkLodRequest request))
+            {
+                if (!IsRuntimeLodRequestStillValid(request))
+                {
+                    continue;
+                }
+
+                PlanetChunkLodRuntimeEntry entry = runtimeChunkLods[request.EntryIndex];
+                activeRuntimeLodRequest = request;
+                activeRuntimeLodRequestPhase = RuntimeLodRequestPhase.Prepare;
+                activeRuntimeLodRecipe = PlanetChunkLodUtility.BuildRecipeForLod(in runtimeLod1Recipe, request.RequestedLod);
+                activeRuntimeLodMeshId = BuildStableChunkMeshId(entry.ChunkOrigin);
+                activeRuntimeLodCandidateChunkIndex = -1;
+                hasActiveRuntimeLodRequest = true;
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool AdvanceActiveRuntimeLodRequest(out bool completedRequest)
+        {
+            completedRequest = false;
+            if (!hasActiveRuntimeLodRequest)
+            {
+                return false;
+            }
+
+            if (!IsRuntimeLodRequestStillValid(activeRuntimeLodRequest))
+            {
+                ClearActiveRuntimeLodRequest();
+                return true;
+            }
+
+            switch (activeRuntimeLodRequestPhase)
+            {
+                case RuntimeLodRequestPhase.Prepare:
+                    return PrepareActiveRuntimeLodRequest(out completedRequest);
+                case RuntimeLodRequestPhase.ExtractSurface:
+                    return ExtractActiveRuntimeLodRequestSurface();
+                case RuntimeLodRequestPhase.PaintMesh:
+                    return PaintActiveRuntimeLodRequestMesh(out completedRequest);
+                default:
+                    ClearActiveRuntimeLodRequest();
+                    return true;
+            }
+        }
+
+        private bool PrepareActiveRuntimeLodRequest(out bool completedRequest)
+        {
+            completedRequest = false;
+            PlanetChunkLodRuntimeEntry entry = runtimeChunkLods[activeRuntimeLodRequest.EntryIndex];
+            int lod = (int)activeRuntimeLodRequest.RequestedLod;
+
+            if (runtimeChunkCacheReady &&
+                runtimeChunkCache.TryLoadChunkMesh(
+                    entry.ChunkId,
+                    lod,
+                    PlanetChunkCachePayloadMode.MeshOnly,
+                    out PlanetCachedChunkMesh cachedChunk,
+                    out PlanetChunkCacheLoadSummary _))
+            {
+                bool painted = paintLab.PaintNamedMesh(
+                    activeRuntimeLodMeshId,
+                    cachedChunk.SurfaceMesh,
+                    cachedChunk.WaterMesh,
+                    runtimeTargetMeshFilter,
+                    runtimeTargetMeshRenderer,
+                    runtimePlacement,
+                    in activeRuntimeLodRecipe,
+                    entry.ChunkId);
+                if (!painted)
+                {
+                    cachedChunk.ReleaseMeshes();
+                    FailActiveRuntimeLodRequest();
+                    return true;
+                }
+
+                CompleteActiveRuntimeLodRequest();
+                completedRequest = true;
+                return true;
+            }
+
+            if (!InitializeRuntimeExtractionForLod(activeRuntimeLodRequest.RequestedLod, in activeRuntimeLodRecipe))
+            {
+                Debug.LogError(LogPrefix + "Generate chunk setup failed chunkId=" + entry.ChunkId +
+                               " lod=" + lod +
+                               " diagnostic=" + lastDiagnostic);
+                FailActiveRuntimeLodRequest();
+                return true;
+            }
+
+            PlanetMarchingCubesChunkOrigin lodChunkOrigin = ConvertChunkOrigin(
+                entry.ChunkOrigin,
+                in runtimeLod1Recipe,
+                in activeRuntimeLodRecipe);
+            if (!TryFindCandidateChunkIndex(lodChunkOrigin, out activeRuntimeLodCandidateChunkIndex))
+            {
+                FailActiveRuntimeLodRequest();
+                return true;
+            }
+
+            activeRuntimeLodRequestPhase = RuntimeLodRequestPhase.ExtractSurface;
+            return true;
+        }
+
+        private bool ExtractActiveRuntimeLodRequestSurface()
+        {
+            PlanetChunkLodRuntimeEntry entry = runtimeChunkLods[activeRuntimeLodRequest.EntryIndex];
+            int lod = (int)activeRuntimeLodRequest.RequestedLod;
+            marchingCubesLab.ExtractCandidateChunkSurface(activeRuntimeLodCandidateChunkIndex);
+            if (marchingCubesLab.LastOverflow)
+            {
+                lastDiagnostic = "Runtime LOD change blocked: 07 overflow for chunk " + entry.ChunkId +
+                                 " LOD" + lod +
+                                 ". Attempted tris=" + marchingCubesLab.LastTriangleCountAttempted +
+                                 ", capacity tris=" + runtimeTemporaryTriangleCapacity + ".";
+                Debug.LogError(LogPrefix + lastDiagnostic);
+                FailActiveRuntimeLodRequest();
+                return true;
+            }
+
+            activeRuntimeLodRequestPhase = RuntimeLodRequestPhase.PaintMesh;
+            return true;
+        }
+
+        private bool PaintActiveRuntimeLodRequestMesh(out bool completedRequest)
+        {
+            completedRequest = false;
+            PlanetChunkLodRuntimeEntry entry = runtimeChunkLods[activeRuntimeLodRequest.EntryIndex];
+            bool painted;
+            if (marchingCubesLab.LastTriangleCountWritten == 0u)
+            {
+                painted = paintLab.PaintNamedMesh(
+                    activeRuntimeLodMeshId,
+                    null,
+                    null,
+                    runtimeTargetMeshFilter,
+                    runtimeTargetMeshRenderer,
+                    runtimePlacement,
+                    in activeRuntimeLodRecipe,
+                    entry.ChunkId);
+            }
+            else
+            {
+                painted = paintLab.PaintLastExtractionAsNamedMesh(
+                    activeRuntimeLodMeshId,
+                    entry.ChunkId,
+                    runtimeTargetMeshFilter,
+                    runtimeTargetMeshRenderer,
+                    runtimePlacement,
+                    in activeRuntimeLodRecipe,
+                    runtimeChunkCacheReady ? runtimeChunkCache : null,
+                    (int)activeRuntimeLodRequest.RequestedLod);
+            }
+
+            if (!painted)
+            {
+                FailActiveRuntimeLodRequest();
+                return true;
+            }
+
+            CompleteActiveRuntimeLodRequest();
+            completedRequest = true;
+            return true;
+        }
+
+        private bool IsRuntimeLodRequestStillValid(PlanetChunkLodRequest request)
+        {
+            if (request.EntryIndex < 0 || request.EntryIndex >= runtimeChunkLods.Count)
+            {
+                return false;
+            }
+
+            PlanetChunkLodRuntimeEntry entry = runtimeChunkLods[request.EntryIndex];
+            return entry.HasRequestedLod &&
+                   entry.RequestedLod == (int)request.RequestedLod &&
+                   entry.DesiredLod == request.RequestedLod;
+        }
+
+        private void CompleteActiveRuntimeLodRequest()
+        {
+            if (IsRuntimeLodRequestStillValid(activeRuntimeLodRequest))
+            {
+                PlanetChunkLodRuntimeEntry entry = runtimeChunkLods[activeRuntimeLodRequest.EntryIndex];
+                entry.MarkInitialized(activeRuntimeLodRequest.RequestedLod);
+                runtimeChunkLods[activeRuntimeLodRequest.EntryIndex] = entry;
+            }
+
+            ClearActiveRuntimeLodRequest();
+        }
+
+        private void FailActiveRuntimeLodRequest()
+        {
+            if (IsRuntimeLodRequestStillValid(activeRuntimeLodRequest))
+            {
+                PlanetChunkLodRuntimeEntry entry = runtimeChunkLods[activeRuntimeLodRequest.EntryIndex];
+                entry.ClearRequested();
+                runtimeChunkLods[activeRuntimeLodRequest.EntryIndex] = entry;
+            }
+
+            ClearActiveRuntimeLodRequest();
+        }
+
+        private int CountRuntimeLodPendingRequests()
+        {
+            return runtimeLodRequestQueue.PendingCount + (hasActiveRuntimeLodRequest ? 1 : 0);
+        }
+
+        private void ClearActiveRuntimeLodRequest()
+        {
+            hasActiveRuntimeLodRequest = false;
+            activeRuntimeLodRequest = default;
+            activeRuntimeLodRequestPhase = RuntimeLodRequestPhase.None;
+            activeRuntimeLodRecipe = default;
+            activeRuntimeLodMeshId = null;
+            activeRuntimeLodCandidateChunkIndex = -1;
         }
 
         private int EvaluateRuntimeChunkLodIndexes(
@@ -1048,6 +1277,7 @@ namespace MarchingCubesPlanet.Preview
         private void ResetRuntimeLodRequestState()
         {
             runtimeLodRequestQueue.Clear();
+            ClearActiveRuntimeLodRequest();
             lastRuntimeLodQueuedRequestCount = 0;
             lastRuntimeLodCancelledRequestCount = 0;
             lastRuntimeLodProcessedRequestCount = 0;

@@ -16,4 +16,4 @@ MonoBehaviour:
   enableLod0: 1
   lod0MaxDistanceWorld: 1500
   lod1MaxDistanceWorld: 7000
-  maxRuntimeLodRequestsPerUpdate: 2
+  runtimeLodActionsPerFrame: 1

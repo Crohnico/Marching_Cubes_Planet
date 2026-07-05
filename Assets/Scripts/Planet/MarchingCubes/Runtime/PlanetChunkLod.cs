@@ -88,13 +88,13 @@ namespace MarchingCubesPlanet.MarchingCubes
         public const int DefaultCanonicalChunkSize = PlanetMarchingCubesChunkRange.CanonicalChunkSize;
         public const float DefaultLod0MaxDistanceWorld = 900f;
         public const float DefaultLod1MaxDistanceWorld = 1800f;
-        public const int DefaultMaxRuntimeLodRequestsPerUpdate = 5;
+        public const int DefaultRuntimeLodActionsPerFrame = 1;
 
         public int canonicalChunkSize;
         public bool enableLod0;
         public float lod0MaxDistanceWorld;
         public float lod1MaxDistanceWorld;
-        public int maxRuntimeLodRequestsPerUpdate;
+        public int runtimeLodActionsPerFrame;
 
         public int CanonicalChunkSize => Mathf.Max(1, canonicalChunkSize);
 
@@ -106,7 +106,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                 enableLod0 = false,
                 lod0MaxDistanceWorld = DefaultLod0MaxDistanceWorld,
                 lod1MaxDistanceWorld = DefaultLod1MaxDistanceWorld,
-                maxRuntimeLodRequestsPerUpdate = DefaultMaxRuntimeLodRequestsPerUpdate
+                runtimeLodActionsPerFrame = DefaultRuntimeLodActionsPerFrame
             };
         }
 
@@ -127,9 +127,9 @@ namespace MarchingCubesPlanet.MarchingCubes
                 lod1MaxDistanceWorld = Mathf.Max(lod0MaxDistanceWorld + 1f, DefaultLod1MaxDistanceWorld);
             }
 
-            if (maxRuntimeLodRequestsPerUpdate <= 0)
+            if (runtimeLodActionsPerFrame <= 0)
             {
-                maxRuntimeLodRequestsPerUpdate = DefaultMaxRuntimeLodRequestsPerUpdate;
+                runtimeLodActionsPerFrame = DefaultRuntimeLodActionsPerFrame;
             }
         }
     }
