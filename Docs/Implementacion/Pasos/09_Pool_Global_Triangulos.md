@@ -8,11 +8,17 @@ La intencion de 09 no es reducir, simplificar ni recalcular geometria. La intenc
 
 ## Implementacion incremental actual
 
-La primera reparacion de 09 se divide en dos niveles:
+Documento de backend visible GPU:
+
+```text
+Docs/Implementacion/Pasos/09_Backend_GPU_Triangulos.md
+```
+
+La primera reparacion de 09 se divide ahora en dos niveles:
 
 ```text
 Nivel A -> residencia real de paquetes/publicaciones y confiscacion.
-Nivel B -> salida visible Mesh runtime poseida directamente por el artista.
+Nivel B -> salida visible GPU-resident poseida directamente por el artista.
 ```
 
 El nivel A es obligatorio antes de seguir:
@@ -30,15 +36,15 @@ ReleaseAllSlots suelta las referencias para recuperar RAM.
 Estado aceptado temporalmente:
 
 ```text
-08 sigue construyendo la Mesh visible usando la seleccion devuelta por 09.
+08 puede seguir construyendo Mesh visible como validacion historica.
 09 ya no es solo un filtro efimero: conserva residencia de paquetes y puede confiscar.
-09 todavia no posee por completo la Mesh runtime visible del artista.
+09 debe poseer por completo la salida visible del artista mediante buffers GPU.
 ```
 
 Pendiente para cerrar el nivel B:
 
 ```text
-Mover la salida visible Mesh runtime al artista.
+Mover la salida visible GPU-resident al artista.
 Hacer que las confiscaciones invaliden o retiren visualmente triangulos ya pintados por publicaciones anteriores.
 Agrupar publicaciones por material/render batch dentro del artista.
 ```
@@ -47,7 +53,7 @@ Regla:
 
 ```text
 No se avanza a reparto adaptativo real de 10 sin que 09 conserve al menos residencia/confiscacion de slots.
-La posesion completa de la Mesh por 09 queda como siguiente cierre de 09 si la ruta actual necesita pintar varias publicaciones simultaneas.
+La posesion completa de la salida visible GPU por 09 queda como siguiente cierre de 09.
 ```
 
 Presupuestos iniciales:
@@ -1451,19 +1457,19 @@ La decision actual de backend visible es:
 
 ```text
 09 arbitra el presupuesto.
-09 puede apoyarse en GPU/compute para procesar buckets, reclamacion y datos pesados cuando toque.
+09 se apoya en GPU/compute para procesar buckets, reclamacion y datos pesados cuando toque.
 La geometria puede venir de un pipeline GPU/compute anterior.
-La salida visible de esta fase es Mesh runtime CPU gestionada por el artista.
-El output final que consume Unity para render/colision/debug es CPU Mesh.
-El caller no escribe esa Mesh directamente.
+La salida visible de esta fase es GraphicsBuffer gestionado por el artista.
+El render final se hace mediante shader/material procedural buffer-aware.
+El caller no escribe esos buffers directamente.
 ```
 
 Separacion esperada:
 
 ```text
 C# orquesta profiles, artistas, owners, requests y metricas.
-GPU/compute puede producir o transformar datos pesados.
-El artista decide que triangulos pasan a su Mesh visible.
+GPU/compute puede producir, copiar, compactar o transformar datos pesados.
+El artista decide que triangulos pasan a su salida visible GPU.
 CPU no debe ordenar ni decidir prioridad recorriendo millones de triangulos por request.
 ```
 
@@ -1471,19 +1477,29 @@ Decision inicial:
 
 ```text
 09 define presupuesto, ownership y estado de slots por artista.
-Cada artista posee su salida visible Mesh runtime.
-EnvironmentArtist -> Mesh runtime propia de Environment.
-ParticlesArtist -> Mesh runtime propia de Particles si este artista necesita salida mesh.
-GraphicsBuffer no es el backend visual obligatorio de 09 en esta fase.
+Cada artista posee su salida visible GPU.
+EnvironmentArtist -> GraphicsBuffer propios de Environment.
+ParticlesArtist -> GraphicsBuffer propios de Particles si este artista necesita salida triangular.
+Mesh runtime queda como ruta de validacion/Lab, no como backend visible de 09.
+```
+
+Modelo de buffers:
+
+```text
+El presupuesto del pool define la capacidad de los buffers del artista.
+Init crea buffers persistentes dimensionados por totalTriangleBudget.
+Draw rellena rangos ya reservados por slots concedidos.
+Release/reclaim marca slots como libres o inactivos y permite reutilizar sus rangos.
+No se crean ni destruyen buffers por request.
 ```
 
 Regla:
 
 ```text
 Los recursos visuales de Environment no se mezclan con los de Particles salvo decision futura documentada.
-Un artista puede liberar, invalidar o sobrescribir la Mesh/recursos que pertenecen a sus slots.
+Un artista puede liberar, invalidar o sobrescribir los buffers/recursos que pertenecen a sus slots.
 Un artista no libera recursos de otro artista.
-El planeta, agua, rocas o props no escriben directamente en la Mesh gestionada.
+El planeta, agua, rocas o props no escriben directamente en los buffers gestionados.
 ```
 
 Implicacion para 08:
@@ -1492,27 +1508,35 @@ Implicacion para 08:
 08 actual preparaba una Mesh visible de validacion.
 Al entrar 09, 08 pasa a emitir datos hacia Draw(meshId, datos[], priority) del artista Environment.
 El artista Environment decide que triangulos pinta dentro de su presupuesto.
-El artista Environment actualiza su Mesh runtime CPU.
+El artista Environment actualiza sus GraphicsBuffer y su render procedural.
 ```
 
-Ruta futura posible:
+Ruta Mesh permitida:
 
 ```text
-Mover el backend visible de un artista a GraphicsBuffer sigue siendo posible.
-No entra como requisito de esta version.
-Si se hace, debe mantener el mismo contrato Draw(meshId, datos[], priority) y el mismo control de presupuesto.
-No puede obligar al caller a saber si sus tris quedaron visibles.
+Mesh runtime puede existir como fallback diagnostico o validacion de 08.
+No es el backend visible oficial de 09.
+No puede convertirse en dependencia del runtime caliente.
 ```
 
 ## Materiales y shader de artista
 
-Como la salida visible de esta fase es Mesh runtime CPU, el artista puede usar materiales normales de Unity sobre Mesh.
+Como la salida visible de esta fase es GPU-resident, el artista necesita
+materiales/shaders buffer-aware.
+
+Lectura tecnica:
+
+```text
+Un compute shader prepara buffers.
+Un material/shader procedural lee esos buffers durante el render.
+```
 
 Regla:
 
 ```text
-Se puede reutilizar el material/look actual del planeta si espera vertices de Mesh.
-No se crea una variante buffer-aware obligatoria en 09.
+El material/look actual del planeta es la referencia visual.
+Se crea una variante equivalente que lee GraphicsBuffer.
+La variante debe mantener atlas, parametros y resultado visual equivalente.
 El material no decide presupuesto.
 El material no decide prioridad.
 ```
@@ -1531,7 +1555,7 @@ Regla:
 
 ```text
 Un artista puede tener varios batches de render sobre su salida visible.
-Cada batch puede usar su Material normal de Unity.
+Cada batch puede usar su Material buffer-aware.
 El presupuesto de tris sigue siendo comun al artista.
 ```
 
@@ -1766,9 +1790,9 @@ worstResidentScore es aproximado por bucket en 09.
 La unica prioridad de 09 es el priorityScore recibido.
 Refresh Priority Buckets reconstruye buckets en GPU cuando entran scores nuevos o antes de reclaim si estan stale.
 La invalidacion usa versionado interno y cola compacta de eventos; no callbacks por triangulo ni polling CPU masivo.
-La salida visible inicial de 09 es Mesh runtime CPU gestionada por el artista.
-El material del artista puede usar el shader/material actual de Mesh.
-GraphicsBuffer queda como backend visual futuro opcional, no como requisito de esta fase.
+La salida visible inicial de 09 es GPU-resident mediante GraphicsBuffer gestionado por el artista.
+El material del artista debe tener una variante buffer-aware equivalente al shader/material actual de Mesh.
+Mesh runtime queda como validacion/Lab, no como backend visible oficial de 09.
 09 no cambia el poligonaje de ninguna geometria.
 09 solo reparte slots dentro de cada artista.
 09 no decide cuando una geometria debe volver a publicar.

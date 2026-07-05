@@ -24,6 +24,18 @@ La unidad de trabajo inicial sera:
 chunk + LOD
 ```
 
+Registro de la hipotesis anterior de publicacion runtime de Mesh:
+
+```text
+Docs/Implementacion/Pasos/10_Publicacion_Mesh_Runtime.md
+```
+
+Backend visible vigente de 09:
+
+```text
+Docs/Implementacion/Pasos/09_Backend_GPU_Triangulos.md
+```
+
 Cada chunk se puede generar, guardar, cargar y pedir a 09 que publique o libere
 de forma independiente.
 

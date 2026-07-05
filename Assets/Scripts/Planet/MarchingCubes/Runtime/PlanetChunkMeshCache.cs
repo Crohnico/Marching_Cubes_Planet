@@ -485,6 +485,86 @@ namespace MarchingCubesPlanet.MarchingCubes
             return true;
         }
 
+        public bool TryLoadChunkWaterMeshInto(
+            int chunkId,
+            int lod,
+            Mesh waterTarget,
+            out bool loadedWaterMesh)
+        {
+            int safeChunkId = Mathf.Max(0, chunkId);
+            int safeLod = Mathf.Max(0, lod);
+            loadedWaterMesh = false;
+            if (waterTarget == null)
+            {
+                lastDiagnostic = "Chunk cache water load failed: water target mesh is missing for chunk " + safeChunkId + " LOD" + safeLod + ".";
+                return false;
+            }
+
+            string waterMeshPath = Path.Combine(GetChunkLodDirectory(safeChunkId, safeLod), WaterMeshFileName);
+            if (!File.Exists(waterMeshPath))
+            {
+                lastDiagnostic = "Chunk cache water miss: chunk " + safeChunkId + " LOD" + safeLod + " has no water .pmesh.";
+                return false;
+            }
+
+            if (!TryReadMeshInto(waterMeshPath, "PlanetChunk_" + safeChunkId + "_WaterMesh_Cached", waterTarget))
+            {
+                return false;
+            }
+
+            loadedWaterMesh = true;
+            lastDiagnostic = "Chunk cache loaded water mesh for chunk " + safeChunkId + " LOD" + safeLod + ".";
+            return true;
+        }
+
+        public bool TryLoadChunkSurfaceMeshData(
+            int chunkId,
+            int lod,
+            List<Vector3> vertices,
+            List<Vector3> normals,
+            List<Vector2> uvs,
+            List<Color32> colors,
+            List<int> indices,
+            out Bounds bounds)
+        {
+            bounds = default;
+            if (vertices == null)
+            {
+                throw new ArgumentNullException(nameof(vertices));
+            }
+
+            if (normals == null)
+            {
+                throw new ArgumentNullException(nameof(normals));
+            }
+
+            if (uvs == null)
+            {
+                throw new ArgumentNullException(nameof(uvs));
+            }
+
+            if (colors == null)
+            {
+                throw new ArgumentNullException(nameof(colors));
+            }
+
+            if (indices == null)
+            {
+                throw new ArgumentNullException(nameof(indices));
+            }
+
+            int safeChunkId = Mathf.Max(0, chunkId);
+            int safeLod = Mathf.Max(0, lod);
+            string surfaceMeshPath = Path.Combine(GetChunkLodDirectory(safeChunkId, safeLod), MeshFileName);
+            if (!File.Exists(surfaceMeshPath))
+            {
+                lastDiagnostic = "Chunk cache miss: chunk " + safeChunkId + " LOD" + safeLod + " has no surface .pmesh.";
+                return false;
+            }
+
+            return TryReadMeshData(surfaceMeshPath, vertices, normals, uvs, colors, indices, out bounds);
+        }
+
         public bool SaveChunk(int chunkId, int lod, Mesh surfaceMesh, Mesh waterMesh)
         {
             if (surfaceMesh == null && waterMesh == null)
@@ -765,6 +845,109 @@ namespace MarchingCubesPlanet.MarchingCubes
             catch (Exception exception)
             {
                 lastDiagnostic = "Chunk cache load failed for " + path + ": " + exception.Message;
+                return false;
+            }
+        }
+
+        private bool TryReadMeshData(
+            string path,
+            List<Vector3> vertices,
+            List<Vector3> normals,
+            List<Vector2> uvs,
+            List<Color32> colors,
+            List<int> indices,
+            out Bounds bounds)
+        {
+            bounds = default;
+            try
+            {
+                using (BinaryReader reader = new BinaryReader(File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read)))
+                {
+                    int vertexCount = reader.ReadInt32();
+                    int indexCount = reader.ReadInt32();
+                    bounds = ReadBounds(reader);
+                    bool hasNormals = reader.ReadBoolean();
+                    bool hasUvs = reader.ReadBoolean();
+                    bool hasColors = reader.ReadBoolean();
+
+                    if (vertexCount < 0 || indexCount < 0 || indexCount % 3 != 0)
+                    {
+                        lastDiagnostic = "Chunk cache load failed: invalid mesh counts in " + path;
+                        return false;
+                    }
+
+                    EnsureListCapacity(vertices, vertexCount);
+                    EnsureListCapacity(normals, vertexCount);
+                    EnsureListCapacity(uvs, vertexCount);
+                    EnsureListCapacity(colors, vertexCount);
+                    EnsureListCapacity(indices, indexCount);
+                    vertices.Clear();
+                    normals.Clear();
+                    uvs.Clear();
+                    colors.Clear();
+                    indices.Clear();
+
+                    for (int i = 0; i < vertexCount; i++)
+                    {
+                        vertices.Add(ReadVector3(reader));
+                    }
+
+                    if (hasNormals)
+                    {
+                        for (int i = 0; i < vertexCount; i++)
+                        {
+                            normals.Add(ReadVector3(reader));
+                        }
+                    }
+                    else
+                    {
+                        for (int i = 0; i < vertexCount; i++)
+                        {
+                            normals.Add(Vector3.up);
+                        }
+                    }
+
+                    if (hasUvs)
+                    {
+                        for (int i = 0; i < vertexCount; i++)
+                        {
+                            uvs.Add(ReadVector2(reader));
+                        }
+                    }
+                    else
+                    {
+                        for (int i = 0; i < vertexCount; i++)
+                        {
+                            uvs.Add(Vector2.zero);
+                        }
+                    }
+
+                    if (hasColors)
+                    {
+                        for (int i = 0; i < vertexCount; i++)
+                        {
+                            colors.Add(new Color32(reader.ReadByte(), reader.ReadByte(), reader.ReadByte(), reader.ReadByte()));
+                        }
+                    }
+                    else
+                    {
+                        for (int i = 0; i < vertexCount; i++)
+                        {
+                            colors.Add(Color.white);
+                        }
+                    }
+
+                    for (int i = 0; i < indexCount; i++)
+                    {
+                        indices.Add(reader.ReadInt32());
+                    }
+
+                    return true;
+                }
+            }
+            catch (Exception exception)
+            {
+                lastDiagnostic = "Chunk cache GPU data load failed for " + path + ": " + exception.Message;
                 return false;
             }
         }

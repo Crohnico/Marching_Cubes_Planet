@@ -30,11 +30,13 @@ namespace MarchingCubesPlanet.TrianglePools
         private float worstResidentScore;
         private Vector3 priorityOriginWorld;
         private PlanetTrianglePoolMetrics metrics;
+        private readonly PlanetTriangleGpuBackend gpuBackend;
         private int nextAllocationId;
         private bool initialized;
 
         public PlanetTrianglePoolController(PlanetTriangleBudget initialBudget)
         {
+            gpuBackend = new PlanetTriangleGpuBackend(initialBudget.ArtistId);
             Initialize(initialBudget);
         }
 
@@ -45,6 +47,7 @@ namespace MarchingCubesPlanet.TrianglePools
         public int UsedTriangleSlots => usedTriangleSlots;
         public Vector3 PriorityOriginWorld => priorityOriginWorld;
         public PlanetTrianglePoolMetrics Metrics => metrics;
+        public PlanetTriangleGpuBackend GpuBackend => gpuBackend;
 
         public void Initialize(PlanetTriangleBudget value)
         {
@@ -54,6 +57,7 @@ namespace MarchingCubesPlanet.TrianglePools
             allocationCapacity = 0;
             priorityOriginWorld = Vector3.zero;
             initialized = true;
+            gpuBackend.Release();
             ReleaseAllSlots();
         }
 
@@ -78,6 +82,7 @@ namespace MarchingCubesPlanet.TrianglePools
             worstResidentBucket = 0;
             worstResidentScore = 0f;
             nextAllocationId = 0;
+            gpuBackend.ReleaseAllPublications();
             metrics = new PlanetTrianglePoolMetrics
             {
                 artistId = budget.ArtistId,
@@ -257,9 +262,11 @@ namespace MarchingCubesPlanet.TrianglePools
         {
             if (allocations == null)
             {
+                gpuBackend.ReleasePublication(meshId);
                 return 0;
             }
 
+            gpuBackend.ReleasePublication(meshId);
             int released = 0;
             for (int i = 0; i < allocationCapacity; i++)
             {
