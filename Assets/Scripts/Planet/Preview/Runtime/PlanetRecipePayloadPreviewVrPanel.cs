@@ -603,8 +603,6 @@ namespace MarchingCubesPlanet.Preview
                 AppendLine("Desired LOD0 chunks", flow.LastDesiredLod0ChunkCount.ToString());
                 AppendLine("Desired LOD1 chunks", flow.LastDesiredLod1ChunkCount.ToString());
                 AppendLine("Desired LOD2 chunks", flow.LastDesiredLod2ChunkCount.ToString());
-                AppendLine("Best chunk LOD score", flow.LastBestChunkLodScore.ToString("0.000"));
-                AppendLine("Average chunk LOD score", flow.LastAverageChunkLodScore.ToString("0.000"));
                 AppendLine("Runtime LOD chunks", flow.RuntimeChunkLodCount.ToString());
                 AppendLine("Runtime LOD updates", flow.LastRuntimeLodUpdateCount.ToString());
                 AppendLine("Runtime LOD changed", flow.LastRuntimeLodChangedChunkCount.ToString());

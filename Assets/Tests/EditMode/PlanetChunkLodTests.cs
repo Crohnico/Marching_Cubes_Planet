@@ -50,32 +50,14 @@ namespace MarchingCubesPlanet.Lab.Tests
         [Test]
         public void DistanceThresholdsAssignDesiredLod()
         {
-            PlanetChunkLodScoringContext context = new PlanetChunkLodScoringContext(
+            PlanetChunkLodResolutionContext context = new PlanetChunkLodResolutionContext(
                 Vector3.zero,
-                Vector3.forward,
                 10f,
                 PlanetChunkLodActivationConfig.Default());
 
-            Assert.AreEqual(PlanetChunkLod.LOD1, PlanetChunkLodScorer.ResolveDesiredLod(899f, in context));
-            Assert.AreEqual(PlanetChunkLod.LOD1, PlanetChunkLodScorer.ResolveDesiredLod(1799f, in context));
-            Assert.AreEqual(PlanetChunkLod.LOD2, PlanetChunkLodScorer.ResolveDesiredLod(1800f, in context));
-        }
-
-        [Test]
-        public void ScoringUsesProximityAndCameraForward()
-        {
-            PlanetChunkLodScoringContext context = new PlanetChunkLodScoringContext(
-                Vector3.zero,
-                Vector3.forward,
-                10f,
-                PlanetChunkLodActivationConfig.Default());
-
-            PlanetChunkLodScore centered = PlanetChunkLodScorer.Evaluate(1, new Vector3(0f, 0f, 20f), in context);
-            PlanetChunkLodScore sideways = PlanetChunkLodScorer.Evaluate(2, new Vector3(20f, 0f, 20f), in context);
-
-            Assert.AreEqual(PlanetChunkLod.LOD1, centered.DesiredLod);
-            Assert.Greater(centered.ViewScore, sideways.ViewScore);
-            Assert.Greater(centered.Score, sideways.Score);
+            Assert.AreEqual(PlanetChunkLod.LOD1, PlanetChunkLodResolver.ResolveDesiredLod(899f, in context));
+            Assert.AreEqual(PlanetChunkLod.LOD1, PlanetChunkLodResolver.ResolveDesiredLod(1799f, in context));
+            Assert.AreEqual(PlanetChunkLod.LOD2, PlanetChunkLodResolver.ResolveDesiredLod(1800f, in context));
         }
 
         [Test]

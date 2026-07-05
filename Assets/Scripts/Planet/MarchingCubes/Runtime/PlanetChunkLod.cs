@@ -126,67 +126,26 @@ namespace MarchingCubesPlanet.MarchingCubes
         }
     }
 
-    public readonly struct PlanetChunkLodScoringContext
+    public readonly struct PlanetChunkLodResolutionContext
     {
-        public PlanetChunkLodScoringContext(
+        public PlanetChunkLodResolutionContext(
             Vector3 playerPositionWorld,
-            Vector3 cameraForwardWorld,
             float baseChunkWorldSize,
             PlanetChunkLodActivationConfig activationConfig)
         {
             PlayerPositionWorld = playerPositionWorld;
-            CameraForwardWorld = cameraForwardWorld.sqrMagnitude > 0.0001f
-                ? cameraForwardWorld.normalized
-                : Vector3.forward;
             BaseChunkWorldSize = Mathf.Max(0.0001f, baseChunkWorldSize);
             activationConfig.EnsureValid();
             EnableLod0 = activationConfig.enableLod0;
             Lod0MaxDistanceWorld = activationConfig.lod0MaxDistanceWorld;
             Lod1MaxDistanceWorld = activationConfig.lod1MaxDistanceWorld;
-            ProximityMaxWorld = Lod1MaxDistanceWorld;
-            ViewMaxRayDistanceWorld = Lod0MaxDistanceWorld;
         }
 
         public Vector3 PlayerPositionWorld { get; }
-        public Vector3 CameraForwardWorld { get; }
         public float BaseChunkWorldSize { get; }
         public bool EnableLod0 { get; }
         public float Lod0MaxDistanceWorld { get; }
         public float Lod1MaxDistanceWorld { get; }
-        public float ProximityMaxWorld { get; }
-        public float ViewMaxRayDistanceWorld { get; }
-    }
-
-    public readonly struct PlanetChunkLodScore
-    {
-        public PlanetChunkLodScore(
-            int chunkId,
-            PlanetChunkLod desiredLod,
-            float score,
-            float proximityScore,
-            float viewScore,
-            float distanceChunks,
-            float viewRayDistanceChunks,
-            Vector3 centerWorld)
-        {
-            ChunkId = chunkId;
-            DesiredLod = desiredLod;
-            Score = score;
-            ProximityScore = proximityScore;
-            ViewScore = viewScore;
-            DistanceChunks = distanceChunks;
-            ViewRayDistanceChunks = viewRayDistanceChunks;
-            CenterWorld = centerWorld;
-        }
-
-        public int ChunkId { get; }
-        public PlanetChunkLod DesiredLod { get; }
-        public float Score { get; }
-        public float ProximityScore { get; }
-        public float ViewScore { get; }
-        public float DistanceChunks { get; }
-        public float ViewRayDistanceChunks { get; }
-        public Vector3 CenterWorld { get; }
     }
 
     public struct PlanetChunkLodSummary
@@ -195,19 +154,11 @@ namespace MarchingCubesPlanet.MarchingCubes
         public int lod0Count;
         public int lod1Count;
         public int lod2Count;
-        public float bestScore;
-        public float averageScore;
 
-        public void Record(PlanetChunkLodScore score)
+        public void Record(PlanetChunkLod desiredLod)
         {
-            if (chunkCount == 0 || score.Score > bestScore)
-            {
-                bestScore = score.Score;
-            }
-
-            averageScore += score.Score;
             chunkCount++;
-            switch (score.DesiredLod)
+            switch (desiredLod)
             {
                 case PlanetChunkLod.LOD0:
                     lod0Count++;
@@ -218,14 +169,6 @@ namespace MarchingCubesPlanet.MarchingCubes
                 default:
                     lod2Count++;
                     break;
-            }
-        }
-
-        public void Finish()
-        {
-            if (chunkCount > 0)
-            {
-                averageScore /= chunkCount;
             }
         }
     }
@@ -245,11 +188,6 @@ namespace MarchingCubesPlanet.MarchingCubes
             IsInitialized = false;
             CurrentLod = -1;
             DesiredLod = PlanetChunkLodUtility.InitialFallbackLod;
-            Score = 0f;
-            ProximityScore = 0f;
-            ViewScore = 0f;
-            DistanceChunks = 0f;
-            ViewRayDistanceChunks = 0f;
         }
 
         public int ChunkId { get; }
@@ -258,11 +196,6 @@ namespace MarchingCubesPlanet.MarchingCubes
         public bool IsInitialized { get; private set; }
         public int CurrentLod { get; private set; }
         public PlanetChunkLod DesiredLod { get; private set; }
-        public float Score { get; private set; }
-        public float ProximityScore { get; private set; }
-        public float ViewScore { get; private set; }
-        public float DistanceChunks { get; private set; }
-        public float ViewRayDistanceChunks { get; private set; }
         public bool NeedsLodChange => !IsInitialized || CurrentLod != (int)DesiredLod;
 
         public bool ForceDesiredLod(PlanetChunkLod desiredLod)
@@ -272,15 +205,10 @@ namespace MarchingCubesPlanet.MarchingCubes
             return changed || NeedsLodChange;
         }
 
-        public bool ApplyScore(PlanetChunkLodScore score)
+        public bool ApplyDesiredLod(PlanetChunkLod desiredLod)
         {
-            bool changed = DesiredLod != score.DesiredLod;
-            DesiredLod = score.DesiredLod;
-            Score = score.Score;
-            ProximityScore = score.ProximityScore;
-            ViewScore = score.ViewScore;
-            DistanceChunks = score.DistanceChunks;
-            ViewRayDistanceChunks = score.ViewRayDistanceChunks;
+            bool changed = DesiredLod != desiredLod;
+            DesiredLod = desiredLod;
             return changed;
         }
 
@@ -291,61 +219,16 @@ namespace MarchingCubesPlanet.MarchingCubes
         }
     }
 
-    public static class PlanetChunkLodScorer
+    public static class PlanetChunkLodResolver
     {
-        public const float ProximityWeight = 0.70f;
-        public const float ViewWeight = 0.30f;
-
-        public static PlanetChunkLodScore Evaluate(
-            int chunkId,
-            Vector3 chunkCenterWorld,
-            in PlanetChunkLodScoringContext context)
-        {
-            return Evaluate(chunkId, chunkCenterWorld, in context, -1);
-        }
-
-        public static PlanetChunkLodScore Evaluate(
-            int chunkId,
-            Vector3 chunkCenterWorld,
-            in PlanetChunkLodScoringContext context,
-            int currentLod)
-        {
-            Vector3 playerToChunk = chunkCenterWorld - context.PlayerPositionWorld;
-            float distanceWorld = playerToChunk.magnitude;
-            float distanceChunks = distanceWorld / context.BaseChunkWorldSize;
-            float proximityScore = Mathf.Clamp01(1f - distanceWorld / context.ProximityMaxWorld);
-            float forwardDistanceWorld = Vector3.Dot(playerToChunk, context.CameraForwardWorld);
-            float viewRayDistanceChunks = 0f;
-            float viewScore = 0f;
-            if (forwardDistanceWorld > 0f)
-            {
-                Vector3 closestPointOnRay = context.PlayerPositionWorld + context.CameraForwardWorld * forwardDistanceWorld;
-                float viewRayDistanceWorld = (chunkCenterWorld - closestPointOnRay).magnitude;
-                viewRayDistanceChunks = viewRayDistanceWorld / context.BaseChunkWorldSize;
-                viewScore = Mathf.Clamp01(1f - viewRayDistanceWorld / context.ViewMaxRayDistanceWorld);
-            }
-
-            float score = proximityScore * ProximityWeight + viewScore * ViewWeight;
-            PlanetChunkLod desiredLod = ResolveDesiredLod(distanceWorld, in context, currentLod);
-            return new PlanetChunkLodScore(
-                chunkId,
-                desiredLod,
-                score,
-                proximityScore,
-                viewScore,
-                distanceChunks,
-                viewRayDistanceChunks,
-                chunkCenterWorld);
-        }
-
-        public static PlanetChunkLod ResolveDesiredLod(float distanceWorld, in PlanetChunkLodScoringContext context)
+        public static PlanetChunkLod ResolveDesiredLod(float distanceWorld, in PlanetChunkLodResolutionContext context)
         {
             return ResolveDesiredLod(distanceWorld, in context, -1);
         }
 
         public static PlanetChunkLod ResolveDesiredLod(
             float distanceWorld,
-            in PlanetChunkLodScoringContext context,
+            in PlanetChunkLodResolutionContext context,
             int currentLod)
         {
             if (context.EnableLod0 && distanceWorld < context.Lod0MaxDistanceWorld)
@@ -444,7 +327,6 @@ namespace MarchingCubesPlanet.MarchingCubes
             List<PlanetChunkLodRuntimeEntry> entries,
             in PlanetRecipe lod1Recipe,
             Vector3 playerPositionWorld,
-            Vector3 cameraForwardWorld,
             PlanetChunkLodActivationConfig activationConfig,
             out int changedLodCount)
         {
@@ -454,30 +336,28 @@ namespace MarchingCubesPlanet.MarchingCubes
                 return default;
             }
 
-            PlanetChunkLodScoringContext context = BuildContext(
+            PlanetChunkLodResolutionContext context = BuildContext(
                 in lod1Recipe,
                 playerPositionWorld,
-                cameraForwardWorld,
                 activationConfig);
             PlanetChunkLodSummary summary = default;
             for (int i = 0; i < entries.Count; i++)
             {
                 PlanetChunkLodRuntimeEntry entry = entries[i];
-                PlanetChunkLodScore score = PlanetChunkLodScorer.Evaluate(
-                    entry.ChunkId,
-                    entry.CenterWorld,
+                float distanceWorld = (entry.CenterWorld - context.PlayerPositionWorld).magnitude;
+                PlanetChunkLod desiredLod = PlanetChunkLodResolver.ResolveDesiredLod(
+                    distanceWorld,
                     in context,
                     entry.CurrentLod);
-                if (entry.ApplyScore(score))
+                if (entry.ApplyDesiredLod(desiredLod))
                 {
                     changedLodCount++;
                 }
 
                 entries[i] = entry;
-                summary.Record(score);
+                summary.Record(desiredLod);
             }
 
-            summary.Finish();
             return summary;
         }
 
@@ -486,8 +366,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             in PlanetRecipe renderRecipe,
             in PlanetRecipe lod1Recipe,
             in PlanetPlacement placement,
-            Vector3 playerPositionWorld,
-            Vector3 cameraForwardWorld)
+            Vector3 playerPositionWorld)
         {
             if (extraction == null || extraction.VertexCount <= 0)
             {
@@ -496,10 +375,9 @@ namespace MarchingCubesPlanet.MarchingCubes
 
             Dictionary<int, ChunkCenterAccumulator> chunks = CollectChunkCentersFromExtraction(extraction);
 
-            PlanetChunkLodScoringContext context = BuildContext(
+            PlanetChunkLodResolutionContext context = BuildContext(
                 in lod1Recipe,
                 playerPositionWorld,
-                cameraForwardWorld,
                 PlanetChunkLodActivationConfig.Default());
             PlanetChunkLodSummary summary = default;
             foreach (KeyValuePair<int, ChunkCenterAccumulator> chunk in chunks)
@@ -511,10 +389,10 @@ namespace MarchingCubesPlanet.MarchingCubes
 
                 Vector3 centerGrid = chunk.Value.AverageGridCenter;
                 Vector3 centerWorld = PlanetCoordinateConverter.GridToWorld(centerGrid, in renderRecipe, in placement);
-                summary.Record(PlanetChunkLodScorer.Evaluate(chunk.Key, centerWorld, in context));
+                float distanceWorld = (centerWorld - context.PlayerPositionWorld).magnitude;
+                summary.Record(PlanetChunkLodResolver.ResolveDesiredLod(distanceWorld, in context));
             }
 
-            summary.Finish();
             return summary;
         }
 
@@ -522,18 +400,16 @@ namespace MarchingCubesPlanet.MarchingCubes
             IList<PlanetCachedChunkMesh> cachedChunks,
             Transform meshParentTransform,
             in PlanetRecipe lod1Recipe,
-            Vector3 playerPositionWorld,
-            Vector3 cameraForwardWorld)
+            Vector3 playerPositionWorld)
         {
             if (cachedChunks == null || cachedChunks.Count <= 0)
             {
                 return default;
             }
 
-            PlanetChunkLodScoringContext context = BuildContext(
+            PlanetChunkLodResolutionContext context = BuildContext(
                 in lod1Recipe,
                 playerPositionWorld,
-                cameraForwardWorld,
                 PlanetChunkLodActivationConfig.Default());
             PlanetChunkLodSummary summary = default;
             for (int i = 0; i < cachedChunks.Count; i++)
@@ -544,23 +420,21 @@ namespace MarchingCubesPlanet.MarchingCubes
                     continue;
                 }
 
-                summary.Record(PlanetChunkLodScorer.Evaluate(cachedChunk.ChunkId, centerWorld, in context));
+                float distanceWorld = (centerWorld - context.PlayerPositionWorld).magnitude;
+                summary.Record(PlanetChunkLodResolver.ResolveDesiredLod(distanceWorld, in context));
             }
 
-            summary.Finish();
             return summary;
         }
 
-        private static PlanetChunkLodScoringContext BuildContext(
+        private static PlanetChunkLodResolutionContext BuildContext(
             in PlanetRecipe lod1Recipe,
             Vector3 playerPositionWorld,
-            Vector3 cameraForwardWorld,
             PlanetChunkLodActivationConfig activationConfig)
         {
             float baseChunkWorldSize = PlanetChunkLodUtility.CalculateBaseChunkWorldSize(in lod1Recipe, in activationConfig);
-            return new PlanetChunkLodScoringContext(
+            return new PlanetChunkLodResolutionContext(
                 playerPositionWorld,
-                cameraForwardWorld,
                 baseChunkWorldSize,
                 activationConfig);
         }
