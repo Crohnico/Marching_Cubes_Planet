@@ -100,7 +100,7 @@ namespace MarchingCubesPlanet.TrianglePools
 
         public int BeginAllocation(uint ownerId, uint meshId)
         {
-            ReleasePublication(ownerId, meshId);
+            ReleaseAllocation(ownerId, meshId);
             nextAllocationId++;
             if (nextAllocationId <= 0)
             {
@@ -108,6 +108,29 @@ namespace MarchingCubesPlanet.TrianglePools
             }
 
             return nextAllocationId;
+        }
+
+        private int ReleaseAllocation(uint ownerId, uint meshId)
+        {
+            if (allocations == null)
+            {
+                return 0;
+            }
+
+            int released = 0;
+            for (int i = 0; i < allocationCapacity; i++)
+            {
+                if (allocations[i].occupied &&
+                    allocations[i].ownerId == ownerId &&
+                    allocations[i].meshId == meshId)
+                {
+                    released += ReleaseAllocationAt(i);
+                }
+            }
+
+            RefreshResidentSummary();
+            RefreshMetricOccupancy();
+            return released;
         }
 
         public bool TryReserveAllocation(
@@ -249,7 +272,7 @@ namespace MarchingCubesPlanet.TrianglePools
             {
                 if (allocations[i].occupied && allocations[i].ownerId == ownerId)
                 {
-                    released += ReleaseAllocationAt(i);
+                    released += ReleaseAllocationAt(i, true);
                 }
             }
 
@@ -319,7 +342,7 @@ namespace MarchingCubesPlanet.TrianglePools
                     break;
                 }
 
-                reclaimed += ReleaseAllocationAt(worstIndex);
+                reclaimed += ReleaseAllocationAt(worstIndex, true);
             }
 
             return reclaimed;
@@ -355,7 +378,7 @@ namespace MarchingCubesPlanet.TrianglePools
             return worstIndex;
         }
 
-        private int ReleaseAllocationAt(int index)
+        private int ReleaseAllocationAt(int index, bool releaseGpuPublication = false)
         {
             TriangleAllocation allocation = allocations[index];
             if (!allocation.occupied)
@@ -363,6 +386,7 @@ namespace MarchingCubesPlanet.TrianglePools
                 return 0;
             }
 
+            uint meshId = allocation.meshId;
             int releasedTriangles = Mathf.Max(0, allocation.triangleCount);
             allocation.ownerId = PlanetTriangleOwnerId.AnonymousValue;
             allocation.meshId = 0u;
@@ -377,6 +401,11 @@ namespace MarchingCubesPlanet.TrianglePools
 
             usedTriangleSlots = Mathf.Max(0, usedTriangleSlots - releasedTriangles);
             allocationCount = Mathf.Max(0, allocationCount - 1);
+            if (releaseGpuPublication)
+            {
+                gpuBackend.ReleasePublication(meshId);
+            }
+
             return releasedTriangles;
         }
 

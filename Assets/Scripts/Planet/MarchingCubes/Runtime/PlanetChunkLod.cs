@@ -88,17 +88,13 @@ namespace MarchingCubesPlanet.MarchingCubes
         public const int DefaultCanonicalChunkSize = PlanetMarchingCubesChunkRange.CanonicalChunkSize;
         public const float DefaultLod0MaxDistanceWorld = 900f;
         public const float DefaultLod1MaxDistanceWorld = 1800f;
-        public const int DefaultRuntimeLodActionsPerFrame = 1;
         public const int DefaultMaxRuntimeLodRequestsPerUpdate = 1;
-        public const int DefaultRuntimeLodCellsPerFrame = 32768;
 
         public int canonicalChunkSize;
         public bool enableLod0;
         public float lod0MaxDistanceWorld;
         public float lod1MaxDistanceWorld;
-        public int runtimeLodActionsPerFrame;
         public int maxRuntimeLodRequestsPerUpdate;
-        public int runtimeLodCellsPerFrame;
 
         public int CanonicalChunkSize => Mathf.Max(1, canonicalChunkSize);
 
@@ -110,9 +106,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                 enableLod0 = false,
                 lod0MaxDistanceWorld = DefaultLod0MaxDistanceWorld,
                 lod1MaxDistanceWorld = DefaultLod1MaxDistanceWorld,
-                runtimeLodActionsPerFrame = DefaultRuntimeLodActionsPerFrame,
-                maxRuntimeLodRequestsPerUpdate = DefaultMaxRuntimeLodRequestsPerUpdate,
-                runtimeLodCellsPerFrame = DefaultRuntimeLodCellsPerFrame
+                maxRuntimeLodRequestsPerUpdate = DefaultMaxRuntimeLodRequestsPerUpdate
             };
         }
 
@@ -133,19 +127,9 @@ namespace MarchingCubesPlanet.MarchingCubes
                 lod1MaxDistanceWorld = Mathf.Max(lod0MaxDistanceWorld + 1f, DefaultLod1MaxDistanceWorld);
             }
 
-            if (runtimeLodActionsPerFrame <= 0)
-            {
-                runtimeLodActionsPerFrame = DefaultRuntimeLodActionsPerFrame;
-            }
-
             if (maxRuntimeLodRequestsPerUpdate <= 0)
             {
                 maxRuntimeLodRequestsPerUpdate = DefaultMaxRuntimeLodRequestsPerUpdate;
-            }
-
-            if (runtimeLodCellsPerFrame <= 0)
-            {
-                runtimeLodCellsPerFrame = DefaultRuntimeLodCellsPerFrame;
             }
         }
     }

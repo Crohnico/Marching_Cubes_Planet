@@ -803,7 +803,7 @@ namespace MarchingCubesPlanet.MarchingCubes
 
             if (hasSurfaceMesh)
             {
-                if (cache.TryLoadChunkSurfaceMeshData(
+                bool loadedSurfaceMesh = cache.TryLoadChunkSurfaceMeshData(
                         cacheChunkId,
                         cacheLod,
                         cacheGpuVertices,
@@ -811,7 +811,8 @@ namespace MarchingCubesPlanet.MarchingCubes
                         cacheGpuUvs,
                         cacheGpuColors,
                         cacheGpuIndices,
-                        out Bounds cacheBounds) &&
+                        out Bounds cacheBounds);
+                if (loadedSurfaceMesh &&
                     PublishGpuCachedSurface(
                         cacheChunkId >= 0 ? MakeChunkSurfaceMeshId(cacheChunkId) : PlanetSurfaceMeshId,
                         cacheGpuVertices,
@@ -831,6 +832,11 @@ namespace MarchingCubesPlanet.MarchingCubes
                     runtimeMeshSlot.surfaceEstimatedBytes = PlanetMarchingCubesPaintResult.CalculateMeshEstimatedBytes(
                         runtimeMeshSlot.surfaceVertexCount,
                         runtimeMeshSlot.surfaceTriangleCount);
+                }
+                else if (loadedSurfaceMesh)
+                {
+                    UpdateRuntimeMeshSlotMetricsPreservingGpuSurface(runtimeMeshSlot);
+                    return BuildNamedPaintResult(runtimeMeshSlot, settings);
                 }
                 else
                 {
