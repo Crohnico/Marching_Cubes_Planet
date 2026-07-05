@@ -28,6 +28,26 @@ namespace MarchingCubesPlanet.Lab.Tests
         }
 
         [Test]
+        public void DefaultChunkSizesUseCanonicalLod1Size()
+        {
+            Assert.AreEqual(8, PlanetChunkLodUtility.GetChunkSizeForLod(PlanetChunkLod.LOD2));
+            Assert.AreEqual(16, PlanetChunkLodUtility.GetChunkSizeForLod(PlanetChunkLod.LOD1));
+            Assert.AreEqual(32, PlanetChunkLodUtility.GetChunkSizeForLod(PlanetChunkLod.LOD0));
+        }
+
+        [Test]
+        public void ActivationConfigOverridesCanonicalChunkSize()
+        {
+            PlanetChunkLodActivationConfig config = PlanetChunkLodActivationConfig.Default();
+            config.canonicalChunkSize = 32;
+            config.EnsureValid();
+
+            Assert.AreEqual(16, PlanetChunkLodUtility.GetChunkSizeForLod(PlanetChunkLod.LOD2, in config));
+            Assert.AreEqual(32, PlanetChunkLodUtility.GetChunkSizeForLod(PlanetChunkLod.LOD1, in config));
+            Assert.AreEqual(64, PlanetChunkLodUtility.GetChunkSizeForLod(PlanetChunkLod.LOD0, in config));
+        }
+
+        [Test]
         public void DistanceThresholdsAssignDesiredLod()
         {
             PlanetChunkLodScoringContext context = new PlanetChunkLodScoringContext(

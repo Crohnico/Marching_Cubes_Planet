@@ -12,17 +12,17 @@ namespace MarchingCubesPlanet.Lab.Tests
         {
             PlanetMarchingCubesChunkRange range = PlanetMarchingCubesChunkRange.Default();
 
-            Assert.AreEqual(32, range.chunkSize);
+            Assert.AreEqual(16, range.chunkSize);
             Assert.AreEqual(1, range.cellSizeGrid);
             Assert.AreEqual(4, range.safetyMargin);
             Assert.AreEqual(0, range.maxCandidateChunks);
         }
 
         [Test]
-        public void ChunkRangeRejectsNonCanonicalChunkSize()
+        public void ChunkRangeRejectsNonPositiveChunkSize()
         {
             PlanetMarchingCubesChunkRange range = PlanetMarchingCubesChunkRange.Default();
-            range.chunkSize = 32;
+            range.chunkSize = 0;
 
             Assert.IsFalse(range.Validate(out string message));
             StringAssert.Contains("chunkSize", message);
@@ -56,7 +56,7 @@ namespace MarchingCubesPlanet.Lab.Tests
             settings.EnsureDefaults();
 
             Assert.IsTrue(settings.Validate(out string message), message);
-            Assert.AreEqual(32, settings.chunkRange.chunkSize);
+            Assert.AreEqual(16, settings.chunkRange.chunkSize);
             Assert.AreEqual(1, settings.chunkRange.cellSizeGrid);
             Assert.AreEqual(4, settings.chunkRange.safetyMargin);
             Assert.AreEqual(1000000, settings.temporaryOutputTriangleCapacity);
@@ -112,10 +112,10 @@ namespace MarchingCubesPlanet.Lab.Tests
 
             Assert.Greater(chunks.Length, 0);
             Assert.AreEqual(chunks.Length, stats.CandidateChunkCount);
-            Assert.AreEqual((long)chunks.Length * 32L * 32L * 32L, stats.CandidateCellCount);
-            Assert.AreEqual(0, chunks[0].x % 32);
-            Assert.AreEqual(0, chunks[0].y % 32);
-            Assert.AreEqual(0, chunks[0].z % 32);
+            Assert.AreEqual((long)chunks.Length * 16L * 16L * 16L, stats.CandidateCellCount);
+            Assert.AreEqual(0, chunks[0].x % 16);
+            Assert.AreEqual(0, chunks[0].y % 16);
+            Assert.AreEqual(0, chunks[0].z % 16);
         }
 
         [Test]

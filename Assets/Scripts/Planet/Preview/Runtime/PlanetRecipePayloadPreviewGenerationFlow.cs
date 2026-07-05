@@ -39,6 +39,9 @@ namespace MarchingCubesPlanet.Preview
 
         private readonly List<PlanetCachedChunkMesh> cachedChunks = new List<PlanetCachedChunkMesh>();
         private readonly List<PlanetChunkLodRuntimeEntry> runtimeChunkLods = new List<PlanetChunkLodRuntimeEntry>();
+        private readonly Dictionary<Vector3Int, int> runtimeChunkIndexByChunkCoord = new Dictionary<Vector3Int, int>();
+        private readonly List<int> runtimeLodAffectedChunkIndexes = new List<int>();
+        private readonly HashSet<int> runtimeLodAffectedChunkIndexSet = new HashSet<int>();
 
         private PlanetRecipe runtimeLod1Recipe = PlanetRecipe.Default();
         private PlanetPlacement runtimePlacement = PlanetPlacement.Default();
@@ -51,6 +54,11 @@ namespace MarchingCubesPlanet.Preview
         private int runtimeTemporaryTriangleCapacity = DefaultTemporaryTriangleCapacity;
         private int runtimeCandidateChunkCount;
         private int activeRuntimeExtractionLod = -1;
+        private int activeRuntimeExtractionChunkSize = -1;
+        private bool hasRuntimeLodRingState;
+        private Vector3Int lastRuntimeLodCenterChunk;
+        private int lastRuntimeLod0RadiusChunks = -1;
+        private int lastRuntimeLod1RadiusChunks = -1;
 
         public string LastDiagnostic => lastDiagnostic;
         public int LastDesiredLod0ChunkCount => lastDesiredLod0ChunkCount;
@@ -146,12 +154,13 @@ namespace MarchingCubesPlanet.Preview
 
             PlanetChunkLod fallbackLod = PlanetChunkLodUtility.InitialFallbackLod;
             int fallbackLodIndex = (int)fallbackLod;
+            PlanetChunkLodActivationConfig runtimeLodConfig = ResolveRuntimeLodActivationConfig();
             PlanetRecipe fallbackRecipe = PlanetChunkLodUtility.BuildRecipeForLod(in sourceRecipe, fallbackLod);
             Debug.Log(LogPrefix + "Fallback LOD prepared lod=" + fallbackLodIndex +
                       " fallbackGridRadius=" + fallbackRecipe.GridRadius +
                       " fallbackWorldScale=" + fallbackRecipe.WorldScale +
                       " fallbackWorldRadius=" + fallbackRecipe.WorldRadius +
-                      " fallbackChunkSize=" + PlanetChunkLodUtility.GetChunkSizeForLod(fallbackLod));
+                      " fallbackChunkSize=" + PlanetChunkLodUtility.GetChunkSizeForLod(fallbackLod, in runtimeLodConfig));
             shapeLab.SetRecipe(in fallbackRecipe);
             paintLab.SetPlacement(placement);
             paintLab.UsePlanetSurfaceAtlas(temporaryTriangleCapacity);
@@ -161,7 +170,7 @@ namespace MarchingCubesPlanet.Preview
             runtimeTargetMeshRenderer = targetMeshRenderer;
             runtimeTemporaryTriangleCapacity = temporaryTriangleCapacity;
             runtimeChunkCache = PlanetChunkMeshCache.CreateDefault();
-            runtimeChunkCacheReady = runtimeChunkCache.Prepare(in sourceRecipe);
+            runtimeChunkCacheReady = runtimeChunkCache.Prepare(in sourceRecipe, in runtimeLodConfig);
             Debug.Log(LogPrefix + "Cache prepare ready=" + runtimeChunkCacheReady +
                       " diagnostic=" + (runtimeChunkCache != null ? runtimeChunkCache.LastDiagnostic : "cache=null"));
 
@@ -244,6 +253,7 @@ namespace MarchingCubesPlanet.Preview
             runtimeTargetMeshRenderer = null;
             runtimeCandidateChunkCount = 0;
             activeRuntimeExtractionLod = -1;
+            activeRuntimeExtractionChunkSize = -1;
         }
 
         private void ApplyChunkLodSummary(PlanetChunkLodSummary summary)
@@ -263,6 +273,7 @@ namespace MarchingCubesPlanet.Preview
             lastRuntimeLodRefreshTime = 0f;
             lastRuntimeLodChangedChunkCount = 0;
             lastRuntimeLodUpdateCount = 0;
+            hasRuntimeLodRingState = false;
             Debug.Log(LogPrefix + "BeginRuntimeChunkLods forceInitialFallbackDesired=" + forceInitialFallbackDesired +
                       " chunkCount=" + runtimeChunkLods.Count +
                       " hasRuntimeChunkLods=" + hasRuntimeChunkLods);
@@ -273,6 +284,7 @@ namespace MarchingCubesPlanet.Preview
                 lastRuntimeLodUpdateCount++;
                 lastRuntimeLodViewVersion = PlanetTrianglePoolRegistry.PlayerViewVersion;
                 lastRuntimeLodRefreshTime = Time.unscaledTime;
+                hasRuntimeLodRingState = false;
                 hasRuntimeChunkLods = runtimeChunkLods.Count > 0;
                 Debug.Log(LogPrefix + "Initial fallback processing done changed=" + lastRuntimeLodChangedChunkCount +
                           " runtimeUpdates=" + lastRuntimeLodUpdateCount +
@@ -292,20 +304,55 @@ namespace MarchingCubesPlanet.Preview
                 return;
             }
 
-            PlanetChunkLodSummary summary = PlanetChunkLodRuntimePlanner.EvaluateEntries(
-                runtimeChunkLods,
-                in runtimeLod1Recipe,
-                PlanetTrianglePoolRegistry.PlayerPositionWorld,
-                PlanetTrianglePoolRegistry.PlayerForwardWorld,
-                ResolveRuntimeLodActivationConfig(),
-                out int changedLodCount);
+            PlanetChunkLodActivationConfig activationConfig = ResolveRuntimeLodActivationConfig();
+            activationConfig.EnsureValid();
             int viewVersion = PlanetTrianglePoolRegistry.PlayerViewVersion;
-            ApplyChunkLodSummary(summary);
-            int appliedChangeCount = ProcessRuntimeChunkLodChanges();
+            Vector3Int centerChunk = CalculateRuntimeLodCenterChunk(
+                PlanetTrianglePoolRegistry.PlayerPositionWorld,
+                in activationConfig);
+            int lod0RadiusChunks = CalculateRuntimeLodRadiusChunks(
+                activationConfig.enableLod0 ? activationConfig.lod0MaxDistanceWorld : -1f,
+                in activationConfig);
+            int lod1RadiusChunks = CalculateRuntimeLodRadiusChunks(
+                activationConfig.lod1MaxDistanceWorld,
+                in activationConfig);
+            int changedLodCount;
+            int appliedChangeCount;
+            if (force || !hasRuntimeLodRingState)
+            {
+                PlanetChunkLodSummary summary = PlanetChunkLodRuntimePlanner.EvaluateEntries(
+                    runtimeChunkLods,
+                    in runtimeLod1Recipe,
+                    PlanetTrianglePoolRegistry.PlayerPositionWorld,
+                    PlanetTrianglePoolRegistry.PlayerForwardWorld,
+                    activationConfig,
+                    out changedLodCount);
+                ApplyChunkLodSummary(summary);
+                appliedChangeCount = ProcessRuntimeChunkLodChanges();
+            }
+            else
+            {
+                CollectRuntimeLodRingDiffIndexes(
+                    lastRuntimeLodCenterChunk,
+                    centerChunk,
+                    lastRuntimeLod0RadiusChunks,
+                    lod0RadiusChunks,
+                    lastRuntimeLod1RadiusChunks,
+                    lod1RadiusChunks);
+                changedLodCount = EvaluateRuntimeChunkLodIndexes(
+                    runtimeLodAffectedChunkIndexes,
+                    in activationConfig);
+                appliedChangeCount = ProcessRuntimeChunkLodChanges(runtimeLodAffectedChunkIndexes);
+            }
+
             lastRuntimeLodChangedChunkCount = Mathf.Max(changedLodCount, appliedChangeCount);
             lastRuntimeLodUpdateCount++;
             lastRuntimeLodViewVersion = viewVersion;
             lastRuntimeLodRefreshTime = Time.unscaledTime;
+            hasRuntimeLodRingState = true;
+            lastRuntimeLodCenterChunk = centerChunk;
+            lastRuntimeLod0RadiusChunks = lod0RadiusChunks;
+            lastRuntimeLod1RadiusChunks = lod1RadiusChunks;
 
         }
 
@@ -359,6 +406,235 @@ namespace MarchingCubesPlanet.Preview
             }
 
             return changedCount;
+        }
+
+        private int ProcessRuntimeChunkLodChanges(IList<int> indexes)
+        {
+            if (!hasRuntimeChunkLods || indexes == null || indexes.Count <= 0)
+            {
+                return 0;
+            }
+
+            int changedCount = 0;
+            for (int i = 0; i < indexes.Count; i++)
+            {
+                int entryIndex = indexes[i];
+                if (entryIndex < 0 || entryIndex >= runtimeChunkLods.Count)
+                {
+                    continue;
+                }
+
+                PlanetChunkLodRuntimeEntry entry = runtimeChunkLods[entryIndex];
+                if (!entry.NeedsLodChange)
+                {
+                    continue;
+                }
+
+                if (!ApplyRuntimeChunkLodChange(entry))
+                {
+                    continue;
+                }
+
+                entry.MarkInitialized(entry.DesiredLod);
+                runtimeChunkLods[entryIndex] = entry;
+                changedCount++;
+            }
+
+            return changedCount;
+        }
+
+        private int EvaluateRuntimeChunkLodIndexes(
+            IList<int> indexes,
+            in PlanetChunkLodActivationConfig activationConfig)
+        {
+            if (indexes == null || indexes.Count <= 0)
+            {
+                return 0;
+            }
+
+            PlanetChunkLodScoringContext context = new PlanetChunkLodScoringContext(
+                PlanetTrianglePoolRegistry.PlayerPositionWorld,
+                PlanetTrianglePoolRegistry.PlayerForwardWorld,
+                PlanetChunkLodUtility.CalculateBaseChunkWorldSize(in runtimeLod1Recipe, in activationConfig),
+                activationConfig);
+            int changedLodCount = 0;
+            for (int i = 0; i < indexes.Count; i++)
+            {
+                int entryIndex = indexes[i];
+                if (entryIndex < 0 || entryIndex >= runtimeChunkLods.Count)
+                {
+                    continue;
+                }
+
+                PlanetChunkLodRuntimeEntry entry = runtimeChunkLods[entryIndex];
+                PlanetChunkLod previousDesiredLod = entry.DesiredLod;
+                PlanetChunkLodScore score = PlanetChunkLodScorer.Evaluate(
+                    entry.ChunkId,
+                    entry.CenterWorld,
+                    in context,
+                    entry.CurrentLod);
+                if (entry.ApplyScore(score))
+                {
+                    AdjustRuntimeDesiredLodCount(previousDesiredLod, entry.DesiredLod);
+                    changedLodCount++;
+                }
+
+                runtimeChunkLods[entryIndex] = entry;
+                if (score.Score > lastBestChunkLodScore)
+                {
+                    lastBestChunkLodScore = score.Score;
+                }
+            }
+
+            return changedLodCount;
+        }
+
+        private void AdjustRuntimeDesiredLodCount(PlanetChunkLod previousLod, PlanetChunkLod nextLod)
+        {
+            if (previousLod == nextLod)
+            {
+                return;
+            }
+
+            DecrementRuntimeDesiredLodCount(previousLod);
+            switch (nextLod)
+            {
+                case PlanetChunkLod.LOD0:
+                    lastDesiredLod0ChunkCount++;
+                    break;
+                case PlanetChunkLod.LOD1:
+                    lastDesiredLod1ChunkCount++;
+                    break;
+                default:
+                    lastDesiredLod2ChunkCount++;
+                    break;
+            }
+        }
+
+        private void DecrementRuntimeDesiredLodCount(PlanetChunkLod lod)
+        {
+            switch (lod)
+            {
+                case PlanetChunkLod.LOD0:
+                    lastDesiredLod0ChunkCount = Mathf.Max(0, lastDesiredLod0ChunkCount - 1);
+                    break;
+                case PlanetChunkLod.LOD1:
+                    lastDesiredLod1ChunkCount = Mathf.Max(0, lastDesiredLod1ChunkCount - 1);
+                    break;
+                default:
+                    lastDesiredLod2ChunkCount = Mathf.Max(0, lastDesiredLod2ChunkCount - 1);
+                    break;
+            }
+        }
+
+        private Vector3Int CalculateRuntimeLodCenterChunk(
+            Vector3 playerPositionWorld,
+            in PlanetChunkLodActivationConfig activationConfig)
+        {
+            Vector3 playerGrid = PlanetCoordinateConverter.WorldToGrid(playerPositionWorld, in runtimeLod1Recipe, in runtimePlacement);
+            int chunkSize = activationConfig.CanonicalChunkSize;
+            return new Vector3Int(
+                Mathf.FloorToInt(playerGrid.x / chunkSize),
+                Mathf.FloorToInt(playerGrid.y / chunkSize),
+                Mathf.FloorToInt(playerGrid.z / chunkSize));
+        }
+
+        private int CalculateRuntimeLodRadiusChunks(
+            float distanceWorld,
+            in PlanetChunkLodActivationConfig activationConfig)
+        {
+            if (distanceWorld <= 0f)
+            {
+                return -1;
+            }
+
+            float baseChunkWorldSize = PlanetChunkLodUtility.CalculateBaseChunkWorldSize(
+                in runtimeLod1Recipe,
+                in activationConfig);
+            return Mathf.Max(0, Mathf.CeilToInt((distanceWorld + baseChunkWorldSize) / baseChunkWorldSize));
+        }
+
+        private void CollectRuntimeLodRingDiffIndexes(
+            Vector3Int previousCenter,
+            Vector3Int nextCenter,
+            int previousLod0Radius,
+            int nextLod0Radius,
+            int previousLod1Radius,
+            int nextLod1Radius)
+        {
+            runtimeLodAffectedChunkIndexes.Clear();
+            runtimeLodAffectedChunkIndexSet.Clear();
+            CollectRuntimeLodRangeDiffIndexes(previousCenter, nextCenter, previousLod1Radius, nextLod1Radius);
+            CollectRuntimeLodRangeDiffIndexes(previousCenter, nextCenter, previousLod0Radius, nextLod0Radius);
+        }
+
+        private void CollectRuntimeLodRangeDiffIndexes(
+            Vector3Int previousCenter,
+            Vector3Int nextCenter,
+            int previousRadius,
+            int nextRadius)
+        {
+            if (previousCenter == nextCenter && previousRadius == nextRadius)
+            {
+                return;
+            }
+
+            if (previousRadius >= 0)
+            {
+                CollectRuntimeLodRangeOnlyInFirst(previousCenter, previousRadius, nextCenter, nextRadius);
+            }
+
+            if (nextRadius >= 0)
+            {
+                CollectRuntimeLodRangeOnlyInFirst(nextCenter, nextRadius, previousCenter, previousRadius);
+            }
+        }
+
+        private void CollectRuntimeLodRangeOnlyInFirst(
+            Vector3Int firstCenter,
+            int firstRadius,
+            Vector3Int secondCenter,
+            int secondRadius)
+        {
+            for (int z = firstCenter.z - firstRadius; z <= firstCenter.z + firstRadius; z++)
+            {
+                for (int y = firstCenter.y - firstRadius; y <= firstCenter.y + firstRadius; y++)
+                {
+                    for (int x = firstCenter.x - firstRadius; x <= firstCenter.x + firstRadius; x++)
+                    {
+                        Vector3Int chunkCoord = new Vector3Int(x, y, z);
+                        if (IsInsideRuntimeLodRange(chunkCoord, secondCenter, secondRadius))
+                        {
+                            continue;
+                        }
+
+                        AddRuntimeLodAffectedChunkIndex(chunkCoord);
+                    }
+                }
+            }
+        }
+
+        private bool IsInsideRuntimeLodRange(Vector3Int chunkCoord, Vector3Int center, int radius)
+        {
+            return radius >= 0 &&
+                   Mathf.Abs(chunkCoord.x - center.x) <= radius &&
+                   Mathf.Abs(chunkCoord.y - center.y) <= radius &&
+                   Mathf.Abs(chunkCoord.z - center.z) <= radius;
+        }
+
+        private void AddRuntimeLodAffectedChunkIndex(Vector3Int chunkCoord)
+        {
+            if (!runtimeChunkIndexByChunkCoord.TryGetValue(chunkCoord, out int entryIndex))
+            {
+                return;
+            }
+
+            if (!runtimeLodAffectedChunkIndexSet.Add(entryIndex))
+            {
+                return;
+            }
+
+            runtimeLodAffectedChunkIndexes.Add(entryIndex);
         }
 
         private PlanetChunkLodActivationConfig ResolveRuntimeLodActivationConfig()
@@ -488,7 +764,10 @@ namespace MarchingCubesPlanet.Preview
         private bool InitializeRuntimeExtractionForLod(PlanetChunkLod lod, in PlanetRecipe lodRecipe)
         {
             int lodIndex = (int)lod;
+            PlanetChunkLodActivationConfig activationConfig = ResolveRuntimeLodActivationConfig();
+            int chunkSize = PlanetChunkLodUtility.GetChunkSizeForLod(lod, in activationConfig);
             if (activeRuntimeExtractionLod == lodIndex &&
+                activeRuntimeExtractionChunkSize == chunkSize &&
                 shapeLab.IsShapeGpuInitialized &&
                 marchingCubesLab.HasLiveResources)
             {
@@ -498,7 +777,7 @@ namespace MarchingCubesPlanet.Preview
             Debug.Log(LogPrefix + "Initialize extraction resources lod=" + lodIndex +
                       " gridRadius=" + lodRecipe.GridRadius +
                       " worldScale=" + lodRecipe.WorldScale +
-                      " chunkSize=" + PlanetChunkLodUtility.GetChunkSizeForLod(lod));
+                      " chunkSize=" + chunkSize);
             shapeLab.SetRecipe(in lodRecipe);
             shapeLab.InitShapeGpu();
             if (!shapeLab.IsShapeGpuInitialized)
@@ -506,23 +785,26 @@ namespace MarchingCubesPlanet.Preview
                 lastDiagnostic = "Generate blocked: 06 Shape GPU did not initialize. " +
                                  FormatLabDiagnostic(shapeLab.LastDiagnostic);
                 activeRuntimeExtractionLod = -1;
+                activeRuntimeExtractionChunkSize = -1;
                 Debug.LogError(LogPrefix + lastDiagnostic);
                 return false;
             }
 
             marchingCubesLab.EnsureTemporaryOutputTriangleCapacity(runtimeTemporaryTriangleCapacity);
-            marchingCubesLab.SetRuntimeChunkSize(PlanetChunkLodUtility.GetChunkSizeForLod(lod));
+            marchingCubesLab.SetRuntimeChunkSize(chunkSize);
             marchingCubesLab.InitMarchingCubesGpu();
             if (!marchingCubesLab.HasLiveResources)
             {
                 lastDiagnostic = "Generate blocked: 07 Marching Cubes did not initialize. " +
                                  FormatLabDiagnostic(marchingCubesLab.LastDiagnostic);
                 activeRuntimeExtractionLod = -1;
+                activeRuntimeExtractionChunkSize = -1;
                 Debug.LogError(LogPrefix + lastDiagnostic);
                 return false;
             }
 
             activeRuntimeExtractionLod = lodIndex;
+            activeRuntimeExtractionChunkSize = chunkSize;
             runtimeCandidateChunkCount = Mathf.Max(0, (int)marchingCubesLab.LastCandidateChunkCount);
             Debug.Log(LogPrefix + "Extraction resources ready lod=" + lodIndex +
                       " candidateChunks=" + marchingCubesLab.LastCandidateChunkCount +
@@ -536,9 +818,13 @@ namespace MarchingCubesPlanet.Preview
             in PlanetPlacement placement)
         {
             runtimeChunkLods.Clear();
+            runtimeChunkIndexByChunkCoord.Clear();
             int candidateCount = Mathf.Max(0, (int)marchingCubesLab.LastCandidateChunkCount);
             runtimeCandidateChunkCount = candidateCount;
             float activeChunkSize = Mathf.Max(1, marchingCubesLab.Settings.chunkRange.chunkSize);
+            int baseChunkSize = Mathf.Max(1, PlanetChunkLodUtility.GetChunkSizeForLod(
+                PlanetChunkLod.LOD1,
+                ResolveRuntimeLodActivationConfig()));
             Debug.Log(LogPrefix + "Collect runtime chunks start candidateCount=" + candidateCount +
                       " activeChunkSize=" + activeChunkSize);
             for (int chunkId = 0; chunkId < candidateCount; chunkId++)
@@ -556,7 +842,9 @@ namespace MarchingCubesPlanet.Preview
                 Vector3 centerWorld = PlanetCoordinateConverter.GridToWorld(centerGrid, in renderRecipe, in placement);
                 PlanetMarchingCubesChunkOrigin baseOrigin = ConvertChunkOrigin(origin, in renderRecipe, in lod1Recipe);
                 int stableChunkId = BuildStableChunkId(baseOrigin);
+                int entryIndex = runtimeChunkLods.Count;
                 runtimeChunkLods.Add(new PlanetChunkLodRuntimeEntry(stableChunkId, baseOrigin, centerWorld));
+                runtimeChunkIndexByChunkCoord[BuildRuntimeChunkCoord(baseOrigin, baseChunkSize)] = entryIndex;
             }
             Debug.Log(LogPrefix + "Collect runtime chunks end count=" + runtimeChunkLods.Count);
         }
@@ -613,10 +901,25 @@ namespace MarchingCubesPlanet.Preview
             return "chunk_" + origin.x + "_" + origin.y + "_" + origin.z;
         }
 
+        private static Vector3Int BuildRuntimeChunkCoord(
+            PlanetMarchingCubesChunkOrigin origin,
+            int chunkSize)
+        {
+            chunkSize = Mathf.Max(1, chunkSize);
+            return new Vector3Int(
+                Mathf.FloorToInt(origin.x / (float)chunkSize),
+                Mathf.FloorToInt(origin.y / (float)chunkSize),
+                Mathf.FloorToInt(origin.z / (float)chunkSize));
+        }
+
         private void ClearRuntimeChunkLods()
         {
             runtimeChunkLods.Clear();
+            runtimeChunkIndexByChunkCoord.Clear();
+            runtimeLodAffectedChunkIndexes.Clear();
+            runtimeLodAffectedChunkIndexSet.Clear();
             hasRuntimeChunkLods = false;
+            hasRuntimeLodRingState = false;
             lastRuntimeLodChangedChunkCount = 0;
             lastRuntimeLodUpdateCount = 0;
             lastRuntimeLodViewVersion = -1;

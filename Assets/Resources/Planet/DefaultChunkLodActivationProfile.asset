@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ad75ce3610a4fe24e8384d9ed46ad50e, type: 3}
   m_Name: DefaultChunkLodActivationProfile
   m_EditorClassIdentifier: 
+  canonicalChunkSize: 32
   enableLod0: 1
-  lod0MaxDistanceWorld: 3000
+  lod0MaxDistanceWorld: 1500
   lod1MaxDistanceWorld: 7000

@@ -8,7 +8,7 @@ namespace MarchingCubesPlanet.MarchingCubes
     [Serializable]
     public struct PlanetMarchingCubesChunkRange
     {
-        public const int CanonicalChunkSize = 32;
+        public const int CanonicalChunkSize = 16;
         public const int CanonicalCellSizeGrid = 1;
         public const int DefaultSafetyMargin = 4;
 

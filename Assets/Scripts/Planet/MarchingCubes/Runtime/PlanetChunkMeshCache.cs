@@ -48,7 +48,15 @@ namespace MarchingCubesPlanet.MarchingCubes
 
         public static string BuildPlanetId(in PlanetRecipe recipe)
         {
-            string signature = BuildRecipeSignature(in recipe);
+            PlanetChunkLodActivationConfig activationConfig = PlanetChunkLodActivationConfig.Default();
+            return BuildPlanetId(in recipe, in activationConfig);
+        }
+
+        public static string BuildPlanetId(in PlanetRecipe recipe, in PlanetChunkLodActivationConfig activationConfig)
+        {
+            PlanetChunkLodActivationConfig safeActivationConfig = activationConfig;
+            safeActivationConfig.EnsureValid();
+            string signature = BuildRecipeSignature(in recipe, in safeActivationConfig);
             ulong hash = 14695981039346656037UL;
             for (int i = 0; i < signature.Length; i++)
             {
@@ -61,13 +69,21 @@ namespace MarchingCubesPlanet.MarchingCubes
 
         public bool Prepare(in PlanetRecipe recipe)
         {
+            PlanetChunkLodActivationConfig activationConfig = PlanetChunkLodActivationConfig.Default();
+            return Prepare(in recipe, in activationConfig);
+        }
+
+        public bool Prepare(in PlanetRecipe recipe, in PlanetChunkLodActivationConfig activationConfig)
+        {
             if (!recipe.IsValid(out string recipeMessage))
             {
                 lastDiagnostic = "Chunk cache prepare blocked: invalid recipe. " + recipeMessage;
                 return false;
             }
 
-            planetId = BuildPlanetId(in recipe);
+            PlanetChunkLodActivationConfig safeActivationConfig = activationConfig;
+            safeActivationConfig.EnsureValid();
+            planetId = BuildPlanetId(in recipe, in safeActivationConfig);
 
             try
             {
@@ -393,16 +409,17 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
         }
 
-        private static string BuildRecipeSignature(in PlanetRecipe recipe)
+        private static string BuildRecipeSignature(in PlanetRecipe recipe, in PlanetChunkLodActivationConfig activationConfig)
         {
             StringBuilder builder = new StringBuilder(1024);
             Append(builder, "BaseRecipeLod", (int)PlanetChunkLodUtility.BaseRecipeLod);
             Append(builder, "InitialFallbackLod", (int)PlanetChunkLodUtility.InitialFallbackLod);
             Append(builder, "Lod0GridMultiplier", 2f);
             Append(builder, "Lod2GridMultiplier", 0.5f);
-            Append(builder, "Lod0ChunkSize", PlanetChunkLodUtility.GetChunkSizeForLod(PlanetChunkLod.LOD0));
-            Append(builder, "Lod1ChunkSize", PlanetChunkLodUtility.GetChunkSizeForLod(PlanetChunkLod.LOD1));
-            Append(builder, "Lod2ChunkSize", PlanetChunkLodUtility.GetChunkSizeForLod(PlanetChunkLod.LOD2));
+            Append(builder, "CanonicalChunkSize", activationConfig.CanonicalChunkSize);
+            Append(builder, "Lod0ChunkSize", PlanetChunkLodUtility.GetChunkSizeForLod(PlanetChunkLod.LOD0, in activationConfig));
+            Append(builder, "Lod1ChunkSize", PlanetChunkLodUtility.GetChunkSizeForLod(PlanetChunkLod.LOD1, in activationConfig));
+            Append(builder, "Lod2ChunkSize", PlanetChunkLodUtility.GetChunkSizeForLod(PlanetChunkLod.LOD2, in activationConfig));
             Append(builder, "GridRadius", recipe.GridRadius);
             Append(builder, "WorldScale", recipe.WorldScale);
             Append(builder, "Seed", recipe.Seed);

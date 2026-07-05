@@ -49,16 +49,33 @@ namespace MarchingCubesPlanet.MarchingCubes
             return Mathf.Max(0.0001f, PlanetMarchingCubesChunkRange.CanonicalChunkSize * lod1Recipe.WorldScale);
         }
 
+        public static float CalculateBaseChunkWorldSize(
+            in PlanetRecipe lod1Recipe,
+            in PlanetChunkLodActivationConfig activationConfig)
+        {
+            return Mathf.Max(0.0001f, activationConfig.CanonicalChunkSize * lod1Recipe.WorldScale);
+        }
+
         public static int GetChunkSizeForLod(PlanetChunkLod lod)
+        {
+            return GetChunkSizeForLod(lod, PlanetMarchingCubesChunkRange.CanonicalChunkSize);
+        }
+
+        public static int GetChunkSizeForLod(PlanetChunkLod lod, in PlanetChunkLodActivationConfig activationConfig)
+        {
+            return GetChunkSizeForLod(lod, activationConfig.CanonicalChunkSize);
+        }
+
+        private static int GetChunkSizeForLod(PlanetChunkLod lod, int canonicalChunkSize)
         {
             switch (lod)
             {
                 case PlanetChunkLod.LOD0:
-                    return PlanetMarchingCubesChunkRange.CanonicalChunkSize * 2;
+                    return canonicalChunkSize * 2;
                 case PlanetChunkLod.LOD1:
-                    return PlanetMarchingCubesChunkRange.CanonicalChunkSize;
+                    return canonicalChunkSize;
                 case PlanetChunkLod.LOD2:
-                    return Mathf.Max(1, PlanetMarchingCubesChunkRange.CanonicalChunkSize / 2);
+                    return Mathf.Max(1, canonicalChunkSize / 2);
                 default:
                     throw new ArgumentOutOfRangeException(nameof(lod), lod, "Unknown planet chunk LOD.");
             }
@@ -68,17 +85,22 @@ namespace MarchingCubesPlanet.MarchingCubes
     [Serializable]
     public struct PlanetChunkLodActivationConfig
     {
+        public const int DefaultCanonicalChunkSize = PlanetMarchingCubesChunkRange.CanonicalChunkSize;
         public const float DefaultLod0MaxDistanceWorld = 900f;
         public const float DefaultLod1MaxDistanceWorld = 1800f;
 
+        public int canonicalChunkSize;
         public bool enableLod0;
         public float lod0MaxDistanceWorld;
         public float lod1MaxDistanceWorld;
+
+        public int CanonicalChunkSize => Mathf.Max(1, canonicalChunkSize);
 
         public static PlanetChunkLodActivationConfig Default()
         {
             return new PlanetChunkLodActivationConfig
             {
+                canonicalChunkSize = DefaultCanonicalChunkSize,
                 enableLod0 = false,
                 lod0MaxDistanceWorld = DefaultLod0MaxDistanceWorld,
                 lod1MaxDistanceWorld = DefaultLod1MaxDistanceWorld
@@ -87,6 +109,11 @@ namespace MarchingCubesPlanet.MarchingCubes
 
         public void EnsureValid()
         {
+            if (canonicalChunkSize <= 0)
+            {
+                canonicalChunkSize = DefaultCanonicalChunkSize;
+            }
+
             if (lod0MaxDistanceWorld <= 0f)
             {
                 lod0MaxDistanceWorld = DefaultLod0MaxDistanceWorld;
@@ -274,6 +301,15 @@ namespace MarchingCubesPlanet.MarchingCubes
             Vector3 chunkCenterWorld,
             in PlanetChunkLodScoringContext context)
         {
+            return Evaluate(chunkId, chunkCenterWorld, in context, -1);
+        }
+
+        public static PlanetChunkLodScore Evaluate(
+            int chunkId,
+            Vector3 chunkCenterWorld,
+            in PlanetChunkLodScoringContext context,
+            int currentLod)
+        {
             Vector3 playerToChunk = chunkCenterWorld - context.PlayerPositionWorld;
             float distanceWorld = playerToChunk.magnitude;
             float distanceChunks = distanceWorld / context.BaseChunkWorldSize;
@@ -290,7 +326,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
 
             float score = proximityScore * ProximityWeight + viewScore * ViewWeight;
-            PlanetChunkLod desiredLod = ResolveDesiredLod(distanceWorld, in context);
+            PlanetChunkLod desiredLod = ResolveDesiredLod(distanceWorld, in context, currentLod);
             return new PlanetChunkLodScore(
                 chunkId,
                 desiredLod,
@@ -304,12 +340,34 @@ namespace MarchingCubesPlanet.MarchingCubes
 
         public static PlanetChunkLod ResolveDesiredLod(float distanceWorld, in PlanetChunkLodScoringContext context)
         {
+            return ResolveDesiredLod(distanceWorld, in context, -1);
+        }
+
+        public static PlanetChunkLod ResolveDesiredLod(
+            float distanceWorld,
+            in PlanetChunkLodScoringContext context,
+            int currentLod)
+        {
             if (context.EnableLod0 && distanceWorld < context.Lod0MaxDistanceWorld)
             {
                 return PlanetChunkLod.LOD0;
             }
 
+            float hysteresisWorld = context.BaseChunkWorldSize;
+            if (context.EnableLod0 &&
+                currentLod == (int)PlanetChunkLod.LOD0 &&
+                distanceWorld < context.Lod0MaxDistanceWorld + hysteresisWorld)
+            {
+                return PlanetChunkLod.LOD0;
+            }
+
             if (distanceWorld < context.Lod1MaxDistanceWorld)
+            {
+                return PlanetChunkLod.LOD1;
+            }
+
+            if (currentLod == (int)PlanetChunkLod.LOD1 &&
+                distanceWorld < context.Lod1MaxDistanceWorld + hysteresisWorld)
             {
                 return PlanetChunkLod.LOD1;
             }
@@ -408,7 +466,8 @@ namespace MarchingCubesPlanet.MarchingCubes
                 PlanetChunkLodScore score = PlanetChunkLodScorer.Evaluate(
                     entry.ChunkId,
                     entry.CenterWorld,
-                    in context);
+                    in context,
+                    entry.CurrentLod);
                 if (entry.ApplyScore(score))
                 {
                     changedLodCount++;
@@ -498,7 +557,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             Vector3 cameraForwardWorld,
             PlanetChunkLodActivationConfig activationConfig)
         {
-            float baseChunkWorldSize = PlanetChunkLodUtility.CalculateBaseChunkWorldSize(in lod1Recipe);
+            float baseChunkWorldSize = PlanetChunkLodUtility.CalculateBaseChunkWorldSize(in lod1Recipe, in activationConfig);
             return new PlanetChunkLodScoringContext(
                 playerPositionWorld,
                 cameraForwardWorld,
