@@ -81,5 +81,46 @@ namespace MarchingCubesPlanet.Lab.Tests
             Assert.AreEqual(PlanetChunkWorkPackagePlanner.DefaultRefinementPackageSize, summary.PackageSize);
             Assert.AreEqual(3, summary.PackageCount);
         }
+
+        [Test]
+        public void RuntimeEntryTracksRequestedLodUntilInitialized()
+        {
+            PlanetChunkLodRuntimeEntry entry = new PlanetChunkLodRuntimeEntry(37, Vector3.zero);
+
+            Assert.IsTrue(entry.NeedsLodRequest);
+            Assert.AreEqual(PlanetChunkLodRuntimeEntry.NoRequestedLod, entry.RequestedLod);
+
+            entry.MarkRequested(PlanetChunkLod.LOD1);
+
+            Assert.IsTrue(entry.HasRequestedLod);
+            Assert.AreEqual((int)PlanetChunkLod.LOD1, entry.RequestedLod);
+
+            entry.MarkInitialized(PlanetChunkLod.LOD1);
+
+            Assert.IsFalse(entry.HasRequestedLod);
+            Assert.AreEqual((int)PlanetChunkLod.LOD1, entry.CurrentLod);
+        }
+
+        [Test]
+        public void RuntimeRequestQueuePrioritizesLowerLodIndex()
+        {
+            PlanetChunkLodRequestQueue queue = new PlanetChunkLodRequestQueue();
+
+            queue.Enqueue(2, PlanetChunkLod.LOD2);
+            queue.Enqueue(1, PlanetChunkLod.LOD1);
+            queue.Enqueue(0, PlanetChunkLod.LOD0);
+
+            Assert.IsTrue(queue.TryDequeue(out PlanetChunkLodRequest first));
+            Assert.AreEqual(0, first.EntryIndex);
+            Assert.AreEqual(PlanetChunkLod.LOD0, first.RequestedLod);
+
+            Assert.IsTrue(queue.TryDequeue(out PlanetChunkLodRequest second));
+            Assert.AreEqual(1, second.EntryIndex);
+            Assert.AreEqual(PlanetChunkLod.LOD1, second.RequestedLod);
+
+            Assert.IsTrue(queue.TryDequeue(out PlanetChunkLodRequest third));
+            Assert.AreEqual(2, third.EntryIndex);
+            Assert.AreEqual(PlanetChunkLod.LOD2, third.RequestedLod);
+        }
     }
 }

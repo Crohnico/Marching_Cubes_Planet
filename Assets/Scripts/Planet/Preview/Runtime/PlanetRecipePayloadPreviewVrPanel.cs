@@ -607,6 +607,10 @@ namespace MarchingCubesPlanet.Preview
                 AppendLine("Runtime LOD updates", flow.LastRuntimeLodUpdateCount.ToString());
                 AppendLine("Runtime LOD changed", flow.LastRuntimeLodChangedChunkCount.ToString());
                 AppendLine("Runtime LOD view version", flow.LastRuntimeLodViewVersion.ToString());
+                AppendLine("Runtime LOD queued", flow.LastRuntimeLodQueuedRequestCount.ToString());
+                AppendLine("Runtime LOD cancelled", flow.LastRuntimeLodCancelledRequestCount.ToString());
+                AppendLine("Runtime LOD processed", flow.LastRuntimeLodProcessedRequestCount.ToString());
+                AppendLine("Runtime LOD pending", flow.RuntimeLodPendingRequestCount.ToString());
             }
 
             PlanetTrianglePoolMetrics environmentMetrics = PlanetTrianglePoolRegistry.Environment.Metrics;

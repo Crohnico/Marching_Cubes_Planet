@@ -35,12 +35,17 @@ namespace MarchingCubesPlanet.Preview
         [SerializeField] private int lastRuntimeLodChangedChunkCount;
         [SerializeField] private int lastRuntimeLodUpdateCount;
         [SerializeField] private int lastRuntimeLodViewVersion = -1;
+        [SerializeField] private int lastRuntimeLodQueuedRequestCount;
+        [SerializeField] private int lastRuntimeLodCancelledRequestCount;
+        [SerializeField] private int lastRuntimeLodProcessedRequestCount;
+        [SerializeField] private int runtimeLodPendingRequestCount;
 
         private readonly List<PlanetCachedChunkMesh> cachedChunks = new List<PlanetCachedChunkMesh>();
         private readonly List<PlanetChunkLodRuntimeEntry> runtimeChunkLods = new List<PlanetChunkLodRuntimeEntry>();
         private readonly Dictionary<Vector3Int, int> runtimeChunkIndexByChunkCoord = new Dictionary<Vector3Int, int>();
         private readonly List<int> runtimeLodAffectedChunkIndexes = new List<int>();
         private readonly HashSet<int> runtimeLodAffectedChunkIndexSet = new HashSet<int>();
+        private readonly PlanetChunkLodRequestQueue runtimeLodRequestQueue = new PlanetChunkLodRequestQueue();
 
         private PlanetRecipe runtimeLod1Recipe = PlanetRecipe.Default();
         private PlanetPlacement runtimePlacement = PlanetPlacement.Default();
@@ -67,6 +72,10 @@ namespace MarchingCubesPlanet.Preview
         public int LastRuntimeLodChangedChunkCount => lastRuntimeLodChangedChunkCount;
         public int LastRuntimeLodUpdateCount => lastRuntimeLodUpdateCount;
         public int LastRuntimeLodViewVersion => lastRuntimeLodViewVersion;
+        public int LastRuntimeLodQueuedRequestCount => lastRuntimeLodQueuedRequestCount;
+        public int LastRuntimeLodCancelledRequestCount => lastRuntimeLodCancelledRequestCount;
+        public int LastRuntimeLodProcessedRequestCount => lastRuntimeLodProcessedRequestCount;
+        public int RuntimeLodPendingRequestCount => runtimeLodPendingRequestCount;
 
         private void Update()
         {
@@ -83,6 +92,8 @@ namespace MarchingCubesPlanet.Preview
             {
                 RefreshRuntimeChunkLods(false);
             }
+
+            ProcessRuntimeChunkLodRequestQueue();
         }
 
         public bool GenerateFromPreview(PlanetRecipePayloadPreview preview, Vector3 priorityOriginWorld)
@@ -251,6 +262,7 @@ namespace MarchingCubesPlanet.Preview
             runtimeCandidateChunkCount = 0;
             activeRuntimeExtractionLod = -1;
             activeRuntimeExtractionChunkSize = -1;
+            ResetRuntimeLodRequestState();
         }
 
         private void ApplyChunkLodSummary(PlanetChunkLodSummary summary)
@@ -268,6 +280,7 @@ namespace MarchingCubesPlanet.Preview
             lastRuntimeLodRefreshTime = 0f;
             lastRuntimeLodChangedChunkCount = 0;
             lastRuntimeLodUpdateCount = 0;
+            ResetRuntimeLodRequestState();
             hasRuntimeLodRingState = false;
             Debug.Log(LogPrefix + "BeginRuntimeChunkLods forceInitialFallbackDesired=" + forceInitialFallbackDesired +
                       " chunkCount=" + runtimeChunkLods.Count +
@@ -275,7 +288,7 @@ namespace MarchingCubesPlanet.Preview
             if (forceInitialFallbackDesired)
             {
                 ApplyChunkLodSummary(ForceRuntimeDesiredLod(PlanetChunkLodUtility.InitialFallbackLod));
-                lastRuntimeLodChangedChunkCount = ProcessRuntimeChunkLodChanges();
+                lastRuntimeLodChangedChunkCount = ProcessRuntimeChunkLodChangesImmediate();
                 lastRuntimeLodUpdateCount++;
                 lastRuntimeLodViewVersion = PlanetTrianglePoolRegistry.PlayerViewVersion;
                 lastRuntimeLodRefreshTime = Time.unscaledTime;
@@ -323,7 +336,7 @@ namespace MarchingCubesPlanet.Preview
                     activationConfig,
                     out changedLodCount);
                 ApplyChunkLodSummary(summary);
-                appliedChangeCount = ProcessRuntimeChunkLodChanges();
+                appliedChangeCount = SynchronizeRuntimeChunkLodRequests();
                 updateRingState = true;
             }
             else
@@ -340,7 +353,7 @@ namespace MarchingCubesPlanet.Preview
                     changedLodCount = EvaluateRuntimeChunkLodIndexes(
                         runtimeLodAffectedChunkIndexes,
                         in activationConfig);
-                    appliedChangeCount = ProcessRuntimeChunkLodChanges(runtimeLodAffectedChunkIndexes);
+                    appliedChangeCount = SynchronizeRuntimeChunkLodRequests(runtimeLodAffectedChunkIndexes);
                     updateRingState = true;
                 }
                 else
@@ -355,6 +368,7 @@ namespace MarchingCubesPlanet.Preview
             lastRuntimeLodUpdateCount++;
             lastRuntimeLodViewVersion = viewVersion;
             lastRuntimeLodRefreshTime = Time.unscaledTime;
+            runtimeLodPendingRequestCount = runtimeLodRequestQueue.PendingCount;
             if (updateRingState)
             {
                 hasRuntimeLodRingState = true;
@@ -379,7 +393,7 @@ namespace MarchingCubesPlanet.Preview
             return summary;
         }
 
-        private int ProcessRuntimeChunkLodChanges()
+        private int ProcessRuntimeChunkLodChangesImmediate()
         {
             if (!hasRuntimeChunkLods)
             {
@@ -408,14 +422,31 @@ namespace MarchingCubesPlanet.Preview
             return changedCount;
         }
 
-        private int ProcessRuntimeChunkLodChanges(IList<int> indexes)
+        private int SynchronizeRuntimeChunkLodRequests()
+        {
+            if (!hasRuntimeChunkLods)
+            {
+                return 0;
+            }
+
+            int changedRequestCount = 0;
+            for (int i = 0; i < runtimeChunkLods.Count; i++)
+            {
+                changedRequestCount += SynchronizeRuntimeChunkLodRequest(i);
+            }
+
+            runtimeLodPendingRequestCount = runtimeLodRequestQueue.PendingCount;
+            return changedRequestCount;
+        }
+
+        private int SynchronizeRuntimeChunkLodRequests(IList<int> indexes)
         {
             if (!hasRuntimeChunkLods || indexes == null || indexes.Count <= 0)
             {
                 return 0;
             }
 
-            int changedCount = 0;
+            int changedRequestCount = 0;
             for (int i = 0; i < indexes.Count; i++)
             {
                 int entryIndex = indexes[i];
@@ -424,23 +455,107 @@ namespace MarchingCubesPlanet.Preview
                     continue;
                 }
 
-                PlanetChunkLodRuntimeEntry entry = runtimeChunkLods[entryIndex];
-                if (!entry.NeedsLodChange)
+                changedRequestCount += SynchronizeRuntimeChunkLodRequest(entryIndex);
+            }
+
+            runtimeLodPendingRequestCount = runtimeLodRequestQueue.PendingCount;
+            return changedRequestCount;
+        }
+
+        private int SynchronizeRuntimeChunkLodRequest(int entryIndex)
+        {
+            if (entryIndex < 0 || entryIndex >= runtimeChunkLods.Count)
+            {
+                return 0;
+            }
+
+            PlanetChunkLodRuntimeEntry entry = runtimeChunkLods[entryIndex];
+            if (!entry.NeedsLodChange)
+            {
+                if (entry.HasRequestedLod)
+                {
+                    if (runtimeLodRequestQueue.Cancel(entryIndex))
+                    {
+                        lastRuntimeLodCancelledRequestCount++;
+                    }
+
+                    entry.ClearRequested();
+                    runtimeChunkLods[entryIndex] = entry;
+                    return 1;
+                }
+
+                return 0;
+            }
+
+            if (entry.HasRequestedLod)
+            {
+                if (entry.RequestedLod == (int)entry.DesiredLod)
+                {
+                    return 0;
+                }
+
+                if (runtimeLodRequestQueue.Cancel(entryIndex))
+                {
+                    lastRuntimeLodCancelledRequestCount++;
+                }
+
+                entry.ClearRequested();
+            }
+
+            entry.MarkRequested(entry.DesiredLod);
+            runtimeChunkLods[entryIndex] = entry;
+            runtimeLodRequestQueue.Enqueue(entryIndex, entry.DesiredLod);
+            lastRuntimeLodQueuedRequestCount++;
+            return 1;
+        }
+
+        private int ProcessRuntimeChunkLodRequestQueue()
+        {
+            if (!hasRuntimeChunkLods)
+            {
+                runtimeLodPendingRequestCount = 0;
+                return 0;
+            }
+
+            int processedCount = 0;
+            PlanetChunkLodActivationConfig activationConfig = ResolveRuntimeLodActivationConfig();
+            int maxRequestCount = Mathf.Max(1, activationConfig.maxRuntimeLodRequestsPerUpdate);
+            while (processedCount < maxRequestCount &&
+                   runtimeLodRequestQueue.TryDequeue(out PlanetChunkLodRequest request))
+            {
+                if (request.EntryIndex < 0 || request.EntryIndex >= runtimeChunkLods.Count)
+                {
+                    continue;
+                }
+
+                PlanetChunkLodRuntimeEntry entry = runtimeChunkLods[request.EntryIndex];
+                if (!entry.HasRequestedLod ||
+                    entry.RequestedLod != (int)request.RequestedLod ||
+                    entry.DesiredLod != request.RequestedLod)
                 {
                     continue;
                 }
 
                 if (!ApplyRuntimeChunkLodChange(entry))
                 {
+                    entry.ClearRequested();
+                    runtimeChunkLods[request.EntryIndex] = entry;
                     continue;
                 }
 
-                entry.MarkInitialized(entry.DesiredLod);
-                runtimeChunkLods[entryIndex] = entry;
-                changedCount++;
+                entry.MarkInitialized(request.RequestedLod);
+                runtimeChunkLods[request.EntryIndex] = entry;
+                processedCount++;
             }
 
-            return changedCount;
+            if (processedCount > 0)
+            {
+                lastRuntimeLodProcessedRequestCount = processedCount;
+                lastRuntimeLodChangedChunkCount = processedCount;
+            }
+
+            runtimeLodPendingRequestCount = runtimeLodRequestQueue.PendingCount;
+            return processedCount;
         }
 
         private int EvaluateRuntimeChunkLodIndexes(
@@ -785,10 +900,6 @@ namespace MarchingCubesPlanet.Preview
                 return true;
             }
 
-            Debug.Log(LogPrefix + "Initialize extraction resources lod=" + lodIndex +
-                      " gridRadius=" + lodRecipe.GridRadius +
-                      " worldScale=" + lodRecipe.WorldScale +
-                      " chunkSize=" + chunkSize);
             shapeLab.SetRecipe(in lodRecipe);
             shapeLab.InitShapeGpu();
             if (!shapeLab.IsShapeGpuInitialized)
@@ -817,9 +928,6 @@ namespace MarchingCubesPlanet.Preview
             activeRuntimeExtractionLod = lodIndex;
             activeRuntimeExtractionChunkSize = chunkSize;
             runtimeCandidateChunkCount = Mathf.Max(0, (int)marchingCubesLab.LastCandidateChunkCount);
-            Debug.Log(LogPrefix + "Extraction resources ready lod=" + lodIndex +
-                      " candidateChunks=" + marchingCubesLab.LastCandidateChunkCount +
-                      " chunkSize=" + marchingCubesLab.Settings.chunkRange.chunkSize);
             return true;
         }
 
@@ -928,12 +1036,22 @@ namespace MarchingCubesPlanet.Preview
             runtimeChunkIndexByChunkCoord.Clear();
             runtimeLodAffectedChunkIndexes.Clear();
             runtimeLodAffectedChunkIndexSet.Clear();
+            ResetRuntimeLodRequestState();
             hasRuntimeChunkLods = false;
             hasRuntimeLodRingState = false;
             lastRuntimeLodChangedChunkCount = 0;
             lastRuntimeLodUpdateCount = 0;
             lastRuntimeLodViewVersion = -1;
             lastRuntimeLodRefreshTime = 0f;
+        }
+
+        private void ResetRuntimeLodRequestState()
+        {
+            runtimeLodRequestQueue.Clear();
+            lastRuntimeLodQueuedRequestCount = 0;
+            lastRuntimeLodCancelledRequestCount = 0;
+            lastRuntimeLodProcessedRequestCount = 0;
+            runtimeLodPendingRequestCount = 0;
         }
 
         private static void ReleaseCachedChunkMeshes(List<PlanetCachedChunkMesh> chunks)

@@ -88,11 +88,13 @@ namespace MarchingCubesPlanet.MarchingCubes
         public const int DefaultCanonicalChunkSize = PlanetMarchingCubesChunkRange.CanonicalChunkSize;
         public const float DefaultLod0MaxDistanceWorld = 900f;
         public const float DefaultLod1MaxDistanceWorld = 1800f;
+        public const int DefaultMaxRuntimeLodRequestsPerUpdate = 5;
 
         public int canonicalChunkSize;
         public bool enableLod0;
         public float lod0MaxDistanceWorld;
         public float lod1MaxDistanceWorld;
+        public int maxRuntimeLodRequestsPerUpdate;
 
         public int CanonicalChunkSize => Mathf.Max(1, canonicalChunkSize);
 
@@ -103,7 +105,8 @@ namespace MarchingCubesPlanet.MarchingCubes
                 canonicalChunkSize = DefaultCanonicalChunkSize,
                 enableLod0 = false,
                 lod0MaxDistanceWorld = DefaultLod0MaxDistanceWorld,
-                lod1MaxDistanceWorld = DefaultLod1MaxDistanceWorld
+                lod1MaxDistanceWorld = DefaultLod1MaxDistanceWorld,
+                maxRuntimeLodRequestsPerUpdate = DefaultMaxRuntimeLodRequestsPerUpdate
             };
         }
 
@@ -122,6 +125,11 @@ namespace MarchingCubesPlanet.MarchingCubes
             if (lod1MaxDistanceWorld <= lod0MaxDistanceWorld)
             {
                 lod1MaxDistanceWorld = Mathf.Max(lod0MaxDistanceWorld + 1f, DefaultLod1MaxDistanceWorld);
+            }
+
+            if (maxRuntimeLodRequestsPerUpdate <= 0)
+            {
+                maxRuntimeLodRequestsPerUpdate = DefaultMaxRuntimeLodRequestsPerUpdate;
             }
         }
     }
@@ -175,6 +183,8 @@ namespace MarchingCubesPlanet.MarchingCubes
 
     public struct PlanetChunkLodRuntimeEntry
     {
+        public const int NoRequestedLod = -1;
+
         public PlanetChunkLodRuntimeEntry(int chunkId, Vector3 centerWorld)
             : this(chunkId, default, centerWorld)
         {
@@ -188,6 +198,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             IsInitialized = false;
             CurrentLod = -1;
             DesiredLod = PlanetChunkLodUtility.InitialFallbackLod;
+            RequestedLod = NoRequestedLod;
         }
 
         public int ChunkId { get; }
@@ -196,7 +207,10 @@ namespace MarchingCubesPlanet.MarchingCubes
         public bool IsInitialized { get; private set; }
         public int CurrentLod { get; private set; }
         public PlanetChunkLod DesiredLod { get; private set; }
+        public int RequestedLod { get; private set; }
+        public bool HasRequestedLod => RequestedLod != NoRequestedLod;
         public bool NeedsLodChange => !IsInitialized || CurrentLod != (int)DesiredLod;
+        public bool NeedsLodRequest => NeedsLodChange && !HasRequestedLod;
 
         public bool ForceDesiredLod(PlanetChunkLod desiredLod)
         {
@@ -212,10 +226,107 @@ namespace MarchingCubesPlanet.MarchingCubes
             return changed;
         }
 
+        public void MarkRequested(PlanetChunkLod requestedLod)
+        {
+            RequestedLod = (int)requestedLod;
+        }
+
+        public void ClearRequested()
+        {
+            RequestedLod = NoRequestedLod;
+        }
+
         public void MarkInitialized(PlanetChunkLod lod)
         {
             IsInitialized = true;
             CurrentLod = (int)lod;
+            ClearRequested();
+        }
+    }
+
+    public readonly struct PlanetChunkLodRequest
+    {
+        public PlanetChunkLodRequest(int entryIndex, PlanetChunkLod requestedLod, int sequence)
+        {
+            EntryIndex = entryIndex;
+            RequestedLod = requestedLod;
+            Sequence = sequence;
+        }
+
+        public int EntryIndex { get; }
+        public PlanetChunkLod RequestedLod { get; }
+        public int Sequence { get; }
+    }
+
+    public sealed class PlanetChunkLodRequestQueue
+    {
+        private readonly List<PlanetChunkLodRequest> pendingRequests = new List<PlanetChunkLodRequest>();
+        private int nextSequence;
+
+        public int PendingCount => pendingRequests.Count;
+
+        public void Clear()
+        {
+            pendingRequests.Clear();
+            nextSequence = 0;
+        }
+
+        public void Enqueue(int entryIndex, PlanetChunkLod requestedLod)
+        {
+            pendingRequests.Add(new PlanetChunkLodRequest(entryIndex, requestedLod, nextSequence));
+            nextSequence++;
+        }
+
+        public bool Cancel(int entryIndex)
+        {
+            bool cancelled = false;
+            for (int i = pendingRequests.Count - 1; i >= 0; i--)
+            {
+                if (pendingRequests[i].EntryIndex != entryIndex)
+                {
+                    continue;
+                }
+
+                pendingRequests.RemoveAt(i);
+                cancelled = true;
+            }
+
+            return cancelled;
+        }
+
+        public bool TryDequeue(out PlanetChunkLodRequest request)
+        {
+            int bestIndex = -1;
+            int bestLod = int.MaxValue;
+            int bestSequence = int.MaxValue;
+            for (int i = 0; i < pendingRequests.Count; i++)
+            {
+                PlanetChunkLodRequest candidate = pendingRequests[i];
+                int candidateLod = (int)candidate.RequestedLod;
+                if (candidateLod > bestLod)
+                {
+                    continue;
+                }
+
+                if (candidateLod == bestLod && candidate.Sequence >= bestSequence)
+                {
+                    continue;
+                }
+
+                bestIndex = i;
+                bestLod = candidateLod;
+                bestSequence = candidate.Sequence;
+            }
+
+            if (bestIndex < 0)
+            {
+                request = default;
+                return false;
+            }
+
+            request = pendingRequests[bestIndex];
+            pendingRequests.RemoveAt(bestIndex);
+            return true;
         }
     }
 

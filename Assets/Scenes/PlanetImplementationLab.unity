@@ -546,8 +546,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 893d3261334e4161b1c171dc047b5076, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MarchingCubesPlanet.Lab::MarchingCubesPlanet.Lab.DebugMinimalLocomotion
-  approachSpeed: 900
-  interiorSpeed: 30
+  approachSpeed: 100
+  interiorSpeed: 50
   speedMode: 0
   pitchDegreesPerSecond: 90
   yawDegreesPerSecond: 90

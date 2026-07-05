@@ -13,6 +13,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         [SerializeField] private bool enableLod0;
         [SerializeField] private float lod0MaxDistanceWorld = PlanetChunkLodActivationConfig.DefaultLod0MaxDistanceWorld;
         [SerializeField] private float lod1MaxDistanceWorld = PlanetChunkLodActivationConfig.DefaultLod1MaxDistanceWorld;
+        [SerializeField] private int maxRuntimeLodRequestsPerUpdate = PlanetChunkLodActivationConfig.DefaultMaxRuntimeLodRequestsPerUpdate;
 
         public PlanetChunkLodActivationConfig ToConfig()
         {
@@ -21,7 +22,8 @@ namespace MarchingCubesPlanet.MarchingCubes
                 canonicalChunkSize = canonicalChunkSize,
                 enableLod0 = enableLod0,
                 lod0MaxDistanceWorld = lod0MaxDistanceWorld,
-                lod1MaxDistanceWorld = lod1MaxDistanceWorld
+                lod1MaxDistanceWorld = lod1MaxDistanceWorld,
+                maxRuntimeLodRequestsPerUpdate = maxRuntimeLodRequestsPerUpdate
             };
             config.EnsureValid();
             return config;
