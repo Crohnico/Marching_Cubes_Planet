@@ -4,29 +4,28 @@ using MarchingCubesPlanet.MarchingCubes;
 using NUnit.Framework;
 using UnityEngine;
 
-namespace MarchingCubesPlanet.Lab.Tests
+namespace MarchingCubesPlanet.Tests
 {
     public sealed class PlanetMarchingCubesPaintSettingsTests
     {
         [Test]
-        public void DefaultPaintSettingsMatchPlanetSurfaceCapacity()
+        public void DefaultPaintSettingsMatchPlanetSurfaceVertexCapacity()
         {
             PlanetMarchingCubesPaintSettings settings = PlanetMarchingCubesPaintSettings.Default();
 
             Assert.AreEqual(PlanetMarchingCubesPaintColorMode.PlanetSurfaceAtlas, settings.colorMode);
-            Assert.AreEqual(1000000, settings.meshTriangleCapacity);
-            Assert.AreEqual(3000000, settings.MeshVertexCapacity);
+            Assert.AreEqual(3000000, settings.meshVertexCapacity);
             Assert.IsTrue(settings.Validate(out string message), message);
         }
 
         [Test]
-        public void PaintSettingsRejectInvalidTriangleCapacity()
+        public void PaintSettingsRejectInvalidVertexCapacity()
         {
             PlanetMarchingCubesPaintSettings settings = PlanetMarchingCubesPaintSettings.Default();
-            settings.meshTriangleCapacity = 0;
+            settings.meshVertexCapacity = 0;
 
             Assert.IsFalse(settings.Validate(out string message));
-            StringAssert.Contains("meshTriangleCapacity", message);
+            StringAssert.Contains("meshVertexCapacity", message);
         }
 
         [Test]

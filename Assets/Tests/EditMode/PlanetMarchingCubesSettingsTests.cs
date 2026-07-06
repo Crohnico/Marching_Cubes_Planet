@@ -3,7 +3,7 @@ using MarchingCubesPlanet.MarchingCubes;
 using NUnit.Framework;
 using UnityEngine;
 
-namespace MarchingCubesPlanet.Lab.Tests
+namespace MarchingCubesPlanet.Tests
 {
     public sealed class PlanetMarchingCubesSettingsTests
     {
@@ -39,13 +39,13 @@ namespace MarchingCubesPlanet.Lab.Tests
         }
 
         [Test]
-        public void SettingsValidateTemporaryOutputCapacity()
+        public void SettingsValidateOutputVertexCapacity()
         {
             PlanetMarchingCubesSettings settings = PlanetMarchingCubesSettings.Default();
-            settings.temporaryOutputTriangleCapacity = 0;
+            settings.outputVertexCapacity = 0;
 
             Assert.IsFalse(settings.Validate(out string message));
-            StringAssert.Contains("temporaryOutputTriangleCapacity", message);
+            StringAssert.Contains("outputVertexCapacity", message);
         }
 
         [Test]
@@ -59,7 +59,7 @@ namespace MarchingCubesPlanet.Lab.Tests
             Assert.AreEqual(16, settings.chunkRange.chunkSize);
             Assert.AreEqual(1, settings.chunkRange.cellSizeGrid);
             Assert.AreEqual(4, settings.chunkRange.safetyMargin);
-            Assert.AreEqual(1000000, settings.temporaryOutputTriangleCapacity);
+            Assert.AreEqual(3000000, settings.outputVertexCapacity);
         }
 
         [Test]

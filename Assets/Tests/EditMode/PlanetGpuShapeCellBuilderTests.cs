@@ -3,7 +3,7 @@ using MarchingCubesPlanet.Shape;
 using NUnit.Framework;
 using UnityEngine;
 
-namespace MarchingCubesPlanet.Lab.Tests
+namespace MarchingCubesPlanet.Tests
 {
     public sealed class PlanetGpuShapeCellBuilderTests
     {

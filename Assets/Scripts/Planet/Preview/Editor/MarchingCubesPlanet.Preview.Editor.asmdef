@@ -2,8 +2,8 @@
     "name": "MarchingCubesPlanet.Preview.Editor",
     "rootNamespace": "MarchingCubesPlanet.Preview.Editor",
     "references": [
-        "MarchingCubesPlanet.Preview",
-        "MarchingCubesPlanet.Lab"
+        "MarchingCubesPlanet.Coordinates",
+        "MarchingCubesPlanet.Preview"
     ],
     "includePlatforms": [
         "Editor"

@@ -7,11 +7,10 @@ namespace MarchingCubesPlanet.MarchingCubes
     [Serializable]
     public struct PlanetMarchingCubesPaintSettings
     {
-        public const int DefaultMeshTriangleCapacity = 1000000;
+        public const int DefaultMeshVertexCapacity = 3000000;
 
         public PlanetMarchingCubesPaintColorMode colorMode;
-        [FormerlySerializedAs("maxPaintedTriangles")]
-        public int meshTriangleCapacity;
+        public int meshVertexCapacity;
         [FormerlySerializedAs("solidDebugColor")]
         public Color solidColor;
 
@@ -20,12 +19,10 @@ namespace MarchingCubesPlanet.MarchingCubes
             return new PlanetMarchingCubesPaintSettings
             {
                 colorMode = PlanetMarchingCubesPaintColorMode.PlanetSurfaceAtlas,
-                meshTriangleCapacity = DefaultMeshTriangleCapacity,
+                meshVertexCapacity = DefaultMeshVertexCapacity,
                 solidColor = new Color(0.15f, 0.9f, 1f, 1f)
             };
         }
-
-        public int MeshVertexCapacity => meshTriangleCapacity * 3;
 
         public bool Validate(out string message)
         {
@@ -35,9 +32,9 @@ namespace MarchingCubesPlanet.MarchingCubes
                 return false;
             }
 
-            if (meshTriangleCapacity <= 0)
+            if (meshVertexCapacity <= 0)
             {
-                message = "meshTriangleCapacity must be greater than zero.";
+                message = "meshVertexCapacity must be greater than zero.";
                 return false;
             }
 
@@ -48,8 +45,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         public override string ToString()
         {
             return "colorMode=" + colorMode +
-                   "\nmeshTriangleCapacity=" + meshTriangleCapacity +
-                   "\nmeshVertexCapacity=" + MeshVertexCapacity;
+                   "\nmeshVertexCapacity=" + meshVertexCapacity;
         }
     }
 }

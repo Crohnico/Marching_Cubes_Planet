@@ -108,7 +108,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             ValidatePaintInputs(meshFilter, meshRenderer, source, in recipe, settings);
             int sourceVertexCount = source.VertexCount - source.VertexCount % 3;
             int sourceTriangleCount = sourceVertexCount / 3;
-            ValidateTriangleCapacity(sourceTriangleCount, settings);
+            ValidateVertexCapacity(sourceVertexCount, settings);
 
             PlanetGpuShapeCell[] cells = BuildCells(in recipe);
             Release(meshFilter, meshRenderer);
@@ -443,7 +443,7 @@ namespace MarchingCubesPlanet.MarchingCubes
 
             int sourceVertexCount = source.VertexCount - source.VertexCount % 3;
             int sourceTriangleCount = sourceVertexCount / 3;
-            ValidateTriangleCapacity(sourceTriangleCount, settings);
+            ValidateVertexCapacity(sourceVertexCount, settings);
 
             RuntimeChunkMesh slot = GetOrCreateRuntimeMeshSlot(meshId, cacheChunkId);
             if (sourceTriangleCount <= 0)
@@ -599,13 +599,13 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
         }
 
-        private static void ValidateTriangleCapacity(int triangleCount, PlanetMarchingCubesPaintSettings settings)
+        private static void ValidateVertexCapacity(int vertexCount, PlanetMarchingCubesPaintSettings settings)
         {
-            if (triangleCount > settings.meshTriangleCapacity)
+            if (vertexCount > settings.meshVertexCapacity)
             {
                 throw new InvalidOperationException(
-                    "Marching Cubes paint capacity is too small. sourceTriangles=" + triangleCount +
-                    " meshTriangleCapacity=" + settings.meshTriangleCapacity + ".");
+                    "Marching Cubes paint vertex capacity is too small. sourceVertices=" + vertexCount +
+                    " meshVertexCapacity=" + settings.meshVertexCapacity + ".");
             }
         }
 

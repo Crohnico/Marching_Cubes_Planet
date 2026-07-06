@@ -6,26 +6,24 @@ namespace MarchingCubesPlanet.MarchingCubes
     [Serializable]
     public struct PlanetMarchingCubesSettings
     {
-        public const int DefaultTemporaryOutputTriangleCapacity = 1000000;
+        public const int DefaultOutputVertexCapacity = 3000000;
 
         [FormerlySerializedAs("surfaceRange")]
         public PlanetMarchingCubesChunkRange chunkRange;
         [FormerlySerializedAs("maxPlanetSurfaceTriangles")]
         [FormerlySerializedAs("maxValidationTriangles")]
-        public int temporaryOutputTriangleCapacity;
+        public int outputVertexCapacity;
 
         public static PlanetMarchingCubesSettings Default()
         {
             return new PlanetMarchingCubesSettings
             {
                 chunkRange = PlanetMarchingCubesChunkRange.Default(),
-                temporaryOutputTriangleCapacity = DefaultTemporaryOutputTriangleCapacity
+                outputVertexCapacity = DefaultOutputVertexCapacity
             };
         }
 
-        public int TemporaryOutputVertexCapacity => temporaryOutputTriangleCapacity * 3;
-
-        public long EstimatedVertexBytes => (long)TemporaryOutputVertexCapacity * PlanetMarchingCubesVertex.Stride;
+        public long EstimatedVertexBytes => (long)Math.Max(0, outputVertexCapacity) * PlanetMarchingCubesVertex.Stride;
 
         public void EnsureDefaults()
         {
@@ -37,9 +35,9 @@ namespace MarchingCubesPlanet.MarchingCubes
 
             chunkRange.EnsureDefaults();
 
-            if (temporaryOutputTriangleCapacity <= 0)
+            if (outputVertexCapacity <= 0)
             {
-                temporaryOutputTriangleCapacity = defaults.temporaryOutputTriangleCapacity;
+                outputVertexCapacity = defaults.outputVertexCapacity;
             }
         }
 
@@ -50,9 +48,9 @@ namespace MarchingCubesPlanet.MarchingCubes
                 return false;
             }
 
-            if (temporaryOutputTriangleCapacity <= 0)
+            if (outputVertexCapacity <= 0)
             {
-                message = "temporaryOutputTriangleCapacity must be greater than zero.";
+                message = "outputVertexCapacity must be greater than zero.";
                 return false;
             }
 
@@ -63,8 +61,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         public override string ToString()
         {
             return chunkRange +
-                   "\ntemporaryOutputTriangleCapacity=" + temporaryOutputTriangleCapacity +
-                   "\ntemporaryOutputVertexCapacity=" + TemporaryOutputVertexCapacity +
+                   "\noutputVertexCapacity=" + outputVertexCapacity +
                    "\nestimatedVertexBytes=" + EstimatedVertexBytes;
         }
     }

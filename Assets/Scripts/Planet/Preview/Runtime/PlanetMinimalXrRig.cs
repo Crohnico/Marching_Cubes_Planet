@@ -8,7 +8,7 @@ using UnityEngine.Profiling;
 using UnityEngine.UI;
 using UnityEngine.XR;
 
-namespace MarchingCubesPlanet.Lab
+namespace MarchingCubesPlanet.Preview
 {
     public sealed class PlanetMinimalXrRig : MonoBehaviour
     {

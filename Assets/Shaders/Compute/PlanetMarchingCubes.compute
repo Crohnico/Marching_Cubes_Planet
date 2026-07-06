@@ -32,7 +32,7 @@ uint _MarchingCubesCellStartIndex;
 uint _MarchingCubesCellEndIndex;
 uint _MarchingCubesChunkSize;
 uint _MarchingCubesChunkIndexBase;
-uint _MarchingCubesMaxTriangleCount;
+uint _MarchingCubesOutputPrimitiveLimit;
 uint _MarchingCubesWriteEnabled;
 
 float3 PlanetMcInterpolate(float3 a, float3 b, float densityA, float densityB)
@@ -111,8 +111,8 @@ void PlanetMcEmitCube(uint cellIndex, float3 cornerPositions[8], float cornerDen
     uint attemptedStart;
     InterlockedAdd(_MarchingCubesState[0].triangleCountAttempted, triangleCount, attemptedStart);
 
-    uint maxTriangleCount = _MarchingCubesMaxTriangleCount;
-    if (attemptedStart + triangleCount > maxTriangleCount)
+    uint outputPrimitiveLimit = _MarchingCubesOutputPrimitiveLimit;
+    if (attemptedStart + triangleCount > outputPrimitiveLimit)
     {
         uint previousOverflow;
         InterlockedExchange(_MarchingCubesState[0].overflowFlag, 1u, previousOverflow);

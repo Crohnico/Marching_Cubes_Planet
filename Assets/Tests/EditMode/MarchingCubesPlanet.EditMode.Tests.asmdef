@@ -1,12 +1,10 @@
 {
-    "name": "MarchingCubesPlanet.Lab.EditMode.Tests",
-    "rootNamespace": "MarchingCubesPlanet.Lab.Tests",
+    "name": "MarchingCubesPlanet.EditMode.Tests",
+    "rootNamespace": "MarchingCubesPlanet.Tests",
     "references": [
         "MarchingCubesPlanet.Coordinates",
-        "MarchingCubesPlanet.Compute",
         "MarchingCubesPlanet.MarchingCubes",
-        "MarchingCubesPlanet.Shape",
-        "MarchingCubesPlanet.Lab"
+        "MarchingCubesPlanet.Shape"
     ],
     "includePlatforms": [
         "Editor"

@@ -1,22 +1,12 @@
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 namespace MarchingCubesPlanet.Preview.Editor
 {
     public static class PlanetRecipePayloadPreviewVrPanelSceneUtility
     {
-        private const string ScenePath = "Assets/Scenes/PlanetImplementationLab.unity";
-        private const string AutoCreateSessionKey = "PlanetRecipePayloadPreviewVrPanelSceneUtility.AutoCreate";
-
-        [InitializeOnLoadMethod]
-        private static void RegisterAutoCreateForOpenLabScene()
-        {
-            EditorApplication.delayCall += AutoCreateOnceForOpenLabScene;
-        }
-
-        [MenuItem("Tools/Planet Lab/Payload Preview/Create Or Refresh VR Deadline Panels In Scene")]
+        [MenuItem("Tools/Planet Preview/Create Or Refresh VR Panels In Scene")]
         public static void CreateOrRefreshOpenSceneFromMenu()
         {
             CreateOrRefreshOpenScene(useUndo: true, selectPanel: true);
@@ -37,7 +27,7 @@ namespace MarchingCubesPlanet.Preview.Editor
                 panel = PlanetRecipePayloadPreviewVrPanel.CreateDefault(preview);
                 if (useUndo)
                 {
-                    Undo.RegisterCreatedObjectUndo(panel.gameObject, "Create Planet Payload VR Deadline Panels");
+                    Undo.RegisterCreatedObjectUndo(panel.gameObject, "Create Planet Payload VR Panels");
                 }
             }
 
@@ -52,35 +42,6 @@ namespace MarchingCubesPlanet.Preview.Editor
             }
 
             return panel;
-        }
-
-        private static void AutoCreateOnceForOpenLabScene()
-        {
-            if (SessionState.GetBool(AutoCreateSessionKey, false))
-            {
-                return;
-            }
-
-            Scene scene = SceneManager.GetActiveScene();
-            if (!scene.IsValid() || scene.path != ScenePath)
-            {
-                return;
-            }
-
-            if (Object.FindFirstObjectByType<PlanetRecipePayloadPreviewVrPanel>() != null)
-            {
-                SessionState.SetBool(AutoCreateSessionKey, true);
-                return;
-            }
-
-            PlanetRecipePayloadPreview preview = Object.FindFirstObjectByType<PlanetRecipePayloadPreview>();
-            if (preview == null)
-            {
-                return;
-            }
-
-            CreateOrRefreshOpenScene(useUndo: false, selectPanel: false);
-            SessionState.SetBool(AutoCreateSessionKey, true);
         }
     }
 }

@@ -20,7 +20,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private static readonly int CellEndIndexId = Shader.PropertyToID("_MarchingCubesCellEndIndex");
         private static readonly int ChunkSizeId = Shader.PropertyToID("_MarchingCubesChunkSize");
         private static readonly int ChunkIndexBaseId = Shader.PropertyToID("_MarchingCubesChunkIndexBase");
-        private static readonly int MaxTriangleCountId = Shader.PropertyToID("_MarchingCubesMaxTriangleCount");
+        private static readonly int OutputPrimitiveLimitId = Shader.PropertyToID("_MarchingCubesOutputPrimitiveLimit");
         private static readonly int WriteEnabledId = Shader.PropertyToID("_MarchingCubesWriteEnabled");
 
         private const string ExtractChunkedCartesianSurfaceKernelName = "CS_ExtractChunkedCartesianSurface";
@@ -127,7 +127,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                 PlanetMarchingCubesChunkOrigin.Stride);
             vertexBuffer = CreateBuffer(
                 "Planet Marching Cubes Vertices",
-                settings.TemporaryOutputVertexCapacity,
+                settings.outputVertexCapacity,
                 PlanetMarchingCubesVertex.Stride);
             stateBuffer = CreateBuffer("Planet Marching Cubes State", 1, PlanetMarchingCubesState.Stride);
             edgeTableBuffer = CreateBuffer("Planet Marching Cubes Edge Table", PlanetMarchingCubesLookupTables.EdgeTable.Length, sizeof(uint));
@@ -140,7 +140,7 @@ namespace MarchingCubesPlanet.MarchingCubes
 
             SetData(edgeTableBuffer, PlanetMarchingCubesLookupTables.EdgeTable, PlanetMarchingCubesLookupTables.EdgeTable.Length);
             SetData(triTableBuffer, PlanetMarchingCubesLookupTables.TriTable, PlanetMarchingCubesLookupTables.TriTable.Length);
-            vertexReadback = new PlanetMarchingCubesVertex[settings.TemporaryOutputVertexCapacity];
+            vertexReadback = new PlanetMarchingCubesVertex[settings.outputVertexCapacity];
         }
 
         public PlanetMarchingCubesExtractionResult ExtractPlanetSurface()
@@ -217,7 +217,7 @@ namespace MarchingCubesPlanet.MarchingCubes
 
                 GetData(stateBuffer, stateReadback, 1);
                 PlanetMarchingCubesState countedState = stateReadback[0];
-                if (countedState.triangleCountAttempted > settings.temporaryOutputTriangleCapacity)
+                if ((ulong)countedState.triangleCountAttempted * 3UL > (ulong)settings.outputVertexCapacity)
                 {
                     countedState.triangleCountWritten = 0u;
                     countedState.vertexCountWritten = 0u;
@@ -225,8 +225,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                     result = new PlanetMarchingCubesExtractionResult(
                         countedState,
                         vertexReadback,
-                        0,
-                        settings.temporaryOutputTriangleCapacity);
+                        0);
                     hasActiveIncrementalExtraction = false;
                     completed = true;
                     return true;
@@ -311,7 +310,7 @@ namespace MarchingCubesPlanet.MarchingCubes
 
             GetData(stateBuffer, stateReadback, 1);
             PlanetMarchingCubesState countedState = stateReadback[0];
-            if (countedState.triangleCountAttempted > settings.temporaryOutputTriangleCapacity)
+            if ((ulong)countedState.triangleCountAttempted * 3UL > (ulong)settings.outputVertexCapacity)
             {
                 countedState.triangleCountWritten = 0u;
                 countedState.vertexCountWritten = 0u;
@@ -319,8 +318,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                 return new PlanetMarchingCubesExtractionResult(
                     countedState,
                     vertexReadback,
-                    0,
-                    settings.temporaryOutputTriangleCapacity);
+                    0);
             }
 
             BindCommonBuffers(extractKernel);
@@ -400,7 +398,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             computeShader.SetInt(CellCountId, unchecked((int)(uint)Math.Max(0L, activeCellCount)));
             computeShader.SetInt(ChunkSizeId, ActiveChunkSize);
             computeShader.SetInt(ChunkIndexBaseId, Mathf.Max(0, chunkIndexBase));
-            computeShader.SetInt(MaxTriangleCountId, settings.temporaryOutputTriangleCapacity);
+            computeShader.SetInt(OutputPrimitiveLimitId, settings.outputVertexCapacity / 3);
         }
 
         private static long CalculateCellsPerChunk(int chunkSize)
@@ -474,8 +472,8 @@ namespace MarchingCubesPlanet.MarchingCubes
             GetData(stateBuffer, stateReadback, 1);
             PlanetMarchingCubesState state = stateReadback[0];
             int clampedVertexCount = Mathf.Min(
-                (int)Math.Min(state.vertexCountWritten, (uint)settings.TemporaryOutputVertexCapacity),
-                settings.TemporaryOutputVertexCapacity);
+                (int)Math.Min(state.vertexCountWritten, (uint)settings.outputVertexCapacity),
+                settings.outputVertexCapacity);
 
             if (clampedVertexCount > 0)
             {
@@ -485,8 +483,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             return new PlanetMarchingCubesExtractionResult(
                 state,
                 vertexReadback,
-                clampedVertexCount,
-                settings.temporaryOutputTriangleCapacity);
+                clampedVertexCount);
         }
 
         private PlanetGpuBufferHandle CreateBuffer(string resourceName, int elementCount, int stride)
