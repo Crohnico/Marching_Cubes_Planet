@@ -94,6 +94,45 @@ Un cambio de LOD no debe destruir la Mesh visible si puede reescribirse o
 alternarse mediante doble buffer.
 ```
 
+## PlanetGrid inicial
+
+Antes de generar chunks concretos, el preview crea un `PlanetGrid` minimo.
+
+Contrato actual:
+
+```text
+coordinates -> uint
+0 = sin informacion
+1 = chunk confirmado con al menos 1 triangulo
+```
+
+El grid inicial usa coordenadas logicas de chunk, no origins de un LOD concreto.
+Ese nombre de chunk es comun para LOD0, LOD1 y LOD2; cada LOD lo traduce despues
+a su `PlanetMarchingCubesChunkOrigin` usando su `chunkSize`.
+
+El rango de shell solo se usa como lista conservadora de trabajo. No escribe `1`
+por si mismo.
+
+Cada candidato se confirma con la ruta de conteo de Marching Cubes. Solo se
+marca `1` si el count pass del chunk devuelve `triangleCountAttempted > 0`.
+Un chunk vacio no se marca nunca con `1`.
+
+`PlanetGrid` es un mapa `PlanetGridCoordinates -> uint`. No tiene semantica de
+lista ni se consulta por indice.
+
+Regla:
+
+```text
+Generate Grid crea el PlanetGrid.
+Generate Shell asegura que existe PlanetGrid antes de cocinar la shell.
+Generate Chunk pide un `chunkID` al PlanetGrid y solo cocina ese chunk si el
+mapa lo marca con informacion.
+PlanetGenerator.GenerateChunk recibe ese `chunkID`, lo traduce al origin del LOD
+solicitado y ejecuta Marching Cubes solo para ese chunk.
+En el panel de preview, `Generate` con modo Chunk escoge temporalmente una
+coordenada marcada a 1 y cocina el LOD seleccionado.
+```
+
 ## Estrategias aceptadas
 
 ### 1. API low-level de Mesh

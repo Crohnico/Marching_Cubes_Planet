@@ -25,6 +25,7 @@ namespace MarchingCubesPlanet.Preview
         [SerializeField] private Button lod2Button;
         [SerializeField] private Button lod1Button;
         [SerializeField] private Button lod0Button;
+        [SerializeField] private Button generateGridButton;
         [SerializeField] private Button generateButton;
         [SerializeField] private Button generateRandomButton;
         [SerializeField] private Button releaseButton;
@@ -92,6 +93,16 @@ namespace MarchingCubesPlanet.Preview
             preview.Generate(selectedMode, selectedLod);
         }
 
+        public void GenerateGrid()
+        {
+            if (preview == null)
+            {
+                return;
+            }
+
+            preview.GenerateGrid();
+        }
+
         public void GenerateRandomSeed()
         {
             if (preview == null)
@@ -121,6 +132,7 @@ namespace MarchingCubesPlanet.Preview
             AddListener(shellModeButton, SelectShellMode);
             AddListener(chunkModeButton, SelectChunkMode);
             AddListener(baseModeButton, SelectBaseMode);
+            AddListener(generateGridButton, GenerateGrid);
             AddListener(generateButton, Generate);
             AddListener(generateRandomButton, GenerateRandomSeed);
             AddListener(releaseButton, Release);
@@ -135,6 +147,7 @@ namespace MarchingCubesPlanet.Preview
             RemoveListener(shellModeButton, SelectShellMode);
             RemoveListener(chunkModeButton, SelectChunkMode);
             RemoveListener(baseModeButton, SelectBaseMode);
+            RemoveListener(generateGridButton, GenerateGrid);
             RemoveListener(generateButton, Generate);
             RemoveListener(generateRandomButton, GenerateRandomSeed);
             RemoveListener(releaseButton, Release);
@@ -187,7 +200,7 @@ namespace MarchingCubesPlanet.Preview
             DestroyChild(parent, ControlsCanvasName);
             DestroyChild(parent, LegacyControlsCanvasName);
 
-            Canvas canvas = CreateCanvas(ControlsCanvasName, parent, localPosition, new Vector2(470f, 210f));
+            Canvas canvas = CreateCanvas(ControlsCanvasName, parent, localPosition, new Vector2(470f, 260f));
 
             GameObject root = new GameObject("PlanetRecipeControlsRoot");
             root.transform.SetParent(canvas.transform, false);
@@ -220,6 +233,7 @@ namespace MarchingCubesPlanet.Preview
 
             CreateModeSelector(panel.transform);
 
+            generateGridButton = CreateButton(panel.transform, "Generate Grid", 38f);
             generateButton = CreateButton(panel.transform, "Generate", 42f);
             generateRandomButton = CreateButton(panel.transform, "Generate Random", 42f);
             releaseButton = CreateButton(panel.transform, "Release", 42f);
@@ -234,6 +248,7 @@ namespace MarchingCubesPlanet.Preview
                 && lod2Button != null
                 && lod1Button != null
                 && lod0Button != null
+                && generateGridButton != null
                 && generateButton != null
                 && generateRandomButton != null
                 && releaseButton != null)

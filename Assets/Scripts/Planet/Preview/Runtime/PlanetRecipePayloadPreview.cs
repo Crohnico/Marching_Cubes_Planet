@@ -16,42 +16,84 @@ namespace MarchingCubesPlanet.Preview
 
         [SerializeField] private PlanetRecipe recipe = PlanetRecipe.Default();
         [SerializeField] private PlanetPlacement placement = PlanetPlacement.Default();
+        private PlanetGrid planetGrid;
 
-        public PlanetRecipe Recipe => recipe;
-        public PlanetPlacement Placement => placement;
+        MeshFilter meshFilter;
+        MeshRenderer meshRenderer;
 
-        private void Awake()
+        private void Start()
         {
             SyncPlacementFromTransform();
+
+            meshFilter = GetMeshFilter();
+            meshRenderer = GetMeshRenderer();
+        }
+
+        private MeshFilter GetMeshFilter()
+        {
+            if (meshFilter == null) meshFilter = GetComponent<MeshFilter>();
+            if (meshFilter == null) meshFilter = gameObject.AddComponent<MeshFilter>();
+            return meshFilter;
+        }
+
+        private MeshRenderer GetMeshRenderer()
+        {
+            if (meshRenderer == null) meshRenderer = GetComponent<MeshRenderer>();
+            if (meshRenderer == null) meshRenderer = gameObject.AddComponent<MeshRenderer>();
+            return meshRenderer;
         }
 
         public void Generate(GenerationType type, PlanetChunkLod lod)
         {
             SyncPlacementFromTransform();
 
+            if (planetGrid == null) GenerateGrid();
+
             if (type == GenerationType.Shell)
             {
                 GenerateShell(lod);
                 return;
+            }
+
+            if (type == GenerationType.Chunk)
+            {
+                if (planetGrid.TryGetAnyInformation(out PlanetGridCoordinates chunkID))
+                {
+                    GenerateChunk(lod, chunkID);
+                }
             }
         }
 
         public void GenerateRandomSeed(GenerationType type, PlanetChunkLod lod)
         {
             recipe.Seed = Random.Range(int.MinValue, int.MaxValue);
+            planetGrid = null;
+            GenerateGrid();
             Generate(type, lod);
+        }
+
+        public void GenerateGrid()
+        {
+            SyncPlacementFromTransform();
+            planetGrid = PlanetGenerator.GenerateGrid(recipe);
+        }
+
+        public void GenerateChunk(PlanetChunkLod lod, PlanetGridCoordinates chunkID)
+        {
+            PlanetGenerator.GenerateChunk(
+                recipe,
+                placement,
+                lod,
+                chunkID,
+                GetMeshFilter(),
+                GetMeshRenderer());
         }
 
         public void Release()
         {
             SyncPlacementFromTransform();
-            PlanetGenerator.Release(GetComponent<MeshFilter>(), GetComponent<MeshRenderer>());
-        }
-
-        public void ResetDemoRecipe()
-        {
-            recipe = PlanetRecipe.Default();
-            SyncPlacementFromTransform();
+            PlanetGenerator.Release(GetMeshFilter(), GetMeshRenderer());
+            planetGrid = null;
         }
 
         private void SyncPlacementFromTransform()
@@ -62,24 +104,12 @@ namespace MarchingCubesPlanet.Preview
 
         private void GenerateShell(PlanetChunkLod lod)
         {
-            MeshFilter meshFilter = GetComponent<MeshFilter>();
-            if (meshFilter == null)
-            {
-                meshFilter = gameObject.AddComponent<MeshFilter>();
-            }
-
-            MeshRenderer meshRenderer = GetComponent<MeshRenderer>();
-            if (meshRenderer == null)
-            {
-                meshRenderer = gameObject.AddComponent<MeshRenderer>();
-            }
-
             PlanetGenerator.GenerateShell(
                 recipe,
                 placement,
                 lod,
-                meshFilter,
-                meshRenderer);
+                GetMeshFilter(),
+                GetMeshRenderer());
         }
     }
 }

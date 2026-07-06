@@ -122,5 +122,27 @@ namespace MarchingCubesPlanet.Tests
             Assert.AreEqual(2, third.EntryIndex);
             Assert.AreEqual(PlanetChunkLod.LOD2, third.RequestedLod);
         }
+
+        [Test]
+        public void PlanetGridStoresInformationByChunkCoordinates()
+        {
+            PlanetGrid grid = new PlanetGrid(2);
+            PlanetGridCoordinates chunk = new PlanetGridCoordinates(4, -2, 7);
+
+            Assert.IsFalse(grid.HasInformation(chunk));
+            Assert.AreEqual(0u, grid[chunk]);
+
+            grid.Set(chunk, 1u);
+
+            Assert.IsTrue(grid.HasInformation(chunk));
+            Assert.AreEqual(1u, grid[chunk]);
+            Assert.AreEqual(1, grid.InformationCount);
+
+            grid.Set(chunk, 0u);
+
+            Assert.IsFalse(grid.HasInformation(chunk));
+            Assert.AreEqual(0u, grid[chunk]);
+            Assert.AreEqual(0, grid.InformationCount);
+        }
     }
 }

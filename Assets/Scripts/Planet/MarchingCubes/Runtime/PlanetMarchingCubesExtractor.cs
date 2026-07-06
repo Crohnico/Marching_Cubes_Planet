@@ -77,6 +77,60 @@ namespace MarchingCubesPlanet.MarchingCubes
             PlanetGpuShapeEvaluator initializedShapeEvaluator,
             PlanetGpuBufferMode requestedBufferMode)
         {
+            PlanetMarchingCubesSettings sanitizedSettings = extractionSettings;
+            sanitizedSettings.EnsureDefaults();
+            PlanetMarchingCubesChunkOrigin[] candidates =
+                sanitizedSettings.chunkRange.BuildCandidateChunks(in sourceRecipe, out PlanetMarchingCubesChunkBuildStats buildStats);
+
+            InitializeWithCandidates(
+                shader,
+                in sourceRecipe,
+                in sanitizedSettings,
+                initializedShapeEvaluator,
+                requestedBufferMode,
+                candidates,
+                buildStats);
+        }
+
+        public void InitializeSingleChunk(
+            ComputeShader shader,
+            in PlanetRecipe sourceRecipe,
+            in PlanetMarchingCubesSettings extractionSettings,
+            PlanetGpuShapeEvaluator initializedShapeEvaluator,
+            PlanetGpuBufferMode requestedBufferMode,
+            PlanetMarchingCubesChunkOrigin chunkOrigin)
+        {
+            PlanetMarchingCubesSettings sanitizedSettings = extractionSettings;
+            sanitizedSettings.EnsureDefaults();
+            sanitizedSettings.chunkRange.chunkSize = Mathf.Max(1, sanitizedSettings.chunkRange.chunkSize);
+            PlanetMarchingCubesChunkOrigin[] candidates = { chunkOrigin };
+            PlanetMarchingCubesChunkBuildStats buildStats = new PlanetMarchingCubesChunkBuildStats(
+                1,
+                1L,
+                0f,
+                0f,
+                sanitizedSettings.chunkRange.chunkSize,
+                false);
+
+            InitializeWithCandidates(
+                shader,
+                in sourceRecipe,
+                in sanitizedSettings,
+                initializedShapeEvaluator,
+                requestedBufferMode,
+                candidates,
+                buildStats);
+        }
+
+        private void InitializeWithCandidates(
+            ComputeShader shader,
+            in PlanetRecipe sourceRecipe,
+            in PlanetMarchingCubesSettings extractionSettings,
+            PlanetGpuShapeEvaluator initializedShapeEvaluator,
+            PlanetGpuBufferMode requestedBufferMode,
+            PlanetMarchingCubesChunkOrigin[] candidates,
+            PlanetMarchingCubesChunkBuildStats buildStats)
+        {
             if (shader == null)
             {
                 throw new ArgumentNullException(nameof(shader));
@@ -87,9 +141,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                 throw new ArgumentException(recipeMessage, nameof(sourceRecipe));
             }
 
-            PlanetMarchingCubesSettings sanitizedSettings = extractionSettings;
-            sanitizedSettings.EnsureDefaults();
-            if (!sanitizedSettings.Validate(out string settingsMessage))
+            if (!extractionSettings.Validate(out string settingsMessage))
             {
                 throw new ArgumentException(settingsMessage, nameof(extractionSettings));
             }
@@ -99,14 +151,11 @@ namespace MarchingCubesPlanet.MarchingCubes
                 throw new ArgumentException("PlanetGpuShapeEvaluator must be initialized before Marching Cubes extraction.", nameof(initializedShapeEvaluator));
             }
 
-            PlanetMarchingCubesChunkOrigin[] candidates =
-                sanitizedSettings.chunkRange.BuildCandidateChunks(in sourceRecipe, out PlanetMarchingCubesChunkBuildStats buildStats);
-
             Release();
 
             computeShader = shader;
             recipe = sourceRecipe;
-            settings = sanitizedSettings;
+            settings = extractionSettings;
             shapeEvaluator = initializedShapeEvaluator;
             bufferMode = requestedBufferMode;
             chunkOrigins = candidates;
@@ -169,6 +218,24 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
 
             return ExtractCartesianSurfaceRange(candidateChunkIndex, 1, candidateChunkIndex);
+        }
+
+        public PlanetMarchingCubesState CountCandidateChunkSurface(int candidateChunkIndex)
+        {
+            if (!IsInitialized)
+            {
+                throw new InvalidOperationException("PlanetMarchingCubesExtractor must be initialized before extraction.");
+            }
+
+            if (candidateChunkIndex < 0 || candidateChunkIndex >= chunkOrigins.Length)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(candidateChunkIndex),
+                    candidateChunkIndex,
+                    "Candidate chunk index is outside the current 07 candidate list.");
+            }
+
+            return CountCartesianSurfaceRange(candidateChunkIndex, 1, candidateChunkIndex);
         }
 
         public void BeginCandidateChunkSurfaceExtraction(int candidateChunkIndex)
@@ -327,6 +394,41 @@ namespace MarchingCubesPlanet.MarchingCubes
             computeShader.SetInt(WriteEnabledId, 1);
             Dispatch(extractKernel, activeCellCount);
             return ReadbackResult();
+        }
+
+        private PlanetMarchingCubesState CountCartesianSurfaceRange(
+            int candidateStartIndex,
+            int candidateCount,
+            int chunkIndexBase)
+        {
+            if (!IsInitialized)
+            {
+                throw new InvalidOperationException("PlanetMarchingCubesExtractor must be initialized before extraction.");
+            }
+
+            int safeCandidateStartIndex = Mathf.Max(0, candidateStartIndex);
+            if (safeCandidateStartIndex >= chunkOrigins.Length)
+            {
+                return default;
+            }
+
+            int safeCandidateCount = Mathf.Clamp(candidateCount, 0, chunkOrigins.Length - safeCandidateStartIndex);
+            if (safeCandidateCount <= 0)
+            {
+                return default;
+            }
+
+            UploadChunkOrigins(safeCandidateStartIndex, safeCandidateCount);
+            long activeCellCount = (long)safeCandidateCount * CellsPerActiveChunk;
+
+            BindCommonBuffers(extractKernel);
+            ResetExtractionState(safeCandidateCount);
+            SetCommonParameters(activeCellCount, chunkIndexBase);
+            computeShader.SetInt(WriteEnabledId, 0);
+            Dispatch(extractKernel, activeCellCount);
+
+            GetData(stateBuffer, stateReadback, 1);
+            return stateReadback[0];
         }
 
         private void BeginCartesianSurfaceRangeExtraction(
