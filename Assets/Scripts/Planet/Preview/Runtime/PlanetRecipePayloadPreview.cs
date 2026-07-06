@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.MarchingCubes;
 using UnityEngine;
@@ -17,6 +18,8 @@ namespace MarchingCubesPlanet.Preview
         [SerializeField] private PlanetRecipe recipe = PlanetRecipe.Default();
         [SerializeField] private PlanetPlacement placement = PlanetPlacement.Default();
         private PlanetGrid planetGrid;
+        private int index = -1;
+        private bool isConcatenatingChunks;
 
         MeshFilter meshFilter;
         MeshRenderer meshRenderer;
@@ -57,10 +60,9 @@ namespace MarchingCubesPlanet.Preview
 
             if (type == GenerationType.Chunk)
             {
-                if (planetGrid.TryGetAnyInformation(out PlanetGridCoordinates chunkID))
-                {
-                    GenerateChunk(lod, chunkID);
-                }
+                index = -1;
+                isConcatenatingChunks = true;
+                ConcatenateChunk(lod);
             }
         }
 
@@ -76,9 +78,10 @@ namespace MarchingCubesPlanet.Preview
         {
             SyncPlacementFromTransform();
             planetGrid = PlanetGenerator.GenerateGrid(recipe);
+            index = -1;
         }
 
-        public void GenerateChunk(PlanetChunkLod lod, PlanetGridCoordinates chunkID)
+        public async void GenerateChunk(PlanetChunkLod lod, PlanetGridCoordinates chunkID, System.Action onComplete = null)
         {
             PlanetGenerator.GenerateChunk(
                 recipe,
@@ -87,6 +90,8 @@ namespace MarchingCubesPlanet.Preview
                 chunkID,
                 GetMeshFilter(),
                 GetMeshRenderer());
+            await Task.Yield();
+            onComplete?.Invoke();
         }
 
         public void Release()
@@ -94,6 +99,8 @@ namespace MarchingCubesPlanet.Preview
             SyncPlacementFromTransform();
             PlanetGenerator.Release(GetMeshFilter(), GetMeshRenderer());
             planetGrid = null;
+            index = -1;
+            isConcatenatingChunks = false;
         }
 
         private void SyncPlacementFromTransform()
@@ -110,6 +117,24 @@ namespace MarchingCubesPlanet.Preview
                 lod,
                 GetMeshFilter(),
                 GetMeshRenderer());
+        }
+
+        private void ConcatenateChunk(PlanetChunkLod lod)
+        {
+            if (!isConcatenatingChunks || planetGrid == null)
+            {
+                return;
+            }
+
+            index++;
+            if (index >= planetGrid.InformationCount)
+            {
+                isConcatenatingChunks = false;
+                return;
+            }
+
+            PlanetGridCoordinates chunkID = planetGrid.GetInfoCell(index);
+            GenerateChunk(lod, chunkID, () => ConcatenateChunk(lod));
         }
     }
 }

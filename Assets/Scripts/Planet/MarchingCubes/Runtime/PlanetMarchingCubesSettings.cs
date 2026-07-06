@@ -7,6 +7,12 @@ namespace MarchingCubesPlanet.MarchingCubes
     public struct PlanetMarchingCubesSettings
     {
         public const int DefaultOutputVertexCapacity = 3000000;
+        public const int CountOnlyOutputVertexCapacity = 3;
+        public const int Lod2OutputVertexCapacityBudget = 8000;
+        public const int Lod1OutputVertexCapacityBudget = 62000;
+        public const int Lod0OutputVertexCapacityBudget = 500000;
+        private const int MaxTrianglesPerCell = 5;
+        private const int VerticesPerTriangle = 3;
 
         [FormerlySerializedAs("surfaceRange")]
         public PlanetMarchingCubesChunkRange chunkRange;
@@ -24,6 +30,29 @@ namespace MarchingCubesPlanet.MarchingCubes
         }
 
         public long EstimatedVertexBytes => (long)Math.Max(0, outputVertexCapacity) * PlanetMarchingCubesVertex.Stride;
+
+        public static int CalculateMaxOutputVertexCapacityForChunkSize(int chunkSize)
+        {
+            long safeChunkSize = Math.Max(1, chunkSize);
+            long cellCount = safeChunkSize * safeChunkSize * safeChunkSize;
+            long vertexCapacity = cellCount * MaxTrianglesPerCell * VerticesPerTriangle;
+            return vertexCapacity > int.MaxValue ? int.MaxValue : (int)vertexCapacity;
+        }
+
+        public static int GetOutputVertexCapacityBudgetForLod(PlanetChunkLod lod)
+        {
+            switch (lod)
+            {
+                case PlanetChunkLod.LOD0:
+                    return Lod0OutputVertexCapacityBudget;
+                case PlanetChunkLod.LOD1:
+                    return Lod1OutputVertexCapacityBudget;
+                case PlanetChunkLod.LOD2:
+                    return Lod2OutputVertexCapacityBudget;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(lod), lod, "Unknown planet chunk LOD.");
+            }
+        }
 
         public void EnsureDefaults()
         {

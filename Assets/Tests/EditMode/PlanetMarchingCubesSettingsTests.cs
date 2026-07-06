@@ -63,6 +63,18 @@ namespace MarchingCubesPlanet.Tests
         }
 
         [Test]
+        public void SettingsCalculateChunkScopedOutputVertexCapacity()
+        {
+            Assert.AreEqual(7680, PlanetMarchingCubesSettings.CalculateMaxOutputVertexCapacityForChunkSize(8));
+            Assert.AreEqual(61440, PlanetMarchingCubesSettings.CalculateMaxOutputVertexCapacityForChunkSize(16));
+            Assert.AreEqual(491520, PlanetMarchingCubesSettings.CalculateMaxOutputVertexCapacityForChunkSize(32));
+            Assert.AreEqual(8000, PlanetMarchingCubesSettings.GetOutputVertexCapacityBudgetForLod(PlanetChunkLod.LOD2));
+            Assert.AreEqual(62000, PlanetMarchingCubesSettings.GetOutputVertexCapacityBudgetForLod(PlanetChunkLod.LOD1));
+            Assert.AreEqual(500000, PlanetMarchingCubesSettings.GetOutputVertexCapacityBudgetForLod(PlanetChunkLod.LOD0));
+            Assert.AreEqual(3, PlanetMarchingCubesSettings.CountOnlyOutputVertexCapacity);
+        }
+
+        [Test]
         public void ChunkRangeCalculatesShellFromRecipeDisplacement()
         {
             PlanetRecipe recipe = PlanetRecipe.Default();

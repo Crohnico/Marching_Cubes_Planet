@@ -1,3 +1,4 @@
+using System;
 using MarchingCubesPlanet.Compute;
 using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.Shape;
@@ -12,7 +13,10 @@ namespace MarchingCubesPlanet.MarchingCubes
         private const string MarchingShaderResource = "Compute/PlanetMarchingCubes";
         private const string MarchingShaderAsset = "Assets/Shaders/Compute/PlanetMarchingCubes.compute";
 
+        private const int ChunkExtractorLodCount = 3;
+
         private static readonly PlanetMarchingCubesMeshPainter Painter = new PlanetMarchingCubesMeshPainter();
+        private static readonly PlanetMarchingCubesExtractor[] ChunkExtractorsByLod = new PlanetMarchingCubesExtractor[ChunkExtractorLodCount];
 
         public static PlanetGrid GenerateGrid(PlanetRecipe recipe)
         {
@@ -25,6 +29,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             PlanetMarchingCubesExtractor extractor = new PlanetMarchingCubesExtractor();
             PlanetMarchingCubesSettings extractSettings = PlanetMarchingCubesSettings.Default();
             extractSettings.chunkRange.chunkSize = PlanetChunkLodUtility.GetChunkSizeForLod(lod);
+            extractSettings.outputVertexCapacity = PlanetMarchingCubesSettings.CountOnlyOutputVertexCapacity;
 
             try
             {
@@ -110,42 +115,87 @@ namespace MarchingCubesPlanet.MarchingCubes
             PlanetGpuShapeCellBuilder.Build(in lodRecipe, cells);
 
             PlanetGpuShapeEvaluator shape = new PlanetGpuShapeEvaluator();
-            PlanetMarchingCubesExtractor extractor = new PlanetMarchingCubesExtractor();
+            PlanetMarchingCubesExtractor extractor = GetChunkExtractor(lod);
             PlanetMarchingCubesSettings extractSettings = PlanetMarchingCubesSettings.Default();
             extractSettings.chunkRange.chunkSize = PlanetChunkLodUtility.GetChunkSizeForLod(lod);
+            extractSettings.outputVertexCapacity = PlanetMarchingCubesSettings.GetOutputVertexCapacityBudgetForLod(lod);
             PlanetMarchingCubesPaintSettings paintSettings = PlanetMarchingCubesPaintSettings.Default();
 
-            shape.Initialize(LoadShader(ShapeShaderResource, ShapeShaderAsset), in lodRecipe, cells, PlanetGpuBufferMode.ComputeBuffer);
-            extractor.InitializeSingleChunk(
-                LoadShader(MarchingShaderResource, MarchingShaderAsset),
-                in lodRecipe,
-                in extractSettings,
-                shape,
-                PlanetGpuBufferMode.ComputeBuffer,
-                chunkID.ToChunkOrigin(lod));
+            try
+            {
+                shape.Initialize(LoadShader(ShapeShaderResource, ShapeShaderAsset), in lodRecipe, cells, PlanetGpuBufferMode.ComputeBuffer);
+                extractor.InitializeReusableSingleChunk(
+                    LoadShader(MarchingShaderResource, MarchingShaderAsset),
+                    in lodRecipe,
+                    in extractSettings,
+                    shape,
+                    PlanetGpuBufferMode.ComputeBuffer,
+                    chunkID.ToChunkOrigin(lod));
 
-            PlanetMarchingCubesExtractionResult extraction = extractor.ExtractPlanetSurface();
-            PlanetMarchingCubesPaintResult paint = Painter.PaintNamedExtraction(
-                targetMeshFilter,
-                targetMeshRenderer,
-                null,
-                "chunk_" + chunkID,
-                -1,
-                extraction,
-                in lodRecipe,
-                in placement,
-                paintSettings,
-                null,
-                -1);
-
-            extractor.Release();
-            shape.Release();
-            return paint;
+                PlanetMarchingCubesExtractionResult extraction = extractor.ExtractPlanetSurface();
+                return Painter.PaintNamedExtraction(
+                    targetMeshFilter,
+                    targetMeshRenderer,
+                    null,
+                    "chunk_" + chunkID,
+                    -1,
+                    extraction,
+                    in lodRecipe,
+                    in placement,
+                    paintSettings,
+                    null,
+                    -1);
+            }
+            finally
+            {
+                extractor.DetachShapeEvaluator();
+                shape.Release();
+            }
         }
 
         public static void Release(MeshFilter targetMeshFilter, MeshRenderer targetMeshRenderer)
         {
             Painter.Release(targetMeshFilter, targetMeshRenderer);
+            ReleaseChunkExtractors();
+        }
+
+        private static PlanetMarchingCubesExtractor GetChunkExtractor(PlanetChunkLod lod)
+        {
+            int slot = GetChunkExtractorSlot(lod);
+            PlanetMarchingCubesExtractor extractor = ChunkExtractorsByLod[slot];
+            if (extractor == null)
+            {
+                extractor = new PlanetMarchingCubesExtractor();
+                ChunkExtractorsByLod[slot] = extractor;
+            }
+
+            return extractor;
+        }
+
+        private static void ReleaseChunkExtractors()
+        {
+            for (int i = 0; i < ChunkExtractorsByLod.Length; i++)
+            {
+                PlanetMarchingCubesExtractor extractor = ChunkExtractorsByLod[i];
+                if (extractor == null)
+                {
+                    continue;
+                }
+
+                extractor.Release();
+                ChunkExtractorsByLod[i] = null;
+            }
+        }
+
+        private static int GetChunkExtractorSlot(PlanetChunkLod lod)
+        {
+            int slot = (int)lod;
+            if (slot < 0 || slot >= ChunkExtractorLodCount)
+            {
+                throw new ArgumentOutOfRangeException(nameof(lod), lod, "Unknown planet chunk LOD.");
+            }
+
+            return slot;
         }
 
         private static ComputeShader LoadShader(string resourcePath, string assetPath)

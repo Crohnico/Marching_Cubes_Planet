@@ -29,6 +29,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private readonly PlanetMarchingCubesState[] stateUpload = new PlanetMarchingCubesState[1];
         private readonly PlanetMarchingCubesState[] stateReadback = new PlanetMarchingCubesState[1];
         private readonly PlanetMarchingCubesChunkOrigin[] singleChunkUpload = new PlanetMarchingCubesChunkOrigin[1];
+        private readonly PlanetMarchingCubesChunkOrigin[] reusableSingleChunkCandidate = new PlanetMarchingCubesChunkOrigin[1];
 
         private ComputeShader computeShader;
         private int extractKernel;
@@ -89,7 +90,8 @@ namespace MarchingCubesPlanet.MarchingCubes
                 initializedShapeEvaluator,
                 requestedBufferMode,
                 candidates,
-                buildStats);
+                buildStats,
+                false);
         }
 
         public void InitializeSingleChunk(
@@ -119,7 +121,39 @@ namespace MarchingCubesPlanet.MarchingCubes
                 initializedShapeEvaluator,
                 requestedBufferMode,
                 candidates,
-                buildStats);
+                buildStats,
+                false);
+        }
+
+        public void InitializeReusableSingleChunk(
+            ComputeShader shader,
+            in PlanetRecipe sourceRecipe,
+            in PlanetMarchingCubesSettings extractionSettings,
+            PlanetGpuShapeEvaluator initializedShapeEvaluator,
+            PlanetGpuBufferMode requestedBufferMode,
+            PlanetMarchingCubesChunkOrigin chunkOrigin)
+        {
+            PlanetMarchingCubesSettings sanitizedSettings = extractionSettings;
+            sanitizedSettings.EnsureDefaults();
+            sanitizedSettings.chunkRange.chunkSize = Mathf.Max(1, sanitizedSettings.chunkRange.chunkSize);
+            reusableSingleChunkCandidate[0] = chunkOrigin;
+            PlanetMarchingCubesChunkBuildStats buildStats = new PlanetMarchingCubesChunkBuildStats(
+                1,
+                1L,
+                0f,
+                0f,
+                sanitizedSettings.chunkRange.chunkSize,
+                false);
+
+            InitializeWithCandidates(
+                shader,
+                in sourceRecipe,
+                in sanitizedSettings,
+                initializedShapeEvaluator,
+                requestedBufferMode,
+                reusableSingleChunkCandidate,
+                buildStats,
+                true);
         }
 
         private void InitializeWithCandidates(
@@ -129,7 +163,8 @@ namespace MarchingCubesPlanet.MarchingCubes
             PlanetGpuShapeEvaluator initializedShapeEvaluator,
             PlanetGpuBufferMode requestedBufferMode,
             PlanetMarchingCubesChunkOrigin[] candidates,
-            PlanetMarchingCubesChunkBuildStats buildStats)
+            PlanetMarchingCubesChunkBuildStats buildStats,
+            bool reuseBuffers)
         {
             if (shader == null)
             {
@@ -151,7 +186,14 @@ namespace MarchingCubesPlanet.MarchingCubes
                 throw new ArgumentException("PlanetGpuShapeEvaluator must be initialized before Marching Cubes extraction.", nameof(initializedShapeEvaluator));
             }
 
-            Release();
+            if (reuseBuffers)
+            {
+                CancelActiveExtraction();
+            }
+            else
+            {
+                Release();
+            }
 
             computeShader = shader;
             recipe = sourceRecipe;
@@ -170,17 +212,19 @@ namespace MarchingCubesPlanet.MarchingCubes
             computeShader.GetKernelThreadGroupSizes(extractKernel, out threadGroupSizeX, out _, out _);
 
             int chunkOriginElementCount = Math.Max(1, chunkOrigins.Length);
-            chunkOriginBuffer = CreateBuffer(
+            chunkOriginBuffer = EnsureBuffer(
+                chunkOriginBuffer,
                 "Planet Marching Cubes Chunk Origins",
                 chunkOriginElementCount,
                 PlanetMarchingCubesChunkOrigin.Stride);
-            vertexBuffer = CreateBuffer(
+            vertexBuffer = EnsureBuffer(
+                vertexBuffer,
                 "Planet Marching Cubes Vertices",
                 settings.outputVertexCapacity,
                 PlanetMarchingCubesVertex.Stride);
-            stateBuffer = CreateBuffer("Planet Marching Cubes State", 1, PlanetMarchingCubesState.Stride);
-            edgeTableBuffer = CreateBuffer("Planet Marching Cubes Edge Table", PlanetMarchingCubesLookupTables.EdgeTable.Length, sizeof(uint));
-            triTableBuffer = CreateBuffer("Planet Marching Cubes Tri Table", PlanetMarchingCubesLookupTables.TriTable.Length, sizeof(int));
+            stateBuffer = EnsureBuffer(stateBuffer, "Planet Marching Cubes State", 1, PlanetMarchingCubesState.Stride);
+            edgeTableBuffer = EnsureBuffer(edgeTableBuffer, "Planet Marching Cubes Edge Table", PlanetMarchingCubesLookupTables.EdgeTable.Length, sizeof(uint));
+            triTableBuffer = EnsureBuffer(triTableBuffer, "Planet Marching Cubes Tri Table", PlanetMarchingCubesLookupTables.TriTable.Length, sizeof(int));
 
             if (chunkOrigins.Length > 0)
             {
@@ -189,7 +233,10 @@ namespace MarchingCubesPlanet.MarchingCubes
 
             SetData(edgeTableBuffer, PlanetMarchingCubesLookupTables.EdgeTable, PlanetMarchingCubesLookupTables.EdgeTable.Length);
             SetData(triTableBuffer, PlanetMarchingCubesLookupTables.TriTable, PlanetMarchingCubesLookupTables.TriTable.Length);
-            vertexReadback = new PlanetMarchingCubesVertex[settings.outputVertexCapacity];
+            if (vertexReadback == null || vertexReadback.Length != settings.outputVertexCapacity)
+            {
+                vertexReadback = new PlanetMarchingCubesVertex[settings.outputVertexCapacity];
+            }
         }
 
         public PlanetMarchingCubesExtractionResult ExtractPlanetSurface()
@@ -330,6 +377,12 @@ namespace MarchingCubesPlanet.MarchingCubes
             incrementalCountCellStart = 0L;
             incrementalWriteCellStart = 0L;
             incrementalCountFinished = false;
+        }
+
+        public void DetachShapeEvaluator()
+        {
+            CancelActiveExtraction();
+            shapeEvaluator = null;
         }
 
         public bool TryGetCandidateChunkOrigin(int candidateChunkIndex, out PlanetMarchingCubesChunkOrigin origin)
@@ -593,6 +646,21 @@ namespace MarchingCubesPlanet.MarchingCubes
             return bufferMode == PlanetGpuBufferMode.GraphicsBuffer
                 ? PlanetGpuBufferHandle.CreateGraphicsBuffer(resourceName, elementCount, stride)
                 : PlanetGpuBufferHandle.CreateComputeBuffer(resourceName, elementCount, stride);
+        }
+
+        private PlanetGpuBufferHandle EnsureBuffer(PlanetGpuBufferHandle handle, string resourceName, int elementCount, int stride)
+        {
+            if (handle != null &&
+                handle.IsAlive &&
+                handle.BufferMode == bufferMode &&
+                handle.ElementCount == elementCount &&
+                handle.Stride == stride)
+            {
+                return handle;
+            }
+
+            ReleaseBuffer(ref handle);
+            return CreateBuffer(resourceName, elementCount, stride);
         }
 
         private static void SetData<T>(PlanetGpuBufferHandle handle, T[] data, int count) where T : struct

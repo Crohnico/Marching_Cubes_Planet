@@ -117,6 +117,12 @@ Cada candidato se confirma con la ruta de conteo de Marching Cubes. Solo se
 marca `1` si el count pass del chunk devuelve `triangleCountAttempted > 0`.
 Un chunk vacio no se marca nunca con `1`.
 
+La ruta de conteo del grid no necesita capacidad de vertices de shell completa:
+usa capacidad minima de conteo y escritura desactivada. El shader incrementa
+`triangleCountAttempted` antes de comprobar overflow, asi que basta para
+responder "este chunk contiene al menos 1 triangulo" sin reservar buffers grandes
+por candidato.
+
 `PlanetGrid` es un mapa `PlanetGridCoordinates -> uint`. No tiene semantica de
 lista ni se consulta por indice.
 
@@ -130,7 +136,26 @@ mapa lo marca con informacion.
 PlanetGenerator.GenerateChunk recibe ese `chunkID`, lo traduce al origin del LOD
 solicitado y ejecuta Marching Cubes solo para ese chunk.
 En el panel de preview, `Generate` con modo Chunk escoge temporalmente una
-coordenada marcada a 1 y cocina el LOD seleccionado.
+coordenada marcada a 1 y cocina el LOD seleccionado. Para pruebas manuales de
+FPS, Chunk + Generate recorre las coordenadas con informacion una a una,
+dejando un frame entre chunks.
+```
+
+Regla de memoria:
+
+```text
+GenerateChunk ajusta outputVertexCapacity a un budget redondeado por LOD:
+LOD2 -> 8k vertices.
+LOD1 -> 62k vertices.
+LOD0 -> 500k vertices.
+No arrastra la capacidad global por defecto de la shell completa para cocinar un
+solo chunk.
+GenerateChunk conserva un extractor scratch por LOD mientras el generador esta
+vivo. El chunk solicita el extractor de su LOD, reutiliza sus buffers GPU y su
+readback CPU si la capacidad coincide, y lo deja preparado para el siguiente
+chunk. Esos scratch se liberan desde `PlanetGenerator.Release`.
+GenerateShell conserva temporalmente la capacidad global por defecto de 3M como
+deuda explicita hasta medir y cerrar la reduccion de shell LOD2.
 ```
 
 ## Estrategias aceptadas

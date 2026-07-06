@@ -68,5 +68,31 @@ namespace MarchingCubesPlanet.MarchingCubes
             coordinates = default;
             return false;
         }
+
+        public PlanetGridCoordinates GetInfoCell(int index)
+        {
+            if (index < 0)
+            {
+                throw new System.ArgumentOutOfRangeException(nameof(index));
+            }
+
+            int current = 0;
+            foreach (KeyValuePair<PlanetGridCoordinates, uint> cell in cells)
+            {
+                if (cell.Value == 0u)
+                {
+                    continue;
+                }
+
+                if (current == index)
+                {
+                    return cell.Key;
+                }
+
+                current++;
+            }
+
+            throw new System.ArgumentOutOfRangeException(nameof(index));
+        }
     }
 }
