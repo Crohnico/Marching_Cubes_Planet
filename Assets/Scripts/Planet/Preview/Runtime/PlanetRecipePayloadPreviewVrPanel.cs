@@ -1,3 +1,4 @@
+using MarchingCubesPlanet.MarchingCubes;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -16,8 +17,8 @@ namespace MarchingCubesPlanet.Preview
         private static readonly Color UnselectedModeColor = new Color(0.16f, 0.17f, 0.18f, 1f);
 
         [SerializeField] private PlanetRecipePayloadPreview preview;
-        [SerializeField] private PreviewGenerationMode selectedMode = PreviewGenerationMode.Shell;
-        [SerializeField] private PreviewLodMode selectedLod = PreviewLodMode.Lod2;
+        [SerializeField] private PlanetRecipePayloadPreview.GenerationType selectedMode = PlanetRecipePayloadPreview.GenerationType.Shell;
+        [SerializeField] private PlanetChunkLod selectedLod = PlanetChunkLod.LOD2;
         [SerializeField] private Button shellModeButton;
         [SerializeField] private Button chunkModeButton;
         [SerializeField] private Button baseModeButton;
@@ -28,23 +29,7 @@ namespace MarchingCubesPlanet.Preview
         [SerializeField] private Button generateRandomButton;
         [SerializeField] private Button releaseButton;
 
-        private string lastPanelDiagnostic;
-
         public PlanetRecipePayloadPreview Preview => preview;
-
-        private enum PreviewGenerationMode
-        {
-            Shell,
-            Chunk,
-            Base
-        }
-
-        private enum PreviewLodMode
-        {
-            Lod2,
-            Lod1,
-            Lod0
-        }
 
         public static PlanetRecipePayloadPreviewVrPanel CreateDefault(PlanetRecipePayloadPreview targetPreview)
         {
@@ -104,8 +89,7 @@ namespace MarchingCubesPlanet.Preview
                 return;
             }
 
-            preview.Generate();
-            lastPanelDiagnostic = preview.LastDiagnostic;
+            preview.Generate(selectedMode, selectedLod);
         }
 
         public void GenerateRandomSeed()
@@ -115,8 +99,7 @@ namespace MarchingCubesPlanet.Preview
                 return;
             }
 
-            preview.GenerateRandomSeed();
-            lastPanelDiagnostic = preview.LastDiagnostic;
+            preview.GenerateRandomSeed(selectedMode, selectedLod);
         }
 
         public void Release()
@@ -127,7 +110,6 @@ namespace MarchingCubesPlanet.Preview
             }
 
             preview.Release();
-            lastPanelDiagnostic = preview.LastDiagnostic;
         }
 
         private void RegisterButtonCallbacks()
@@ -160,20 +142,20 @@ namespace MarchingCubesPlanet.Preview
 
         private void SelectLod2()
         {
-            SelectLod(PreviewLodMode.Lod2);
+            SelectLod(PlanetChunkLod.LOD2);
         }
 
         private void SelectLod1()
         {
-            SelectLod(PreviewLodMode.Lod1);
+            SelectLod(PlanetChunkLod.LOD1);
         }
 
         private void SelectLod0()
         {
-            SelectLod(PreviewLodMode.Lod0);
+            SelectLod(PlanetChunkLod.LOD0);
         }
 
-        private void SelectLod(PreviewLodMode lod)
+        private void SelectLod(PlanetChunkLod lod)
         {
             selectedLod = lod;
             RefreshSelectorLabels();
@@ -181,20 +163,20 @@ namespace MarchingCubesPlanet.Preview
 
         private void SelectShellMode()
         {
-            SelectMode(PreviewGenerationMode.Shell);
+            SelectMode(PlanetRecipePayloadPreview.GenerationType.Shell);
         }
 
         private void SelectChunkMode()
         {
-            SelectMode(PreviewGenerationMode.Chunk);
+            SelectMode(PlanetRecipePayloadPreview.GenerationType.Chunk);
         }
 
         private void SelectBaseMode()
         {
-            SelectMode(PreviewGenerationMode.Base);
+            SelectMode(PlanetRecipePayloadPreview.GenerationType.Base);
         }
 
-        private void SelectMode(PreviewGenerationMode mode)
+        private void SelectMode(PlanetRecipePayloadPreview.GenerationType mode)
         {
             selectedMode = mode;
             RefreshSelectorLabels();
@@ -318,12 +300,12 @@ namespace MarchingCubesPlanet.Preview
 
         private void RefreshSelectorLabels()
         {
-            SetModeLabel(shellModeButton, selectedMode == PreviewGenerationMode.Shell);
-            SetModeLabel(chunkModeButton, selectedMode == PreviewGenerationMode.Chunk);
-            SetModeLabel(baseModeButton, selectedMode == PreviewGenerationMode.Base);
-            SetModeLabel(lod2Button, selectedLod == PreviewLodMode.Lod2);
-            SetModeLabel(lod1Button, selectedLod == PreviewLodMode.Lod1);
-            SetModeLabel(lod0Button, selectedLod == PreviewLodMode.Lod0);
+            SetModeLabel(shellModeButton, selectedMode == PlanetRecipePayloadPreview.GenerationType.Shell);
+            SetModeLabel(chunkModeButton, selectedMode == PlanetRecipePayloadPreview.GenerationType.Chunk);
+            SetModeLabel(baseModeButton, selectedMode == PlanetRecipePayloadPreview.GenerationType.Base);
+            SetModeLabel(lod2Button, selectedLod == PlanetChunkLod.LOD2);
+            SetModeLabel(lod1Button, selectedLod == PlanetChunkLod.LOD1);
+            SetModeLabel(lod0Button, selectedLod == PlanetChunkLod.LOD0);
         }
 
         private static void SetModeLabel(Button button, bool selected)

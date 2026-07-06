@@ -1,4 +1,5 @@
 using MarchingCubesPlanet.Coordinates;
+using MarchingCubesPlanet.MarchingCubes;
 using UnityEngine;
 
 namespace MarchingCubesPlanet.Preview
@@ -6,56 +7,79 @@ namespace MarchingCubesPlanet.Preview
     [DisallowMultipleComponent]
     public sealed class PlanetRecipePayloadPreview : MonoBehaviour
     {
+        public enum GenerationType
+        {
+            Shell,
+            Chunk,
+            Base
+        }
+
         [SerializeField] private PlanetRecipe recipe = PlanetRecipe.Default();
         [SerializeField] private PlanetPlacement placement = PlanetPlacement.Default();
-        [SerializeField, TextArea] private string lastDiagnostic;
 
         public PlanetRecipe Recipe => recipe;
         public PlanetPlacement Placement => placement;
-        public string LastDiagnostic => lastDiagnostic;
-
 
         private void Awake()
         {
             SyncPlacementFromTransform();
         }
 
-        public void Generate()
+        public void Generate(GenerationType type, PlanetChunkLod lod)
         {
             SyncPlacementFromTransform();
 
-            if (!PlanetRecipeValidator.Validate(in recipe, out string recipeMessage))
+            if (type == GenerationType.Shell)
             {
-                lastDiagnostic = "Generate blocked: " + recipeMessage;
+                GenerateShell(lod);
                 return;
             }
-
-            lastDiagnostic = "Recipe ready. Runtime planet generation is pending 10 rebuild.";
         }
 
-        public void GenerateRandomSeed()
+        public void GenerateRandomSeed(GenerationType type, PlanetChunkLod lod)
         {
             recipe.Seed = Random.Range(int.MinValue, int.MaxValue);
-            Generate();
+            Generate(type, lod);
         }
 
         public void Release()
         {
             SyncPlacementFromTransform();
-            lastDiagnostic = "Planet anchor released. No runtime mesh is owned by this component.";
+            PlanetGenerator.Release(GetComponent<MeshFilter>(), GetComponent<MeshRenderer>());
         }
 
         public void ResetDemoRecipe()
         {
             recipe = PlanetRecipe.Default();
             SyncPlacementFromTransform();
-            lastDiagnostic = "Recipe reset. PlanetPlacement was synced from Transform.";
         }
 
         private void SyncPlacementFromTransform()
         {
             placement.PlanetWorldCenter = transform.position;
             placement.PlanetRotation = transform.rotation;
+        }
+
+        private void GenerateShell(PlanetChunkLod lod)
+        {
+            MeshFilter meshFilter = GetComponent<MeshFilter>();
+            if (meshFilter == null)
+            {
+                meshFilter = gameObject.AddComponent<MeshFilter>();
+            }
+
+            MeshRenderer meshRenderer = GetComponent<MeshRenderer>();
+            if (meshRenderer == null)
+            {
+                meshRenderer = gameObject.AddComponent<MeshRenderer>();
+            }
+
+            PlanetGenerator.GenerateShell(
+                recipe,
+                placement,
+                lod,
+                meshFilter,
+                meshRenderer);
         }
     }
 }

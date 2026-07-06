@@ -3,6 +3,7 @@
     "rootNamespace": "MarchingCubesPlanet.Preview.Editor",
     "references": [
         "MarchingCubesPlanet.Coordinates",
+        "MarchingCubesPlanet.MarchingCubes",
         "MarchingCubesPlanet.Preview"
     ],
     "includePlatforms": [

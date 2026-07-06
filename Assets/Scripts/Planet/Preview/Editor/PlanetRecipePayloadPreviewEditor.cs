@@ -1,3 +1,4 @@
+using MarchingCubesPlanet.MarchingCubes;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -34,12 +35,12 @@ namespace MarchingCubesPlanet.Preview.Editor
             EditorGUILayout.LabelField("Commands", EditorStyles.boldLabel);
             if (GUILayout.Button("Generate"))
             {
-                Apply(preview, p => p.Generate());
+                Apply(preview, p => p.Generate(PlanetRecipePayloadPreview.GenerationType.Shell, PlanetChunkLod.LOD2));
             }
 
             if (GUILayout.Button("Generate Random"))
             {
-                Apply(preview, p => p.GenerateRandomSeed());
+                Apply(preview, p => p.GenerateRandomSeed(PlanetRecipePayloadPreview.GenerationType.Shell, PlanetChunkLod.LOD2));
             }
 
             if (GUILayout.Button("Release"))
@@ -51,10 +52,6 @@ namespace MarchingCubesPlanet.Preview.Editor
             {
                 Apply(preview, p => p.ResetDemoRecipe());
             }
-
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Last Diagnostic", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox(preview.LastDiagnostic ?? string.Empty, MessageType.Info);
         }
 
         private static void Apply(PlanetRecipePayloadPreview preview, System.Action<PlanetRecipePayloadPreview> action)
