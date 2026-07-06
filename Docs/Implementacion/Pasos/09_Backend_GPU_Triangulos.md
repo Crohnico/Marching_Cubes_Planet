@@ -415,6 +415,9 @@ La shell LOD2 inicial puede seguir publicandose inmediata para asegurar planeta
 visible rapido.
 Los swaps runtime LOD0/LOD1 usan publicacion segmentada salvo diagnostico
 contrario.
+Publicacion inmediata no significa publicacion monolitica. Debe usar el mismo
+mapa interno de 27 segmentos y procesarlos todos en el mismo frame para que un
+LOD posterior sustituya la geometria del mismo chunk en vez de dibujarse encima.
 ```
 
 ## Cache y payload CPU

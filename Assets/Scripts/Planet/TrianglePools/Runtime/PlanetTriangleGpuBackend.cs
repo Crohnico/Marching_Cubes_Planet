@@ -204,34 +204,12 @@ namespace MarchingCubesPlanet.TrianglePools
             }
 
             CancelPendingPublication(meshId);
-            ReleasePublication(meshId, false);
-            int remainingVertexCount = vertexCount;
-            int sourceVertexStart = 0;
-            while (remainingVertexCount > 0 &&
-                   TryAllocateVertexRange(remainingVertexCount, out int vertexStart, out int allocatedVertexCount))
+            if (!ScheduleSegmentedPublication(meshId, vertices, vertexCount, bounds, source))
             {
-                WriteVertices(vertices, sourceVertexStart, allocatedVertexCount, vertexStart);
-                AddPublication(meshId, vertexStart, allocatedVertexCount, bounds);
-                activeVertexCount += allocatedVertexCount;
-                LastPublishedVertexCount += allocatedVertexCount;
-                sourceVertexStart += allocatedVertexCount;
-                remainingVertexCount -= allocatedVertexCount;
-            }
-
-            if (LastPublishedVertexCount <= 0)
-            {
-                Debug.LogWarning(
-                    "[09 GPU] Not enough GPU triangle buffer space. artistId=" + artistId +
-                    " requestedVertices=" + vertexCount +
-                    " capacity=" + vertexCapacity +
-                    " highWatermark=" + highWatermarkVertexCount);
-                RebuildBounds();
-                UpdateRenderer();
                 return false;
             }
 
-            RebuildBounds();
-            UpdateRenderer();
+            ProcessPendingSegmentPublications(int.MaxValue);
             return true;
         }
 
@@ -265,6 +243,23 @@ namespace MarchingCubesPlanet.TrianglePools
             }
 
             CancelPendingPublication(meshId);
+            if (!ScheduleSegmentedPublication(meshId, vertices, vertexCount, bounds, source))
+            {
+                return false;
+            }
+
+            ProcessPendingSegmentPublications();
+            return true;
+        }
+
+        private bool ScheduleSegmentedPublication(
+            uint meshId,
+            IList<PlanetTriangleGpuVertex> vertices,
+            int vertexCount,
+            Bounds bounds,
+            Material source)
+        {
+            ReleasePublicationSegment(meshId, -1);
             BuildStagedSegments(vertices, vertexCount, bounds);
             int scheduledVertexCount = 0;
             for (int segmentIndex = 0; segmentIndex < StagedSegmentCount; segmentIndex++)
@@ -311,14 +306,19 @@ namespace MarchingCubesPlanet.TrianglePools
                 pendingSegmentPublications.Add(pending);
             }
 
-            ProcessPendingSegmentPublications();
             return true;
         }
 
         public void ProcessPendingSegmentPublications()
         {
+            ProcessPendingSegmentPublications(StagedSegmentsPerFrame);
+        }
+
+        private void ProcessPendingSegmentPublications(int maxSegments)
+        {
             int processedCount = 0;
-            while (pendingSegmentPublications.Count > 0 && processedCount < StagedSegmentsPerFrame)
+            maxSegments = Mathf.Max(1, maxSegments);
+            while (pendingSegmentPublications.Count > 0 && processedCount < maxSegments)
             {
                 PendingSegmentPublication pending = pendingSegmentPublications[0];
                 pendingSegmentPublications.RemoveAt(0);

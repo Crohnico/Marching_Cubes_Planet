@@ -679,6 +679,9 @@ Regla adicional:
 
 ```text
 La shell LOD2 inicial mantiene publicacion inmediata.
+Aunque sea inmediata, 09 la registra con los mismos segmentos internos que los
+swaps LOD0/LOD1 para que el chunk refinado reemplace LOD2 y no convivan ambas
+geometrias.
 Los refinamientos y swaps runtime pueden usar publicacion segmentada de 09 para
 repartir el upload visible en 9 frames por chunk.
 ```
