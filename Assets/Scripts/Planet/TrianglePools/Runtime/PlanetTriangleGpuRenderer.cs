@@ -16,6 +16,12 @@ namespace MarchingCubesPlanet.TrianglePools
         private string waterVertexBufferPropertyName;
         private int vertexCount;
         private int waterVertexCount;
+        private PlanetTriangleGpuBackend backend;
+
+        public void ConfigureBackend(PlanetTriangleGpuBackend value)
+        {
+            backend = value;
+        }
 
         public void Configure(
             GraphicsBuffer buffer,
@@ -47,6 +53,11 @@ namespace MarchingCubesPlanet.TrianglePools
 
         private void Update()
         {
+            if (backend != null)
+            {
+                backend.ProcessPendingSegmentPublications();
+            }
+
             if ((vertexBuffer == null || material == null || vertexCount <= 0) &&
                 (waterVertexBuffer == null || waterMaterial == null || waterVertexCount <= 0))
             {

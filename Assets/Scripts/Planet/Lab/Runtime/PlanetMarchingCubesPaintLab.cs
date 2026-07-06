@@ -474,7 +474,8 @@ namespace MarchingCubesPlanet.Lab
             MeshFilter targetMeshFilter,
             MeshRenderer targetMeshRenderer,
             PlanetPlacement targetPlacement,
-            in PlanetRecipe recipe)
+            in PlanetRecipe recipe,
+            bool stagedGpuPublish = false)
         {
             stopwatch.Restart();
 
@@ -554,7 +555,8 @@ namespace MarchingCubesPlanet.Lab
                     cacheChunkId,
                     cacheLod,
                     in recipe,
-                    settings);
+                    settings,
+                    stagedGpuPublish);
             }
             catch (System.Exception exception)
             {
@@ -605,7 +607,8 @@ namespace MarchingCubesPlanet.Lab
             PlanetPlacement targetPlacement,
             in PlanetRecipe recipe,
             PlanetChunkMeshCache cache,
-            int lod)
+            int lod,
+            bool stagedGpuPublish = false)
         {
             stopwatch.Restart();
 
@@ -680,7 +683,8 @@ namespace MarchingCubesPlanet.Lab
                     in placement,
                     settings,
                     cache,
-                    lod);
+                    lod,
+                    stagedGpuPublish);
             }
             catch (System.Exception exception)
             {

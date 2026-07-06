@@ -641,7 +641,8 @@ namespace MarchingCubesPlanet.Preview
                     runtimeTargetMeshFilter,
                     runtimeTargetMeshRenderer,
                     runtimePlacement,
-                    in activeRuntimeLodRecipe))
+                    in activeRuntimeLodRecipe,
+                    true))
             {
                 CompleteActiveRuntimeLodRequest();
                 completedRequest = true;
@@ -719,7 +720,8 @@ namespace MarchingCubesPlanet.Preview
                     runtimePlacement,
                     in activeRuntimeLodRecipe,
                     runtimeChunkCacheReady ? runtimeChunkCache : null,
-                    (int)activeRuntimeLodRequest.RequestedLod);
+                    (int)activeRuntimeLodRequest.RequestedLod,
+                    true);
             }
 
             if (!painted)

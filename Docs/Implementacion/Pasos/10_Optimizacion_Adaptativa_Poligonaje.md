@@ -494,6 +494,24 @@ Flujo:
 7. Resolver mesh auxiliar Transvoxel si los vecinos quedan con LOD distinto.
 ```
 
+Decision de publicacion runtime:
+
+```text
+Los cambios runtime de LOD no publican el chunk entero en un unico upload si la
+ruta visible usa el backend GPU de 09.
+10 pide la sustitucion del chunk logico y 09 lo publica internamente como 3x3x3
+segmentos, escribiendo 3 segmentos por frame.
+```
+
+Lectura:
+
+```text
+El objetivo es que un cambio de LOD sustituya piezas del chunk durante varios
+frames en vez de cambiar todos los datos visibles del chunk en un unico pico.
+Para 10 el chunk sigue siendo una unidad logica con un unico meshId estable.
+La segmentacion es una politica de publicacion de 09.
+```
+
 Lectura:
 
 ```text
@@ -655,6 +673,14 @@ Lectura:
 ```text
 Estos objetivos aplican a refinamientos, cambios de LOD y cargas no urgentes.
 No bloquean la publicacion inicial de LOD2 fallback.
+```
+
+Regla adicional:
+
+```text
+La shell LOD2 inicial mantiene publicacion inmediata.
+Los refinamientos y swaps runtime pueden usar publicacion segmentada de 09 para
+repartir el upload visible en 9 frames por chunk.
 ```
 
 Regla:

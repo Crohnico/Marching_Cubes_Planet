@@ -385,6 +385,38 @@ El coste normal de un cambio de LOD debe ser escribir rangos ya reservados.
 No debe ser crear buffer, destruir buffer ni reconstruir una Mesh.
 ```
 
+### Publicacion segmentada por chunk
+
+Para cambios runtime de LOD, una publicacion logica de chunk puede dividirse en
+segmentos espaciales internos antes de escribir en `GraphicsBuffer`.
+
+Decision inicial:
+
+```text
+chunk visible -> 3x3x3 segmentos internos.
+27 segmentos -> 3 segmentos escritos por frame -> 9 frames maximos por chunk.
+```
+
+Motivo:
+
+```text
+Evitar subir/cambiar todos los vertices de un chunk grande en un solo frame.
+Permitir que una representacion anterior se sustituya por partes.
+Mantener el contrato externo de 09 como Draw(meshId, datos, priority).
+```
+
+Regla:
+
+```text
+El meshId publico sigue identificando el chunk logico.
+Los segmentos son detalle interno del backend GPU.
+Release(meshId) libera todos los segmentos pendientes y visibles de ese chunk.
+La shell LOD2 inicial puede seguir publicandose inmediata para asegurar planeta
+visible rapido.
+Los swaps runtime LOD0/LOD1 usan publicacion segmentada salvo diagnostico
+contrario.
+```
+
 ## Cache y payload CPU
 
 El cambio de backend visible no obliga a cambiar inmediatamente el formato de

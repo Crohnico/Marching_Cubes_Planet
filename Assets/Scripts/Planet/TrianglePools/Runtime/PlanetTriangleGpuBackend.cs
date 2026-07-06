@@ -20,10 +20,14 @@ namespace MarchingCubesPlanet.TrianglePools
         private const string SpecColorPropertyName = "_SpecColor";
         private const string SmoothnessPropertyName = "_Smoothness";
         private const string MetallicPropertyName = "_Metallic";
+        private const int StagedSegmentAxisCount = 3;
+        private const int StagedSegmentCount = StagedSegmentAxisCount * StagedSegmentAxisCount * StagedSegmentAxisCount;
+        private const int StagedSegmentsPerFrame = 3;
 
         private struct Publication
         {
             public uint meshId;
+            public int segmentIndex;
             public int vertexStart;
             public int vertexCount;
             public int vertexCapacity;
@@ -37,9 +41,26 @@ namespace MarchingCubesPlanet.TrianglePools
             public int count;
         }
 
+        private struct PendingSegmentPublication
+        {
+            public uint meshId;
+            public int segmentIndex;
+            public PlanetTriangleGpuVertex[] vertices;
+            public int sourceVertexStart;
+            public int vertexCount;
+            public Bounds bounds;
+            public Material sourceMaterial;
+        }
+
         private readonly uint artistId;
         private readonly List<Publication> publications = new List<Publication>(256);
         private readonly List<FreeRange> freeRanges = new List<FreeRange>(256);
+        private readonly List<PendingSegmentPublication> pendingSegmentPublications =
+            new List<PendingSegmentPublication>(StagedSegmentCount * 8);
+        private readonly List<PlanetTriangleGpuVertex>[] stagedSegmentBuilders =
+            new List<PlanetTriangleGpuVertex>[StagedSegmentCount];
+        private readonly Bounds[] stagedSegmentBounds = new Bounds[StagedSegmentCount];
+        private readonly bool[] stagedSegmentHasBounds = new bool[StagedSegmentCount];
         private GraphicsBuffer vertexBuffer;
         private GraphicsBuffer waterVertexBuffer;
         private PlanetTriangleGpuVertex[] uploadScratch;
@@ -182,6 +203,7 @@ namespace MarchingCubesPlanet.TrianglePools
                 return false;
             }
 
+            CancelPendingPublication(meshId);
             ReleasePublication(meshId, false);
             int remainingVertexCount = vertexCount;
             int sourceVertexStart = 0;
@@ -211,6 +233,98 @@ namespace MarchingCubesPlanet.TrianglePools
             RebuildBounds();
             UpdateRenderer();
             return true;
+        }
+
+        public bool PublishStaged(
+            uint meshId,
+            IList<PlanetTriangleGpuVertex> vertices,
+            int vertexCount,
+            Bounds bounds,
+            Material source)
+        {
+            LastPublishedVertexCount = 0;
+            if (vertices == null)
+            {
+                return false;
+            }
+
+            vertexCount = Mathf.Max(0, Mathf.Min(vertexCount, vertices.Count));
+            vertexCount -= vertexCount % 3;
+            if (vertexCount <= 0)
+            {
+                CancelPendingPublication(meshId);
+                ReleasePublication(meshId);
+                return true;
+            }
+
+            EnsureInitialized(PlanetTrianglePoolRegistry.GetOrCreate(artistId).TotalTriangleBudget);
+            SetMaterial(source);
+            if (vertexBuffer == null)
+            {
+                return false;
+            }
+
+            CancelPendingPublication(meshId);
+            BuildStagedSegments(vertices, vertexCount, bounds);
+            int scheduledVertexCount = 0;
+            for (int segmentIndex = 0; segmentIndex < StagedSegmentCount; segmentIndex++)
+            {
+                List<PlanetTriangleGpuVertex> builder = stagedSegmentBuilders[segmentIndex];
+                if (builder == null)
+                {
+                    continue;
+                }
+
+                scheduledVertexCount += builder.Count - builder.Count % 3;
+            }
+
+            PlanetTriangleGpuVertex[] pendingVertices = scheduledVertexCount > 0
+                ? new PlanetTriangleGpuVertex[scheduledVertexCount]
+                : null;
+            int pendingVertexCursor = 0;
+            for (int segmentIndex = 0; segmentIndex < StagedSegmentCount; segmentIndex++)
+            {
+                List<PlanetTriangleGpuVertex> builder = stagedSegmentBuilders[segmentIndex];
+                int segmentVertexCount = builder != null ? builder.Count - builder.Count % 3 : 0;
+                PendingSegmentPublication pending = new PendingSegmentPublication
+                {
+                    meshId = meshId,
+                    segmentIndex = segmentIndex,
+                    vertices = pendingVertices,
+                    sourceVertexStart = pendingVertexCursor,
+                    vertexCount = segmentVertexCount,
+                    bounds = stagedSegmentHasBounds[segmentIndex] ? stagedSegmentBounds[segmentIndex] : bounds,
+                    sourceMaterial = source
+                };
+
+                if (segmentVertexCount > 0)
+                {
+                    for (int i = 0; i < segmentVertexCount; i++)
+                    {
+                        pendingVertices[pendingVertexCursor + i] = builder[i];
+                    }
+
+                    pendingVertexCursor += segmentVertexCount;
+                    LastPublishedVertexCount += segmentVertexCount;
+                }
+
+                pendingSegmentPublications.Add(pending);
+            }
+
+            ProcessPendingSegmentPublications();
+            return true;
+        }
+
+        public void ProcessPendingSegmentPublications()
+        {
+            int processedCount = 0;
+            while (pendingSegmentPublications.Count > 0 && processedCount < StagedSegmentsPerFrame)
+            {
+                PendingSegmentPublication pending = pendingSegmentPublications[0];
+                pendingSegmentPublications.RemoveAt(0);
+                PublishSegmentNow(in pending);
+                processedCount++;
+            }
         }
 
         public bool PublishWater(IList<PlanetTriangleGpuVertex> vertices, int vertexCount, Bounds bounds, Material source)
@@ -263,6 +377,7 @@ namespace MarchingCubesPlanet.TrianglePools
 
         private int ReleasePublication(uint meshId, bool updateRenderer)
         {
+            CancelPendingPublication(meshId);
             int released = 0;
             for (int i = 0; i < publications.Count; i++)
             {
@@ -296,6 +411,7 @@ namespace MarchingCubesPlanet.TrianglePools
                 ClearRange(0, highWatermarkVertexCount);
             }
 
+            pendingSegmentPublications.Clear();
             publications.Clear();
             freeRanges.Clear();
             activeVertexCount = 0;
@@ -351,6 +467,7 @@ namespace MarchingCubesPlanet.TrianglePools
         {
             if (renderObject != null && renderer != null)
             {
+                renderer.ConfigureBackend(this);
                 return;
             }
 
@@ -359,6 +476,7 @@ namespace MarchingCubesPlanet.TrianglePools
                 hideFlags = HideFlags.DontSave
             };
             renderer = renderObject.AddComponent<PlanetTriangleGpuRenderer>();
+            renderer.ConfigureBackend(this);
             UpdateRenderer();
         }
 
@@ -509,6 +627,11 @@ namespace MarchingCubesPlanet.TrianglePools
 
         private void AddPublication(uint meshId, int vertexStart, int vertexCount, Bounds bounds)
         {
+            AddPublication(meshId, -1, vertexStart, vertexCount, bounds);
+        }
+
+        private void AddPublication(uint meshId, int segmentIndex, int vertexStart, int vertexCount, Bounds bounds)
+        {
             for (int i = 0; i < publications.Count; i++)
             {
                 if (publications[i].occupied)
@@ -519,6 +642,7 @@ namespace MarchingCubesPlanet.TrianglePools
                 publications[i] = new Publication
                 {
                     meshId = meshId,
+                    segmentIndex = segmentIndex,
                     vertexStart = vertexStart,
                     vertexCount = vertexCount,
                     vertexCapacity = vertexCount,
@@ -531,6 +655,7 @@ namespace MarchingCubesPlanet.TrianglePools
             publications.Add(new Publication
             {
                 meshId = meshId,
+                segmentIndex = segmentIndex,
                 vertexStart = vertexStart,
                 vertexCount = vertexCount,
                 vertexCapacity = vertexCount,
@@ -552,6 +677,154 @@ namespace MarchingCubesPlanet.TrianglePools
             }
 
             vertexBuffer.SetData(uploadScratch, 0, vertexStart, vertexCount);
+        }
+
+        private void PublishSegmentNow(in PendingSegmentPublication pending)
+        {
+            SetMaterial(pending.sourceMaterial);
+            ReleasePublicationSegment(pending.meshId, pending.segmentIndex);
+            if (pending.vertexCount <= 0 || pending.vertices == null)
+            {
+                RebuildBounds();
+                UpdateRenderer();
+                return;
+            }
+
+            int remainingVertexCount = pending.vertexCount;
+            int sourceVertexStart = 0;
+            while (remainingVertexCount > 0 &&
+                   TryAllocateVertexRange(remainingVertexCount, out int vertexStart, out int allocatedVertexCount))
+            {
+                WriteVertices(pending.vertices, pending.sourceVertexStart + sourceVertexStart, allocatedVertexCount, vertexStart);
+                AddPublication(pending.meshId, pending.segmentIndex, vertexStart, allocatedVertexCount, pending.bounds);
+                activeVertexCount += allocatedVertexCount;
+                sourceVertexStart += allocatedVertexCount;
+                remainingVertexCount -= allocatedVertexCount;
+            }
+
+            if (remainingVertexCount > 0)
+            {
+                Debug.LogWarning(
+                    "[09 GPU] Staged segment only published partially. artistId=" + artistId +
+                    " meshId=" + pending.meshId +
+                    " segment=" + pending.segmentIndex +
+                    " requestedVertices=" + pending.vertexCount +
+                    " remainingVertices=" + remainingVertexCount +
+                    " capacity=" + vertexCapacity +
+                    " highWatermark=" + highWatermarkVertexCount);
+            }
+
+            RebuildBounds();
+            UpdateRenderer();
+        }
+
+        private void ReleasePublicationSegment(uint meshId, int segmentIndex)
+        {
+            for (int i = 0; i < publications.Count; i++)
+            {
+                Publication publication = publications[i];
+                if (!publication.occupied ||
+                    publication.meshId != meshId ||
+                    publication.segmentIndex != segmentIndex)
+                {
+                    continue;
+                }
+
+                ClearRange(publication.vertexStart, publication.vertexCapacity);
+                AddFreeRange(publication.vertexStart, publication.vertexCapacity);
+                activeVertexCount = Mathf.Max(0, activeVertexCount - publication.vertexCount);
+                publication.occupied = false;
+                publications[i] = publication;
+            }
+        }
+
+        private void CancelPendingPublication(uint meshId)
+        {
+            for (int i = pendingSegmentPublications.Count - 1; i >= 0; i--)
+            {
+                if (pendingSegmentPublications[i].meshId == meshId)
+                {
+                    pendingSegmentPublications.RemoveAt(i);
+                }
+            }
+        }
+
+        private void BuildStagedSegments(IList<PlanetTriangleGpuVertex> vertices, int vertexCount, Bounds bounds)
+        {
+            EnsureStagedSegmentBuilders();
+            for (int i = 0; i < StagedSegmentCount; i++)
+            {
+                stagedSegmentBuilders[i].Clear();
+                stagedSegmentBounds[i] = default;
+                stagedSegmentHasBounds[i] = false;
+            }
+
+            for (int vertexIndex = 0; vertexIndex < vertexCount; vertexIndex += 3)
+            {
+                PlanetTriangleGpuVertex a = vertices[vertexIndex];
+                PlanetTriangleGpuVertex b = vertices[vertexIndex + 1];
+                PlanetTriangleGpuVertex c = vertices[vertexIndex + 2];
+                Vector3 center = (ReadPosition(a) + ReadPosition(b) + ReadPosition(c)) * 0.33333334f;
+                int segmentIndex = CalculateSegmentIndex(center, bounds);
+                List<PlanetTriangleGpuVertex> builder = stagedSegmentBuilders[segmentIndex];
+                builder.Add(a);
+                builder.Add(b);
+                builder.Add(c);
+                IncludeSegmentPoint(segmentIndex, ReadPosition(a));
+                IncludeSegmentPoint(segmentIndex, ReadPosition(b));
+                IncludeSegmentPoint(segmentIndex, ReadPosition(c));
+            }
+        }
+
+        private void EnsureStagedSegmentBuilders()
+        {
+            for (int i = 0; i < stagedSegmentBuilders.Length; i++)
+            {
+                if (stagedSegmentBuilders[i] == null)
+                {
+                    stagedSegmentBuilders[i] = new List<PlanetTriangleGpuVertex>(256);
+                }
+            }
+        }
+
+        private void IncludeSegmentPoint(int segmentIndex, Vector3 point)
+        {
+            if (!stagedSegmentHasBounds[segmentIndex])
+            {
+                stagedSegmentBounds[segmentIndex] = new Bounds(point, Vector3.zero);
+                stagedSegmentHasBounds[segmentIndex] = true;
+                return;
+            }
+
+            Bounds bounds = stagedSegmentBounds[segmentIndex];
+            bounds.Encapsulate(point);
+            stagedSegmentBounds[segmentIndex] = bounds;
+        }
+
+        private static Vector3 ReadPosition(PlanetTriangleGpuVertex vertex)
+        {
+            Vector4 packed = vertex.positionAndActive;
+            return new Vector3(packed.x, packed.y, packed.z);
+        }
+
+        private static int CalculateSegmentIndex(Vector3 position, Bounds bounds)
+        {
+            Vector3 min = bounds.min;
+            Vector3 size = bounds.size;
+            int x = CalculateSegmentCoord(position.x, min.x, size.x);
+            int y = CalculateSegmentCoord(position.y, min.y, size.y);
+            int z = CalculateSegmentCoord(position.z, min.z, size.z);
+            return x + y * StagedSegmentAxisCount + z * StagedSegmentAxisCount * StagedSegmentAxisCount;
+        }
+
+        private static int CalculateSegmentCoord(float value, float min, float size)
+        {
+            if (size <= 0.0001f)
+            {
+                return 1;
+            }
+
+            return Mathf.Clamp(Mathf.FloorToInt(((value - min) / size) * StagedSegmentAxisCount), 0, StagedSegmentAxisCount - 1);
         }
 
         private void WriteWaterVertices(IList<PlanetTriangleGpuVertex> vertices, int vertexCount)

@@ -892,7 +892,8 @@ namespace MarchingCubesPlanet.MarchingCubes
             int cacheChunkId,
             int cacheLod,
             in PlanetRecipe recipe,
-            PlanetMarchingCubesPaintSettings settings)
+            PlanetMarchingCubesPaintSettings settings,
+            bool stagedGpuPublish = false)
         {
             if (meshFilter == null)
             {
@@ -956,6 +957,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                         meshFilter != null ? meshFilter.transform : null,
                         cacheBounds,
                         surfaceMaterial,
+                        stagedGpuPublish,
                         out int gpuSurfaceVertexCount,
                         out Bounds _))
                 {
@@ -1002,7 +1004,8 @@ namespace MarchingCubesPlanet.MarchingCubes
             in PlanetPlacement placement,
             PlanetMarchingCubesPaintSettings settings,
             PlanetChunkMeshCache cache,
-            int cacheLod)
+            int cacheLod,
+            bool stagedGpuPublish = false)
         {
             if (source == null)
             {
@@ -1071,6 +1074,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                     in placement,
                     settings,
                     surfaceMaterial,
+                    stagedGpuPublish,
                     out Bounds _))
                 {
                     ClearNamedSurfaceSlot(runtimeMeshSlot);
@@ -1470,6 +1474,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             in PlanetPlacement placement,
             PlanetMarchingCubesPaintSettings settings,
             Material material,
+            bool stagedGpuPublish,
             out Bounds bounds)
         {
             bounds = default;
@@ -1553,12 +1558,20 @@ namespace MarchingCubesPlanet.MarchingCubes
                 bounds = new Bounds(Vector3.zero, Vector3.one);
             }
 
-            return PlanetTrianglePoolRegistry.Environment.GpuBackend.Publish(
-                meshId,
-                gpuUploadVertices,
-                gpuUploadVertices.Count,
-                bounds,
-                material);
+            PlanetTriangleGpuBackend gpuBackend = PlanetTrianglePoolRegistry.Environment.GpuBackend;
+            return stagedGpuPublish
+                ? gpuBackend.PublishStaged(
+                    meshId,
+                    gpuUploadVertices,
+                    gpuUploadVertices.Count,
+                    bounds,
+                    material)
+                : gpuBackend.Publish(
+                    meshId,
+                    gpuUploadVertices,
+                    gpuUploadVertices.Count,
+                    bounds,
+                    material);
         }
 
         private bool PublishGpuCachedSurface(
@@ -1571,6 +1584,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             Transform localToWorld,
             Bounds localBounds,
             Material material,
+            bool stagedGpuPublish,
             out int publishedVertexCount,
             out Bounds bounds)
         {
@@ -1637,12 +1651,19 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
 
             PlanetTriangleGpuBackend gpuBackend = PlanetTrianglePoolRegistry.Environment.GpuBackend;
-            bool published = gpuBackend.Publish(
-                meshId,
-                gpuUploadVertices,
-                publishedVertexCount,
-                bounds,
-                material);
+            bool published = stagedGpuPublish
+                ? gpuBackend.PublishStaged(
+                    meshId,
+                    gpuUploadVertices,
+                    publishedVertexCount,
+                    bounds,
+                    material)
+                : gpuBackend.Publish(
+                    meshId,
+                    gpuUploadVertices,
+                    publishedVertexCount,
+                    bounds,
+                    material);
             publishedVertexCount = gpuBackend.LastPublishedVertexCount;
             return published;
         }
