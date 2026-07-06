@@ -1,34 +1,40 @@
-# 10 - Publicacion runtime de meshes por chunk
+# 10 - Publicacion visual runtime por chunk
 
 ## Estado
 
-Documento vigente tras eliminar el paso 09.
+Documento vigente tras mover la ruta visual de preview a buffers GPU-resident.
 
-10 vuelve a ser propietario de crear, publicar, reutilizar y liberar sus propias
-`Mesh` runtime por chunk. No existe pool global de triangulos ni backend visible
-externo para publicar el resultado de 10.
+10 es propietario de crear, publicar, reutilizar y liberar la representacion
+visible runtime por chunk. Para visual, la ruta preferida ya no publica `Mesh`
+CPU: Marching Cubes escribe vertices en un buffer GPU y se pinta mediante draw
+procedural indirecto.
 
 ```text
-07 calcula/extraccion -> 08 pinta datos -> 10 crea/publica/libera Mesh runtime
+07 calcula/extraccion GPU -> 10 publica/dibuja buffer GPU-resident
 ```
 
 10 sigue decidiendo `desiredLOD`, `requestedLOD`, prioridad, cancelacion y
 publicacion visible.
 
+La ruta `Mesh` runtime queda como legacy/diagnostico y como posible base futura
+para colision/physics si se necesita una representacion CPU separada. No es la
+ruta visual caliente.
+
 ## Problema
 
-El sistema actual ya evita parte del Garbage Collector al usar listas
-reutilizadas y ya reutiliza slots visibles en vez de destruir y recrear
+El sistema anterior ya evitaba parte del Garbage Collector al usar listas
+reutilizadas y reutilizar slots visibles en vez de destruir y recrear
 GameObjects/Meshes para cada cambio.
 
-Aun asi siguen apareciendo tirones fuertes cuando cambian meshes grandes en
-runtime, incluso cuando la mesh viene de cache.
+Aun asi seguian apareciendo tirones fuertes al publicar meshes grandes en
+runtime, incluso cuando la mesh venia de cache.
 
 Lectura vigente:
 
 ```text
 El coste principal sospechoso ya no es solo calcular cells.
-El coste principal sospechoso esta en publicar/subir/cambiar meshes grandes en runtime.
+El coste principal sospechoso esta en el bucle GPU -> CPU -> Mesh -> GPU y en la
+sincronizacion que provoca publicar/subir/cambiar meshes grandes en runtime.
 ```
 
 Sintoma observado:
@@ -43,18 +49,19 @@ fase de extraccion/calculo.
 
 ## Objetivo
 
-Reducir tirones al cambiar LOD de chunks grandes sin romper la shell inicial
-LOD2 inmediata.
+Reducir tirones al generar y cambiar LOD de chunks grandes eliminando el readback
+visual y la publicacion de `Mesh` para terreno visible.
 
 Objetivos concretos:
 
 ```text
 1. Mantener la shell LOD2 inicial como carga inmediata.
-2. No destruir ni recrear GameObjects/Meshes visibles durante swaps runtime.
-3. Separar preparacion de datos y publicacion visible.
-4. Controlar cuando se suben/aplican meshes grandes a Unity.
-5. Evitar GC accidental en runtime caliente.
-6. Poder medir donde se produce el tiron.
+2. No destruir ni recrear GameObjects visibles durante swaps runtime.
+3. Evitar que los vertices visuales vuelvan a CPU.
+4. Dibujar desde buffers GPU mediante indirect args generados en GPU.
+5. Mantener materiales editables desde un shader URP de superficie.
+6. Evitar GC accidental en runtime caliente.
+7. Poder medir donde se produce el tiron.
 ```
 
 ## Fuera de alcance
@@ -64,14 +71,15 @@ Este documento no cambia:
 ```text
 Calculo de desiredLOD.
 Tamanos canonicos de chunk.
-Politica de cache por chunk/LOD.
+Politica final de cache por chunk/LOD para datos no visuales.
 Transvoxel.
 Pool global de triangulos.
+Colision/physics.
 ```
 
-La pieza visible GPU-resident queda dentro de la publicacion de `Mesh` runtime de
-10. Si se cambia esta decision, debe documentarse explicitamente antes de bajar a
-codigo.
+La cache `.pmesh` deja de aportar a la ruta visual si el terreno visible no se
+publica como `Mesh`. Si se conserva, debe justificarse para colision,
+diagnostico, bake offline o comparativa, no como requisito de render.
 
 
 ## Linea base actual
@@ -79,19 +87,17 @@ codigo.
 La linea base aceptada para seguir desde aqui es:
 
 ```text
-Cada chunk tiene slot visible persistente.
+Cada chunk visual tiene recursos GPU persistentes o reutilizables.
 El slot visible no se destruye en cada cambio de LOD.
-La Mesh del slot se reutiliza.
-La ruta de cache puede cargar dentro de la Mesh existente.
-La ruta generada puede pintar dentro de la Mesh existente.
+La ruta generada escribe vertices en GPU.
+El draw indirect toma el vertex count desde un buffer de args generado en GPU.
 ```
 
 Regla:
 
 ```text
 Un cambio de LOD no debe crear/destruir GameObject visible.
-Un cambio de LOD no debe destruir la Mesh visible si puede reescribirse o
-alternarse mediante doble buffer.
+Un cambio de LOD no debe forzar readback visual ni reconstruccion de Mesh CPU.
 ```
 
 ## PlanetGrid inicial
@@ -129,58 +135,90 @@ lista ni se consulta por indice.
 Regla:
 
 ```text
-Generate Grid crea el PlanetGrid.
-Generate Shell asegura que existe PlanetGrid antes de cocinar la shell.
-Generate Chunk pide un `chunkID` al PlanetGrid y solo cocina ese chunk si el
-mapa lo marca con informacion.
-PlanetGenerator.GenerateChunk recibe ese `chunkID`, lo traduce al origin del LOD
-solicitado y ejecuta Marching Cubes solo para ese chunk.
-En el panel de preview, `Generate` con modo Chunk escoge temporalmente una
-coordenada marcada a 1 y cocina el LOD seleccionado. Para pruebas manuales de
-FPS, Chunk + Generate recorre las coordenadas con informacion una a una,
-dejando un frame entre chunks.
+Generate Grid conserva el `PlanetGrid` legacy/diagnostico.
+Generate Shell visual no necesita `PlanetGrid`: despacha candidatos de shell en
+GPU y dibuja lo escrito en el buffer.
+Generate Chunk visual usa `PlanetGrid` siempre. Si no existe grid, el panel lo
+crea antes de recorrer chunks. No usa candidatos conservadores en el flujo normal
+de `Chunk + Generate`.
+En el panel de preview, `Generate` con modo Chunk recorre candidatos uno a uno
+dejando un frame entre chunks para pruebas manuales de FPS.
 ```
 
 Regla de memoria:
 
 ```text
-GenerateChunk ajusta outputVertexCapacity a un budget redondeado por LOD:
+GenerateChunk visual ajusta outputVertexCapacity a un budget redondeado por LOD:
 LOD2 -> 8k vertices.
 LOD1 -> 62k vertices.
 LOD0 -> 500k vertices.
 No arrastra la capacidad global por defecto de la shell completa para cocinar un
 solo chunk.
-GenerateChunk conserva un unico extractor scratch compartido para chunks mientras
-el generador esta vivo. El chunk solicita ese scratch, aplica su LOD como
-parametros de trabajo, reutiliza sus buffers GPU y su readback CPU si la
-capacidad ya cubre la peticion, y lo deja preparado para el siguiente chunk.
-El scratch se libera desde `PlanetGenerator.Release`.
-La capacidad reusable de chunks parte holgada desde el presupuesto LOD0, se
-comparte entre LOD0, LOD1 y LOD2, y solo crece hacia arriba si algun chunk futuro
-pide mas. No se reduce ni se libera en el camino caliente por alternar entre
-LODs.
-Si el count pass detecta overflow porque `triangleCountAttempted * 3` no cabe en
-la capacidad actual, `GenerateChunk` aumenta la capacidad reusable al siguiente
-escalon y repite ese mismo chunk. Un chunk con geometria no debe publicarse vacio
-por falta de capacidad del scratch.
-GenerateChunk conserva tambien un unico `PlanetGpuShapeEvaluator` reusable y un
-buffer de `PlanetGpuShapeCell` cacheado para la receta/LOD efectiva actual. Si la
-receta cambia, se reconstruyen las cells; si solo cambia el chunk, se machacan
-los datos sobre los mismos recursos.
-La ruta generada publica la Mesh desde buffers `NativeArray` persistentes de
-subida. Estos buffers arrancan con capacidad holgada de chunk LOD0 y solo crecen
-hacia arriba si una mesh futura no cabe, para evitar que un chunk grande fuerce
-crecimiento de `List<T>` managed en el camino caliente.
+La ruta visual conserva buffers GPU vivos mientras el componente esta vivo:
+chunk origins, vertices, state, indirect args, edge table, tri table y shape
+evaluator. Se machacan los datos sobre los mismos recursos y solo se recrean si
+la nueva capacidad no cabe.
+En modo Chunk, cada coordenada confirmada por `PlanetGrid` mantiene su propio
+slot visible GPU para que los chunks generados sigan vivos y no sean sustituidos
+por el siguiente chunk.
 GenerateShell conserva temporalmente la capacidad global por defecto de 3M como
 deuda explicita hasta medir y cerrar la reduccion de shell LOD2.
+La ruta legacy de Mesh puede mantener sus scratch buffers reutilizables mientras
+exista para comparativas o diagnostico.
+```
+
+## Ruta GPU-resident aceptada
+
+Contrato visual vigente:
+
+```text
+CPU ordena generacion.
+CPU sube receta/cells/chunk origins.
+GPU evalua densidad.
+GPU ejecuta Marching Cubes.
+GPU escribe vertices visuales.
+GPU incrementa indirect args[0] con vertexCountWritten.
+CPU emite DrawProceduralIndirect.
+Los vertices visuales no vuelven a CPU.
+```
+
+El material visible usa shader URP de superficie compatible con el atlas actual.
+El shader recibe el buffer `PlanetMarchingCubesVertex`, transforma grid->world en
+vertex shader y calcula la UV de atlas por altura igual que la ruta CPU previa.
+
+Regla:
+
+```text
+No usar readback de vertices, state o counts en la ruta visual caliente.
+Si se necesita saber si un chunk esta vacio en CPU, eso pertenece a diagnostico,
+streaming o fisica, no al render visual GPU-only.
 ```
 
 ## Estrategias aceptadas
 
-### 1. API low-level de Mesh
+### 1. Buffer visual GPU + draw indirect
+
+Usar buffers GPU persistentes para vertices visuales y un buffer de argumentos
+indirectos escrito por compute:
+
+```text
+ComputeBuffer vertices -> StructuredBuffer en shader de superficie.
+ComputeBuffer indirect args -> DrawProceduralIndirect.
+```
+
+Uso previsto:
+
+```text
+Evitar readback de vertices visuales.
+Evitar Mesh.SetVertices/SetTriangles/SetVertexBufferData en la ruta caliente.
+Reutilizar capacidad GPU por LOD/chunk.
+Mantener el material editable mediante shader URP compatible con atlas.
+```
+
+### 2. API low-level de Mesh legacy
 
 Usar la ruta de buffers explicitos de Unity para reducir conversiones y
-validaciones de las APIs comodas:
+validaciones de las APIs comodas solo si se usa la ruta legacy/debug de Mesh:
 
 ```text
 Mesh.SetVertexBufferParams
@@ -189,7 +227,7 @@ Mesh.SetIndexBufferParams
 Mesh.SetIndexBufferData
 ```
 
-Uso previsto:
+Uso previsto legacy:
 
 ```text
 Subir vertices, normales, uvs, colores e indices con layout explicito.
@@ -203,10 +241,11 @@ Referencia:
 https://docs.unity3d.com/ScriptReference/Mesh.SetVertexBufferData.html
 ```
 
-### 2. MeshData + Jobs/Burst
+### 3. MeshData + Jobs/Burst legacy
 
 Usar `Mesh.AllocateWritableMeshData` para preparar datos de mesh fuera de la ruta
-comoda y permitir poblar datos desde Jobs cuando tenga sentido.
+comoda y permitir poblar datos desde Jobs cuando tenga sentido para colision,
+diagnostico o una ruta CPU no visual.
 
 Uso previsto:
 
@@ -230,10 +269,10 @@ https://docs.unity3d.com/ScriptReference/Mesh.AllocateWritableMeshData.html
 https://docs.unity3d.com/ScriptReference/Mesh.ApplyAndDisposeWritableMeshData.html
 ```
 
-### 3. MarkDynamic obligatorio en meshes runtime
+### 4. MarkDynamic obligatorio en meshes runtime legacy
 
 Toda Mesh runtime de chunk que vaya a recibir datos dinamicos debe marcarse como
-dinamica antes del primer upload.
+dinamica antes del primer upload si se usa la ruta legacy.
 
 Regla:
 
@@ -249,7 +288,7 @@ Referencia:
 https://docs.unity3d.com/ScriptReference/Mesh.MarkDynamic.html
 ```
 
-### 4. Fase de publicacion controlada
+### 5. Fase de publicacion controlada
 
 La preparacion de un chunk y la publicacion visible no tienen por que ocurrir en
 el mismo frame.
@@ -257,14 +296,14 @@ el mismo frame.
 Direccion:
 
 ```text
-chunk request -> preparar/cargar/generar payload -> readyToPublish -> publicar con presupuesto
+chunk request -> generar GPU -> readyToSwap/readyToDraw -> publicar con presupuesto
 ```
 
 La cola `readyToPublish` debe permitir:
 
 ```text
-Limitar cuantas meshes se aplican por frame.
-Meter cooldown despues de publicar meshes grandes.
+Limitar cuantos buffers/draws se activan por frame.
+Meter cooldown despues de generar buffers grandes.
 Priorizar LOD0 sobre LOD1 y LOD1 sobre LOD2.
 Cancelar publicaciones que ya no coinciden con desiredLOD.
 ```
@@ -277,11 +316,10 @@ planeta visible.
 El throttling aplica a refinamientos/cambios runtime posteriores.
 ```
 
-### 5. UploadMeshData en punto controlado
+### 6. UploadMeshData en punto controlado legacy
 
 Probar `Mesh.UploadMeshData(false)` como parte opcional de la fase de
-publicacion para decidir si conviene forzar el upload en un punto conocido del
-frame.
+publicacion solo en la ruta legacy de Mesh.
 
 Lectura:
 
@@ -297,7 +335,7 @@ Referencia:
 https://docs.unity3d.com/ScriptReference/Mesh.UploadMeshData.html
 ```
 
-### 6. Doble buffer visual por chunk
+### 7. Doble buffer visual por chunk
 
 Cada chunk puede tener dos buffers visuales:
 
@@ -318,7 +356,7 @@ Flujo:
 Motivo:
 
 ```text
-Evitar reescribir la misma Mesh visible que Unity puede estar usando para render.
+Evitar reescribir el mismo buffer visible que Unity puede estar usando para render.
 Reducir sincronizaciones raras entre main thread, render thread y driver.
 ```
 
@@ -359,12 +397,15 @@ de memoria y puede necesitar una politica de eviction posterior.
 Antes de dar por buena una optimizacion, hay que medir al menos:
 
 ```text
-Tiempo de lectura de cache .pmesh.
-Tiempo de preparacion de buffers CPU.
-Tiempo de escritura/aplicacion sobre Mesh.
-Tiempo de UploadMeshData si se usa.
+Tiempo de dispatch de Marching Cubes GPU.
+Tiempo de inicializacion/crecimiento de buffers GPU.
+Tiempo de escritura de indirect args.
+Tiempo de DrawProceduralIndirect y coste de render.
+Vertex count publicado en args indirectos.
+Tiempo de lectura de cache .pmesh si se usa una ruta legacy.
+Tiempo de escritura/aplicacion sobre Mesh si se usa una ruta legacy.
+Tiempo de UploadMeshData si se usa una ruta legacy.
 Tiempo de cambio visible entre buffers/slots.
-Vertex count e index count publicados.
 LOD origen y LOD destino.
 ```
 
@@ -378,18 +419,13 @@ Para coste normal se prefieren profiler markers/metricas agregadas.
 
 ## Orden de implementacion propuesto
 
-1. Verificar que todas las meshes runtime/cache into slot pasan por
-   `MarkDynamic`.
-2. Anadir metricas/profiler markers alrededor de la publicacion de mesh.
-3. Separar preparacion de payload y publicacion visible con una cola
-   `readyToPublish`.
-4. Anadir presupuesto de publicacion visible configurable en el SO.
-5. Probar publicacion con `UploadMeshData(false)` controlado.
-6. Cambiar a API low-level de Mesh si el profiler confirma coste alto en las
-   APIs comodas.
-7. Probar doble buffer visual por chunk para evitar reescribir la mesh visible.
-8. Considerar MeshData + Jobs/Burst solo si queda coste CPU medible en la
-   preparacion de datos.
+1. Generar shell/chunk visual en buffer GPU sin readback.
+2. Dibujar con args indirectos escritos por compute.
+3. Anadir metricas/profiler markers alrededor de dispatch, buffer growth y draw.
+4. Separar generacion GPU y activacion visible con una cola `readyToPublish`.
+5. Anadir presupuesto de publicacion visible configurable en el SO.
+6. Probar doble buffer visual por chunk para evitar reescribir buffers visibles.
+7. Mantener Mesh low-level/MeshData solo para legacy, diagnostico o colision.
 
 ## Parametros esperados en configuracion
 
@@ -397,12 +433,11 @@ Los valores concretos se cerraran al implementar, pero el SO de activacion LOD
 debe poder exponer:
 
 ```text
-maxRuntimeMeshPublishesPerFrame
-runtimeMeshPublishCooldownSeconds
-largeRuntimeMeshVertexThreshold
-largeRuntimeMeshPublishCooldownSeconds
-forceRuntimeMeshUploadOnPublish
-enableRuntimeMeshDoubleBuffer
+maxRuntimeGpuPublishesPerFrame
+runtimeGpuPublishCooldownSeconds
+largeRuntimeGpuVertexThreshold
+largeRuntimeGpuPublishCooldownSeconds
+enableRuntimeGpuDoubleBuffer
 ```
 
 Regla:
@@ -422,7 +457,9 @@ Validacion minima desde Canvas Generate:
 3. La publicacion visible respeta el presupuesto configurado.
 4. No se destruyen/recrean GameObjects visibles por swap de LOD.
 5. No aparecen logs masivos por frame.
-6. El profiler muestra menos picos o picos mas controlados en cambios de mesh.
+6. El profiler muestra menos picos o picos mas controlados al generar/cambiar
+   visuales.
+7. No aparecen readbacks de vertices/state/counts en la ruta visual caliente.
 ```
 
 ## Decisiones cerradas
@@ -430,18 +467,19 @@ Validacion minima desde Canvas Generate:
 ```text
 La shell LOD2 inicial sigue siendo inmediata.
 Los swaps runtime no deben destruir/recrear GameObjects visibles.
-La publicacion visible de meshes necesita presupuesto propio.
-El calculo de cells y la publicacion de mesh son fases distintas.
+La publicacion visible GPU necesita presupuesto propio.
+El calculo de cells y la activacion visible son fases distintas.
 El doble buffer visual por chunk es una estrategia valida para probar.
 Mantener LOD2 residente tras cargarlo es valido si memoria/VRAM lo permite.
+La ruta visual caliente no debe publicar Mesh CPU ni hacer readback GPU->CPU.
 ```
 
 ## Pendientes
 
 ```text
-Medir coste real de SetVertices/SetTriangles frente a SetVertexBufferData.
-Medir si UploadMeshData(false) ayuda o solo mueve el pico.
+Medir coste real de DrawProceduralIndirect en Editor y Quest 3.
+Medir si el crecimiento de buffers GPU provoca waits residuales.
 Definir politica de eviction si se mantienen varios LODs residentes por chunk.
-Definir si el doble buffer guarda dos Meshes por LOD o dos slots reutilizables.
-Definir si MeshData + Jobs/Burst compensa la complejidad en Quest 3.
+Definir si el doble buffer guarda dos buffers por LOD o dos slots reutilizables.
+Definir la ruta separada de colision/physics si necesita datos CPU.
 ```

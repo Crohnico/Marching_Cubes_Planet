@@ -45,6 +45,15 @@ Shader "MarchingCubesPlanet/Planet/SurfaceGpu"
             half4 _BaseColor;
             half _Smoothness;
             half _Metallic;
+            float _PlanetGpuVertexLayout;
+            float4x4 _PlanetGridToWorldMatrix;
+            float _PlanetGridRadius;
+            float _PlanetOceanDepth;
+            float _PlanetMinimumOceanDepth;
+            float _PlanetSurfaceNoiseAmplitude;
+            float _PlanetMaxLandElevation;
+            float _PlanetMaxHeightModifier;
+            float _PlanetMountainBiomeHeight;
 
             TEXTURE2D(_PlanetSurfaceAtlas);
             SAMPLER(sampler_PlanetSurfaceAtlas);
@@ -59,7 +68,14 @@ Shader "MarchingCubesPlanet/Planet/SurfaceGpu"
                 float4 color;
             };
 
+            struct PlanetMarchingCubesVertex
+            {
+                float4 positionAndCase;
+                float4 normalAndDiagnostic;
+            };
+
             StructuredBuffer<PlanetTriangleGpuVertex> _PlanetTriangleVertices;
+            StructuredBuffer<PlanetMarchingCubesVertex> _PlanetMarchingCubesVertices;
 
             struct Varyings
             {
@@ -72,18 +88,69 @@ Shader "MarchingCubesPlanet/Planet/SurfaceGpu"
                 float active : TEXCOORD4;
             };
 
+            float2 EvaluateSurfaceAtlasUv(float radius)
+            {
+                const float surfaceAtlasSeaLevelV = 0.5;
+                const float surfaceAtlasLandRangeScale = 0.6;
+                float safeRadius = max(_PlanetGridRadius, 0.0001);
+                float surfaceOffset = radius - _PlanetGridRadius;
+                float minHeightAtlasOffset =
+                    -safeRadius * max(_PlanetOceanDepth, _PlanetMinimumOceanDepth) -
+                    safeRadius * max(0.0, _PlanetSurfaceNoiseAmplitude);
+                float maxHeightAtlasOffset =
+                    safeRadius * _PlanetMaxLandElevation * _PlanetMaxHeightModifier +
+                    safeRadius * max(0.0, _PlanetMountainBiomeHeight) +
+                    safeRadius * max(0.0, _PlanetSurfaceNoiseAmplitude);
+                maxHeightAtlasOffset *= surfaceAtlasLandRangeScale;
+
+                if (surfaceOffset <= 0.0)
+                {
+                    float depthRange = max(0.0001, -minHeightAtlasOffset);
+                    float underwaterHeight = saturate((surfaceOffset - minHeightAtlasOffset) / depthRange);
+                    return float2(0.5, lerp(0.0, surfaceAtlasSeaLevelV, underwaterHeight));
+                }
+
+                float landRange = max(0.0001, maxHeightAtlasOffset);
+                float landHeight = saturate(surfaceOffset / landRange);
+                return float2(0.5, lerp(surfaceAtlasSeaLevelV, 1.0, landHeight));
+            }
+
             Varyings vert(uint vertexID : SV_VertexID)
             {
-                PlanetTriangleGpuVertex input = _PlanetTriangleVertices[vertexID];
                 Varyings output;
-                float3 positionWS = input.positionAndActive.xyz;
+                float3 positionWS;
+                float3 normalWS;
+                float2 uv;
+                half4 color;
+                float active;
+
+                if (_PlanetGpuVertexLayout > 0.5)
+                {
+                    PlanetMarchingCubesVertex input = _PlanetMarchingCubesVertices[vertexID];
+                    float3 gridPosition = input.positionAndCase.xyz;
+                    positionWS = mul(_PlanetGridToWorldMatrix, float4(gridPosition, 1.0)).xyz;
+                    normalWS = normalize(mul((float3x3)_PlanetGridToWorldMatrix, input.normalAndDiagnostic.xyz));
+                    uv = EvaluateSurfaceAtlasUv(length(gridPosition));
+                    color = half4(1.0h, 1.0h, 1.0h, 1.0h);
+                    active = 1.0;
+                }
+                else
+                {
+                    PlanetTriangleGpuVertex input = _PlanetTriangleVertices[vertexID];
+                    positionWS = input.positionAndActive.xyz;
+                    normalWS = NormalizeNormalPerVertex(input.normalAndFlags.xyz);
+                    uv = input.uvAndMaterial.xy;
+                    color = half4(input.color);
+                    active = input.positionAndActive.w;
+                }
+
                 output.positionHCS = TransformWorldToHClip(positionWS);
                 output.positionWS = positionWS;
-                output.uv = input.uvAndMaterial.xy;
-                output.normalWS = NormalizeNormalPerVertex(input.normalAndFlags.xyz);
-                output.color = half4(input.color);
+                output.uv = uv;
+                output.normalWS = normalWS;
+                output.color = color;
                 output.fogFactor = ComputeFogFactor(output.positionHCS.z);
-                output.active = input.positionAndActive.w;
+                output.active = active;
                 return output;
             }
 

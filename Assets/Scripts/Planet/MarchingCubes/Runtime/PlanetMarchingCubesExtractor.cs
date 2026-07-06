@@ -13,6 +13,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private static readonly int ChunkOriginsId = Shader.PropertyToID("_MarchingCubesChunkOrigins");
         private static readonly int VerticesId = Shader.PropertyToID("_MarchingCubesVertices");
         private static readonly int StateId = Shader.PropertyToID("_MarchingCubesState");
+        private static readonly int DrawArgsId = Shader.PropertyToID("_MarchingCubesDrawArgs");
         private static readonly int EdgeTableId = Shader.PropertyToID("_MarchingCubesEdgeTable");
         private static readonly int TriTableId = Shader.PropertyToID("_MarchingCubesTriTable");
         private static readonly int CellCountId = Shader.PropertyToID("_MarchingCubesCellCount");
@@ -22,6 +23,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private static readonly int ChunkIndexBaseId = Shader.PropertyToID("_MarchingCubesChunkIndexBase");
         private static readonly int OutputPrimitiveLimitId = Shader.PropertyToID("_MarchingCubesOutputPrimitiveLimit");
         private static readonly int WriteEnabledId = Shader.PropertyToID("_MarchingCubesWriteEnabled");
+        private static readonly int DrawArgsEnabledId = Shader.PropertyToID("_MarchingCubesDrawArgsEnabled");
 
         private const string ExtractChunkedCartesianSurfaceKernelName = "CS_ExtractChunkedCartesianSurface";
         private const int MaxThreadGroupsPerDispatchAxis = 65535;
@@ -42,6 +44,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private PlanetGpuBufferHandle chunkOriginBuffer;
         private PlanetGpuBufferHandle vertexBuffer;
         private PlanetGpuBufferHandle stateBuffer;
+        private PlanetGpuBufferHandle drawArgsBuffer;
         private PlanetGpuBufferHandle edgeTableBuffer;
         private PlanetGpuBufferHandle triTableBuffer;
         private PlanetMarchingCubesVertex[] vertexReadback;
@@ -228,6 +231,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                 reusableVertexCapacity,
                 PlanetMarchingCubesVertex.Stride);
             stateBuffer = EnsureBuffer(stateBuffer, "Planet Marching Cubes State", 1, PlanetMarchingCubesState.Stride);
+            drawArgsBuffer = EnsureBuffer(drawArgsBuffer, "Planet Marching Cubes Legacy Draw Args", 4, sizeof(uint));
             edgeTableBuffer = EnsureBuffer(edgeTableBuffer, "Planet Marching Cubes Edge Table", PlanetMarchingCubesLookupTables.EdgeTable.Length, sizeof(uint));
             triTableBuffer = EnsureBuffer(triTableBuffer, "Planet Marching Cubes Tri Table", PlanetMarchingCubesLookupTables.TriTable.Length, sizeof(int));
 
@@ -519,6 +523,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             CancelActiveExtraction();
             ReleaseBuffer(ref triTableBuffer);
             ReleaseBuffer(ref edgeTableBuffer);
+            ReleaseBuffer(ref drawArgsBuffer);
             ReleaseBuffer(ref stateBuffer);
             ReleaseBuffer(ref vertexBuffer);
             ReleaseBuffer(ref chunkOriginBuffer);
@@ -538,8 +543,10 @@ namespace MarchingCubesPlanet.MarchingCubes
             chunkOriginBuffer.BindTo(computeShader, kernel, ChunkOriginsId);
             vertexBuffer.BindTo(computeShader, kernel, VerticesId);
             stateBuffer.BindTo(computeShader, kernel, StateId);
+            drawArgsBuffer.BindTo(computeShader, kernel, DrawArgsId);
             edgeTableBuffer.BindTo(computeShader, kernel, EdgeTableId);
             triTableBuffer.BindTo(computeShader, kernel, TriTableId);
+            computeShader.SetInt(DrawArgsEnabledId, 0);
         }
 
         private void ResetExtractionState(int activeChunkCount)

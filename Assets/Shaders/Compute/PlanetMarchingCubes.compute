@@ -24,6 +24,7 @@ struct PlanetMarchingCubesStateGpu
 StructuredBuffer<int4> _MarchingCubesChunkOrigins;
 RWStructuredBuffer<PlanetMarchingCubesVertex> _MarchingCubesVertices;
 RWStructuredBuffer<PlanetMarchingCubesStateGpu> _MarchingCubesState;
+RWStructuredBuffer<uint> _MarchingCubesDrawArgs;
 StructuredBuffer<uint> _MarchingCubesEdgeTable;
 StructuredBuffer<int> _MarchingCubesTriTable;
 
@@ -34,6 +35,7 @@ uint _MarchingCubesChunkSize;
 uint _MarchingCubesChunkIndexBase;
 uint _MarchingCubesOutputPrimitiveLimit;
 uint _MarchingCubesWriteEnabled;
+uint _MarchingCubesDrawArgsEnabled;
 
 float3 PlanetMcInterpolate(float3 a, float3 b, float densityA, float densityB)
 {
@@ -132,6 +134,11 @@ void PlanetMcEmitCube(uint cellIndex, float3 cornerPositions[8], float cornerDen
 
     uint previousVertexCount;
     InterlockedAdd(_MarchingCubesState[0].vertexCountWritten, vertexCountToAdd, previousVertexCount);
+    if (_MarchingCubesDrawArgsEnabled != 0u)
+    {
+        uint previousDrawVertexCount;
+        InterlockedAdd(_MarchingCubesDrawArgs[0], vertexCountToAdd, previousDrawVertexCount);
+    }
 
     int rowOffset = (int)caseIndex * 16;
 

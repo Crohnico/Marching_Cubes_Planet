@@ -189,7 +189,7 @@ float PlanetShapeApplyMountainBiome(
     return radius * height * edgeMask * mountainMask;
 }
 
-float PlanetShapeApplyBiome(
+float PlanetShapeEvaluateBiomeOffset(
     uint biomeId,
     float3 direction,
     float3 cellDirection,
@@ -200,9 +200,10 @@ float PlanetShapeApplyBiome(
     float4 biomeShape,
     float4 mountainBiome)
 {
+    float biomeOffset = PlanetShapeApplyMeadowBiome();
     if (biomeId == PlanetShapeBiomeMountain)
     {
-        return PlanetShapeApplyMountainBiome(
+        biomeOffset = PlanetShapeApplyMountainBiome(
             direction,
             cellDirection,
             radius,
@@ -213,7 +214,7 @@ float PlanetShapeApplyBiome(
             mountainBiome);
     }
 
-    return PlanetShapeApplyMeadowBiome();
+    return biomeOffset;
 }
 
 float PlanetShapeEvaluateDensity(float3 gridPosition, out float surfaceOffset, out float effectiveRadius, out float continentFlag)
@@ -312,7 +313,7 @@ float PlanetShapeEvaluateDensity(float3 gridPosition, out float surfaceOffset, o
     float landMask = lerp(secondEdgeFlag, firstEdgeFlag, firstEdgeBlend);
     float3 normalizedPosition = gridPosition / radius;
     uint biomeId = (uint)round(nearestBiome);
-    surfaceOffset += PlanetShapeApplyBiome(
+    surfaceOffset += PlanetShapeEvaluateBiomeOffset(
         biomeId,
         direction,
         nearestDirection,

@@ -23,6 +23,7 @@ namespace MarchingCubesPlanet.Preview
 
         MeshFilter meshFilter;
         MeshRenderer meshRenderer;
+        PlanetGpuMarchingCubesSurface gpuSurface;
 
         private void Start()
         {
@@ -30,6 +31,7 @@ namespace MarchingCubesPlanet.Preview
 
             meshFilter = GetMeshFilter();
             meshRenderer = GetMeshRenderer();
+            gpuSurface = GetGpuSurface();
         }
 
         private MeshFilter GetMeshFilter()
@@ -46,11 +48,16 @@ namespace MarchingCubesPlanet.Preview
             return meshRenderer;
         }
 
+        private PlanetGpuMarchingCubesSurface GetGpuSurface()
+        {
+            if (gpuSurface == null) gpuSurface = GetComponent<PlanetGpuMarchingCubesSurface>();
+            if (gpuSurface == null) gpuSurface = gameObject.AddComponent<PlanetGpuMarchingCubesSurface>();
+            return gpuSurface;
+        }
+
         public void Generate(GenerationType type, PlanetChunkLod lod)
         {
             SyncPlacementFromTransform();
-
-            if (planetGrid == null) GenerateGrid();
 
             if (type == GenerationType.Shell)
             {
@@ -60,6 +67,7 @@ namespace MarchingCubesPlanet.Preview
 
             if (type == GenerationType.Chunk)
             {
+                if (planetGrid == null) GenerateGrid();
                 index = -1;
                 isConcatenatingChunks = true;
                 ConcatenateChunk(lod);
@@ -70,7 +78,6 @@ namespace MarchingCubesPlanet.Preview
         {
             recipe.Seed = Random.Range(int.MinValue, int.MaxValue);
             planetGrid = null;
-            GenerateGrid();
             Generate(type, lod);
         }
 
@@ -83,12 +90,12 @@ namespace MarchingCubesPlanet.Preview
 
         public async void GenerateChunk(PlanetChunkLod lod, PlanetGridCoordinates chunkID, System.Action onComplete = null)
         {
-            PlanetGenerator.GenerateChunk(
+            ClearLegacyMesh();
+            GetGpuSurface().GenerateChunk(
                 recipe,
                 placement,
                 lod,
                 chunkID,
-                GetMeshFilter(),
                 GetMeshRenderer());
             await Task.Yield();
             onComplete?.Invoke();
@@ -97,6 +104,7 @@ namespace MarchingCubesPlanet.Preview
         public void Release()
         {
             SyncPlacementFromTransform();
+            GetGpuSurface().Release();
             PlanetGenerator.Release(GetMeshFilter(), GetMeshRenderer());
             planetGrid = null;
             index = -1;
@@ -111,11 +119,11 @@ namespace MarchingCubesPlanet.Preview
 
         private void GenerateShell(PlanetChunkLod lod)
         {
-            PlanetGenerator.GenerateShell(
+            ClearLegacyMesh();
+            GetGpuSurface().GenerateShell(
                 recipe,
                 placement,
                 lod,
-                GetMeshFilter(),
                 GetMeshRenderer());
         }
 
@@ -135,6 +143,15 @@ namespace MarchingCubesPlanet.Preview
 
             PlanetGridCoordinates chunkID = planetGrid.GetInfoCell(index);
             GenerateChunk(lod, chunkID, () => ConcatenateChunk(lod));
+        }
+
+        private void ClearLegacyMesh()
+        {
+            MeshFilter target = GetMeshFilter();
+            if (target != null)
+            {
+                target.sharedMesh = null;
+            }
         }
     }
 }
