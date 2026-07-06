@@ -14,6 +14,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   canonicalChunkSize: 32
   enableLod0: 1
-  lod0MaxDistanceWorld: 1500
+  lod0MaxDistanceWorld: 3000
   lod1MaxDistanceWorld: 7000
   maxRuntimeLodRequestsPerUpdate: 1

@@ -1,7 +1,10 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.Profiling;
 using UnityEngine.UI;
 using UnityEngine.XR;
 
@@ -30,8 +33,18 @@ namespace MarchingCubesPlanet.Lab
         [Header("Diagnostics")]
         [SerializeField] private bool logStartupStatus = true;
 
+        [Header("Editor Profiler Capture")]
+        [SerializeField] private bool enableEditorProfilerCaptureShortcut = true;
+        [SerializeField] private string profilerCaptureFolderName = "ProfilerCaptures";
+        [SerializeField] private bool profilerCaptureActive;
+        [SerializeField] private string lastProfilerCapturePath;
+
         private readonly HandPointer leftPointer = new HandPointer(XRNode.LeftHand, -101);
         private readonly HandPointer rightPointer = new HandPointer(XRNode.RightHand, -102);
+        private bool wasLeftPrimaryButtonPressed;
+        private bool previousProfilerEnabled;
+        private bool previousProfilerBinaryLog;
+        private string previousProfilerLogFile;
 
         private static readonly List<GraphicRaycaster> Raycasters = new List<GraphicRaycaster>(16);
         private static readonly List<InputDevice> StartupDevices = new List<InputDevice>(16);
@@ -121,8 +134,14 @@ namespace MarchingCubesPlanet.Lab
             UpdateTrackedTransform(XRNode.LeftHand, leftHandMarker);
             UpdateTrackedTransform(XRNode.RightHand, rightHandMarker);
 
+            UpdateEditorProfilerCaptureShortcut();
             UpdatePointer(leftPointer);
             UpdatePointer(rightPointer);
+        }
+
+        private void OnDisable()
+        {
+            StopEditorProfilerCaptureIfNeeded();
         }
 
         public void ResetRigPose()
@@ -355,6 +374,111 @@ namespace MarchingCubesPlanet.Lab
             }
 
             return device.TryGetFeatureValue(CommonUsages.trigger, out float triggerValue) && triggerValue >= triggerThreshold;
+        }
+
+        private void UpdateEditorProfilerCaptureShortcut()
+        {
+#if UNITY_EDITOR
+            if (!enableEditorProfilerCaptureShortcut)
+            {
+                wasLeftPrimaryButtonPressed = false;
+                return;
+            }
+
+            bool primaryButtonPressed = IsPrimaryButtonPressed(XRNode.LeftHand);
+            if (primaryButtonPressed && !wasLeftPrimaryButtonPressed)
+            {
+                ToggleEditorProfilerCapture();
+            }
+
+            wasLeftPrimaryButtonPressed = primaryButtonPressed;
+#endif
+        }
+
+        private static bool IsPrimaryButtonPressed(XRNode node)
+        {
+            InputDevice device = InputDevices.GetDeviceAtXRNode(node);
+            return device.isValid &&
+                   device.TryGetFeatureValue(CommonUsages.primaryButton, out bool primaryButtonPressed) &&
+                   primaryButtonPressed;
+        }
+
+        private void ToggleEditorProfilerCapture()
+        {
+#if UNITY_EDITOR
+            if (profilerCaptureActive)
+            {
+                StopEditorProfilerCapture();
+                return;
+            }
+
+            StartEditorProfilerCapture();
+#endif
+        }
+
+        private void StartEditorProfilerCapture()
+        {
+#if UNITY_EDITOR
+            string captureDirectory = ResolveProfilerCaptureDirectory();
+            Directory.CreateDirectory(captureDirectory);
+
+            lastProfilerCapturePath = Path.Combine(
+                captureDirectory,
+                "PlanetMinimalXrRig_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".raw");
+
+            previousProfilerEnabled = Profiler.enabled;
+            previousProfilerBinaryLog = Profiler.enableBinaryLog;
+            previousProfilerLogFile = Profiler.logFile;
+
+            Profiler.enabled = false;
+            Profiler.logFile = lastProfilerCapturePath;
+            Profiler.enableBinaryLog = true;
+            Profiler.enabled = true;
+            profilerCaptureActive = true;
+
+            Debug.Log("PlanetMinimalXrRig profiler capture started: " + lastProfilerCapturePath, this);
+#endif
+        }
+
+        private void StopEditorProfilerCaptureIfNeeded()
+        {
+#if UNITY_EDITOR
+            if (profilerCaptureActive)
+            {
+                StopEditorProfilerCapture();
+            }
+#endif
+        }
+
+        private void StopEditorProfilerCapture()
+        {
+#if UNITY_EDITOR
+            Profiler.enabled = false;
+            Profiler.enableBinaryLog = previousProfilerBinaryLog;
+            Profiler.logFile = previousProfilerLogFile;
+            Profiler.enabled = previousProfilerEnabled;
+            profilerCaptureActive = false;
+
+            Debug.Log("PlanetMinimalXrRig profiler capture stopped: " + lastProfilerCapturePath, this);
+#endif
+        }
+
+        private string ResolveProfilerCaptureDirectory()
+        {
+#if UNITY_EDITOR
+            string projectRoot = Directory.GetParent(Application.dataPath)?.FullName;
+            if (string.IsNullOrEmpty(projectRoot))
+            {
+                projectRoot = Application.dataPath;
+            }
+
+            string folderName = string.IsNullOrWhiteSpace(profilerCaptureFolderName)
+                ? "ProfilerCaptures"
+                : profilerCaptureFolderName.Trim();
+            return Path.Combine(projectRoot, folderName);
+#else
+            return Application.persistentDataPath;
+#endif
         }
 
         private readonly struct UiHit
