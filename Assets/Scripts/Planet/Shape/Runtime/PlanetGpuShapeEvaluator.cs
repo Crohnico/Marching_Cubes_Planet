@@ -41,6 +41,16 @@ namespace MarchingCubesPlanet.Shape
             PlanetGpuShapeCell[] cells,
             PlanetGpuBufferMode requestedBufferMode)
         {
+            Release();
+            InitializeReusable(shader, in recipe, cells, requestedBufferMode);
+        }
+
+        public void InitializeReusable(
+            ComputeShader shader,
+            in PlanetRecipe recipe,
+            PlanetGpuShapeCell[] cells,
+            PlanetGpuBufferMode requestedBufferMode)
+        {
             if (shader == null)
             {
                 throw new ArgumentNullException(nameof(shader));
@@ -61,16 +71,14 @@ namespace MarchingCubesPlanet.Shape
                 throw new ArgumentException("cells length must be greater than or equal to VoronoiDivision.", nameof(cells));
             }
 
-            Release();
-
             computeShader = shader;
             evaluateKernel = computeShader.FindKernel(EvaluateKernelName);
             computeShader.GetKernelThreadGroupSizes(evaluateKernel, out threadGroupSizeX, out _, out _);
             bufferMode = requestedBufferMode;
 
             parameterUpload[0] = PlanetGpuShapeParameters.FromRecipe(in recipe);
-            parameterBuffer = CreateBuffer("Planet Shape Parameters", 1, PlanetGpuShapeParameters.Stride);
-            cellBuffer = CreateBuffer("Planet Shape Voronoi Cells", recipe.VoronoiDivision, PlanetGpuShapeCell.Stride);
+            parameterBuffer = EnsureBuffer(parameterBuffer, "Planet Shape Parameters", 1, PlanetGpuShapeParameters.Stride);
+            cellBuffer = EnsureBuffer(cellBuffer, "Planet Shape Voronoi Cells", recipe.VoronoiDivision, PlanetGpuShapeCell.Stride);
 
             SetData(parameterBuffer, parameterUpload, 1);
             SetData(cellBuffer, cells, recipe.VoronoiDivision);
@@ -132,16 +140,8 @@ namespace MarchingCubesPlanet.Shape
 
         private void EnsureSampleBuffers(int sampleCount)
         {
-            if (sampleInputBuffer != null && sampleInputBuffer.IsAlive && sampleInputBuffer.ElementCount == sampleCount &&
-                sampleOutputBuffer != null && sampleOutputBuffer.IsAlive && sampleOutputBuffer.ElementCount == sampleCount)
-            {
-                return;
-            }
-
-            ReleaseBuffer(ref sampleInputBuffer);
-            ReleaseBuffer(ref sampleOutputBuffer);
-            sampleInputBuffer = CreateBuffer("Planet Shape Sample Positions", sampleCount, 16);
-            sampleOutputBuffer = CreateBuffer("Planet Shape Density Samples", sampleCount, 16);
+            sampleInputBuffer = EnsureBuffer(sampleInputBuffer, "Planet Shape Sample Positions", sampleCount, 16);
+            sampleOutputBuffer = EnsureBuffer(sampleOutputBuffer, "Planet Shape Density Samples", sampleCount, 16);
         }
 
         private PlanetGpuBufferHandle CreateBuffer(string resourceName, int elementCount, int stride)
@@ -149,6 +149,21 @@ namespace MarchingCubesPlanet.Shape
             return bufferMode == PlanetGpuBufferMode.GraphicsBuffer
                 ? PlanetGpuBufferHandle.CreateGraphicsBuffer(resourceName, elementCount, stride)
                 : PlanetGpuBufferHandle.CreateComputeBuffer(resourceName, elementCount, stride);
+        }
+
+        private PlanetGpuBufferHandle EnsureBuffer(PlanetGpuBufferHandle handle, string resourceName, int elementCount, int stride)
+        {
+            if (handle != null &&
+                handle.IsAlive &&
+                handle.BufferMode == bufferMode &&
+                handle.ElementCount >= elementCount &&
+                handle.Stride == stride)
+            {
+                return handle;
+            }
+
+            ReleaseBuffer(ref handle);
+            return CreateBuffer(resourceName, elementCount, stride);
         }
 
         private static void SetData<T>(PlanetGpuBufferHandle handle, T[] data, int count) where T : struct

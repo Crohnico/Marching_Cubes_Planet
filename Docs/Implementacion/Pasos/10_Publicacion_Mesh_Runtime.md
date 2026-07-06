@@ -150,10 +150,27 @@ LOD1 -> 62k vertices.
 LOD0 -> 500k vertices.
 No arrastra la capacidad global por defecto de la shell completa para cocinar un
 solo chunk.
-GenerateChunk conserva un extractor scratch por LOD mientras el generador esta
-vivo. El chunk solicita el extractor de su LOD, reutiliza sus buffers GPU y su
-readback CPU si la capacidad coincide, y lo deja preparado para el siguiente
-chunk. Esos scratch se liberan desde `PlanetGenerator.Release`.
+GenerateChunk conserva un unico extractor scratch compartido para chunks mientras
+el generador esta vivo. El chunk solicita ese scratch, aplica su LOD como
+parametros de trabajo, reutiliza sus buffers GPU y su readback CPU si la
+capacidad ya cubre la peticion, y lo deja preparado para el siguiente chunk.
+El scratch se libera desde `PlanetGenerator.Release`.
+La capacidad reusable de chunks parte holgada desde el presupuesto LOD0, se
+comparte entre LOD0, LOD1 y LOD2, y solo crece hacia arriba si algun chunk futuro
+pide mas. No se reduce ni se libera en el camino caliente por alternar entre
+LODs.
+Si el count pass detecta overflow porque `triangleCountAttempted * 3` no cabe en
+la capacidad actual, `GenerateChunk` aumenta la capacidad reusable al siguiente
+escalon y repite ese mismo chunk. Un chunk con geometria no debe publicarse vacio
+por falta de capacidad del scratch.
+GenerateChunk conserva tambien un unico `PlanetGpuShapeEvaluator` reusable y un
+buffer de `PlanetGpuShapeCell` cacheado para la receta/LOD efectiva actual. Si la
+receta cambia, se reconstruyen las cells; si solo cambia el chunk, se machacan
+los datos sobre los mismos recursos.
+La ruta generada publica la Mesh desde buffers `NativeArray` persistentes de
+subida. Estos buffers arrancan con capacidad holgada de chunk LOD0 y solo crecen
+hacia arriba si una mesh futura no cabe, para evitar que un chunk grande fuerce
+crecimiento de `List<T>` managed en el camino caliente.
 GenerateShell conserva temporalmente la capacidad global por defecto de 3M como
 deuda explicita hasta medir y cerrar la reduccion de shell LOD2.
 ```

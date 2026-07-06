@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.Shape;
+using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -20,6 +21,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private const float SurfaceAtlasSeaLevelV = 0.5f;
         private const float SurfaceAtlasLandRangeScale = 0.6f;
         private const int DefaultMeshUploadBufferCapacity = 65536;
+        private const int DefaultNativeMeshUploadBufferCapacity = PlanetMarchingCubesSettings.Lod0OutputVertexCapacityBudget;
         private const int GlobalWaterLongitudeSegments = 128;
         private const int GlobalWaterLatitudeSegments = 64;
 
@@ -29,6 +31,11 @@ namespace MarchingCubesPlanet.MarchingCubes
         private readonly List<Vector2> meshUploadUvs = new List<Vector2>(DefaultMeshUploadBufferCapacity);
         private readonly List<Color32> meshUploadColors = new List<Color32>(DefaultMeshUploadBufferCapacity);
         private readonly List<int> meshUploadIndices = new List<int>(DefaultMeshUploadBufferCapacity);
+        private NativeArray<Vector3> nativeUploadPositions;
+        private NativeArray<Vector3> nativeUploadNormals;
+        private NativeArray<Vector2> nativeUploadUvs;
+        private NativeArray<Color32> nativeUploadColors;
+        private NativeArray<int> nativeUploadIndices;
 
         private Mesh runtimeMesh;
         private Mesh runtimeWaterMesh;
@@ -514,6 +521,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             ReleaseMeshOnly(meshFilter);
             ReleaseWater();
             ReleaseChunks();
+            ReleaseNativeUploadBuffers();
 
             if (runtimeMaterial != null)
             {
@@ -619,16 +627,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             PlanetMarchingCubesPaintSettings settings,
             PlanetGpuShapeCell[] cells)
         {
-            EnsureListCapacity(meshUploadPositions, sourceVertexCount);
-            EnsureListCapacity(meshUploadNormals, sourceVertexCount);
-            EnsureListCapacity(meshUploadUvs, sourceVertexCount);
-            EnsureListCapacity(meshUploadColors, sourceVertexCount);
-            EnsureListCapacity(meshUploadIndices, sourceVertexCount);
-            meshUploadPositions.Clear();
-            meshUploadNormals.Clear();
-            meshUploadUvs.Clear();
-            meshUploadColors.Clear();
-            meshUploadIndices.Clear();
+            EnsureNativeUploadCapacity(sourceVertexCount);
 
             float minRadius = float.MaxValue;
             float maxRadius = 0f;
@@ -661,14 +660,14 @@ namespace MarchingCubesPlanet.MarchingCubes
                 Vector2 uv = EvaluateSurfaceAtlasUv(radiusValue, in recipe);
                 float height01 = EvaluateHeight01(radiusValue, minRadius, maxRadius);
 
-                meshUploadPositions.Add(localPosition);
-                meshUploadNormals.Add(localNormal.sqrMagnitude > 0.0001f ? localNormal : Vector3.up);
-                meshUploadUvs.Add(uv);
-                meshUploadColors.Add(EvaluateColor(settings, gridPosition, normal, caseIndex, triangleIndex, minRadius, maxRadius, height01));
-                meshUploadIndices.Add(i);
+                nativeUploadPositions[i] = localPosition;
+                nativeUploadNormals[i] = localNormal.sqrMagnitude > 0.0001f ? localNormal : Vector3.up;
+                nativeUploadUvs[i] = uv;
+                nativeUploadColors[i] = EvaluateColor(settings, gridPosition, normal, caseIndex, triangleIndex, minRadius, maxRadius, height01);
+                nativeUploadIndices[i] = i;
             }
 
-            ApplyMeshData(mesh);
+            ApplyNativeMeshData(mesh, sourceVertexCount);
         }
 
         private void CopyCachedMeshIntoSlot(
@@ -773,6 +772,17 @@ namespace MarchingCubesPlanet.MarchingCubes
             mesh.SetUVs(0, meshUploadUvs);
             mesh.SetColors(meshUploadColors);
             mesh.SetTriangles(meshUploadIndices, 0, true);
+            mesh.RecalculateBounds();
+        }
+
+        private void ApplyNativeMeshData(Mesh mesh, int vertexCount)
+        {
+            mesh.Clear();
+            mesh.SetVertices(nativeUploadPositions, 0, vertexCount);
+            mesh.SetNormals(nativeUploadNormals, 0, vertexCount);
+            mesh.SetUVs(0, nativeUploadUvs, 0, vertexCount);
+            mesh.SetColors(nativeUploadColors, 0, vertexCount);
+            mesh.SetIndices(nativeUploadIndices, 0, vertexCount, MeshTopology.Triangles, 0, true);
             mesh.RecalculateBounds();
         }
 
@@ -1567,6 +1577,32 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
         }
 
+        private void EnsureNativeUploadCapacity(int capacity)
+        {
+            int requestedCapacity = Mathf.Max(DefaultNativeMeshUploadBufferCapacity, capacity);
+            int targetCapacity = RoundUpToPowerOfTwo(requestedCapacity);
+            if (nativeUploadPositions.IsCreated && nativeUploadPositions.Length >= requestedCapacity)
+            {
+                return;
+            }
+
+            ReleaseNativeUploadBuffers();
+            nativeUploadPositions = new NativeArray<Vector3>(targetCapacity, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+            nativeUploadNormals = new NativeArray<Vector3>(targetCapacity, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+            nativeUploadUvs = new NativeArray<Vector2>(targetCapacity, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+            nativeUploadColors = new NativeArray<Color32>(targetCapacity, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+            nativeUploadIndices = new NativeArray<int>(targetCapacity, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+        }
+
+        private void ReleaseNativeUploadBuffers()
+        {
+            if (nativeUploadPositions.IsCreated) nativeUploadPositions.Dispose();
+            if (nativeUploadNormals.IsCreated) nativeUploadNormals.Dispose();
+            if (nativeUploadUvs.IsCreated) nativeUploadUvs.Dispose();
+            if (nativeUploadColors.IsCreated) nativeUploadColors.Dispose();
+            if (nativeUploadIndices.IsCreated) nativeUploadIndices.Dispose();
+        }
+
         private static void DestroyRuntimeObject(UnityEngine.Object target)
         {
             if (target == null)
@@ -1582,6 +1618,17 @@ namespace MarchingCubesPlanet.MarchingCubes
             {
                 UnityEngine.Object.DestroyImmediate(target);
             }
+        }
+
+        private static int RoundUpToPowerOfTwo(int value)
+        {
+            int safeValue = Mathf.Max(1, value);
+            if (safeValue >= 1073741824)
+            {
+                return safeValue;
+            }
+
+            return Mathf.NextPowerOfTwo(safeValue);
         }
     }
 }

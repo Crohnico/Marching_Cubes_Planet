@@ -25,6 +25,7 @@ namespace MarchingCubesPlanet.MarchingCubes
 
         private const string ExtractChunkedCartesianSurfaceKernelName = "CS_ExtractChunkedCartesianSurface";
         private const int MaxThreadGroupsPerDispatchAxis = 65535;
+        private const int ReusableChunkVertexCapacity = PlanetMarchingCubesSettings.Lod0OutputVertexCapacityBudget;
 
         private readonly PlanetMarchingCubesState[] stateUpload = new PlanetMarchingCubesState[1];
         private readonly PlanetMarchingCubesState[] stateReadback = new PlanetMarchingCubesState[1];
@@ -217,10 +218,14 @@ namespace MarchingCubesPlanet.MarchingCubes
                 "Planet Marching Cubes Chunk Origins",
                 chunkOriginElementCount,
                 PlanetMarchingCubesChunkOrigin.Stride);
+            int reusableVertexCapacity = reuseBuffers
+                ? RoundUpToPowerOfTwo(Math.Max(settings.outputVertexCapacity, ReusableChunkVertexCapacity))
+                : settings.outputVertexCapacity;
+
             vertexBuffer = EnsureBuffer(
                 vertexBuffer,
                 "Planet Marching Cubes Vertices",
-                settings.outputVertexCapacity,
+                reusableVertexCapacity,
                 PlanetMarchingCubesVertex.Stride);
             stateBuffer = EnsureBuffer(stateBuffer, "Planet Marching Cubes State", 1, PlanetMarchingCubesState.Stride);
             edgeTableBuffer = EnsureBuffer(edgeTableBuffer, "Planet Marching Cubes Edge Table", PlanetMarchingCubesLookupTables.EdgeTable.Length, sizeof(uint));
@@ -233,9 +238,9 @@ namespace MarchingCubesPlanet.MarchingCubes
 
             SetData(edgeTableBuffer, PlanetMarchingCubesLookupTables.EdgeTable, PlanetMarchingCubesLookupTables.EdgeTable.Length);
             SetData(triTableBuffer, PlanetMarchingCubesLookupTables.TriTable, PlanetMarchingCubesLookupTables.TriTable.Length);
-            if (vertexReadback == null || vertexReadback.Length != settings.outputVertexCapacity)
+            if (vertexReadback == null || vertexReadback.Length < reusableVertexCapacity)
             {
-                vertexReadback = new PlanetMarchingCubesVertex[settings.outputVertexCapacity];
+                vertexReadback = new PlanetMarchingCubesVertex[reusableVertexCapacity];
             }
         }
 
@@ -653,7 +658,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             if (handle != null &&
                 handle.IsAlive &&
                 handle.BufferMode == bufferMode &&
-                handle.ElementCount == elementCount &&
+                handle.ElementCount >= elementCount &&
                 handle.Stride == stride)
             {
                 return handle;
@@ -692,6 +697,17 @@ namespace MarchingCubesPlanet.MarchingCubes
                 handle.Release();
                 handle = null;
             }
+        }
+
+        private static int RoundUpToPowerOfTwo(int value)
+        {
+            int safeValue = Mathf.Max(1, value);
+            if (safeValue >= 1073741824)
+            {
+                return safeValue;
+            }
+
+            return Mathf.NextPowerOfTwo(safeValue);
         }
     }
 }
