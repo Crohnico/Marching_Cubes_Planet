@@ -34,6 +34,7 @@ uint _MarchingCubesCellEndIndex;
 uint _MarchingCubesChunkSize;
 uint _MarchingCubesChunkIndexBase;
 uint _MarchingCubesOutputPrimitiveLimit;
+uint _MarchingCubesOutputVertexLimit;
 uint _MarchingCubesWriteEnabled;
 uint _MarchingCubesDrawArgsEnabled;
 
@@ -126,19 +127,31 @@ void PlanetMcEmitCube(uint cellIndex, float3 cornerPositions[8], float cornerDen
         return;
     }
 
-    uint triangleStart = attemptedStart;
-    uint vertexStart = triangleStart * 3u;
     uint vertexCountToAdd = triangleCount * 3u;
+    uint vertexStart;
+    if (_MarchingCubesDrawArgsEnabled != 0u)
+    {
+        InterlockedAdd(_MarchingCubesDrawArgs[0], vertexCountToAdd, vertexStart);
+        if (vertexStart + vertexCountToAdd > _MarchingCubesOutputVertexLimit)
+        {
+            uint previousOverflow;
+            InterlockedExchange(_MarchingCubesState[0].overflowFlag, 1u, previousOverflow);
+            uint previousDrawVertexCount;
+            InterlockedExchange(_MarchingCubesDrawArgs[0], _MarchingCubesOutputVertexLimit, previousDrawVertexCount);
+            return;
+        }
+    }
+    else
+    {
+        uint triangleStart = attemptedStart;
+        vertexStart = triangleStart * 3u;
+    }
+
     uint previousTriangleCount;
     InterlockedAdd(_MarchingCubesState[0].triangleCountWritten, triangleCount, previousTriangleCount);
 
     uint previousVertexCount;
     InterlockedAdd(_MarchingCubesState[0].vertexCountWritten, vertexCountToAdd, previousVertexCount);
-    if (_MarchingCubesDrawArgsEnabled != 0u)
-    {
-        uint previousDrawVertexCount;
-        InterlockedAdd(_MarchingCubesDrawArgs[0], vertexCountToAdd, previousDrawVertexCount);
-    }
 
     int rowOffset = (int)caseIndex * 16;
 

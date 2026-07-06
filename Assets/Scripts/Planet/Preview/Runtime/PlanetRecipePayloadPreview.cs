@@ -70,6 +70,7 @@ namespace MarchingCubesPlanet.Preview
                 if (planetGrid == null) GenerateGrid();
                 index = -1;
                 isConcatenatingChunks = true;
+                GetGpuSurface().BeginChunkSequence();
                 ConcatenateChunk(lod);
             }
         }

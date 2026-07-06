@@ -22,6 +22,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private static readonly int ChunkSizeId = Shader.PropertyToID("_MarchingCubesChunkSize");
         private static readonly int ChunkIndexBaseId = Shader.PropertyToID("_MarchingCubesChunkIndexBase");
         private static readonly int OutputPrimitiveLimitId = Shader.PropertyToID("_MarchingCubesOutputPrimitiveLimit");
+        private static readonly int OutputVertexLimitId = Shader.PropertyToID("_MarchingCubesOutputVertexLimit");
         private static readonly int WriteEnabledId = Shader.PropertyToID("_MarchingCubesWriteEnabled");
         private static readonly int DrawArgsEnabledId = Shader.PropertyToID("_MarchingCubesDrawArgsEnabled");
 
@@ -566,6 +567,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             computeShader.SetInt(ChunkSizeId, ActiveChunkSize);
             computeShader.SetInt(ChunkIndexBaseId, Mathf.Max(0, chunkIndexBase));
             computeShader.SetInt(OutputPrimitiveLimitId, settings.outputVertexCapacity / 3);
+            computeShader.SetInt(OutputVertexLimitId, settings.outputVertexCapacity);
         }
 
         private static long CalculateCellsPerChunk(int chunkSize)

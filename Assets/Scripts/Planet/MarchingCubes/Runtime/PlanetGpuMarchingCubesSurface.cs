@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using MarchingCubesPlanet.Compute;
 using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.Shape;
@@ -35,6 +34,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private static readonly int ChunkSizeId = Shader.PropertyToID("_MarchingCubesChunkSize");
         private static readonly int ChunkIndexBaseId = Shader.PropertyToID("_MarchingCubesChunkIndexBase");
         private static readonly int OutputPrimitiveLimitId = Shader.PropertyToID("_MarchingCubesOutputPrimitiveLimit");
+        private static readonly int OutputVertexLimitId = Shader.PropertyToID("_MarchingCubesOutputVertexLimit");
         private static readonly int WriteEnabledId = Shader.PropertyToID("_MarchingCubesWriteEnabled");
         private static readonly int DrawArgsEnabledId = Shader.PropertyToID("_MarchingCubesDrawArgsEnabled");
         private static readonly int PlanetMarchingVerticesId = Shader.PropertyToID("_PlanetMarchingCubesVertices");
@@ -75,7 +75,8 @@ namespace MarchingCubesPlanet.MarchingCubes
         private PlanetMarchingCubesChunkOrigin[] candidateOrigins = Array.Empty<PlanetMarchingCubesChunkOrigin>();
         private PlanetGridCoordinates[] candidateCoordinates = Array.Empty<PlanetGridCoordinates>();
         private readonly GpuSurfaceSlot shellSlot = new GpuSurfaceSlot("Shell");
-        private readonly List<GpuSurfaceSlot> chunkSlots = new List<GpuSurfaceSlot>();
+        private readonly GpuSurfaceSlot chunkAggregateSlot = new GpuSurfaceSlot("Chunks");
+        private bool chunkAggregateOpen;
 
         public int CandidateChunkCount => candidateCoordinates.Length;
 
@@ -114,6 +115,13 @@ namespace MarchingCubesPlanet.MarchingCubes
             return false;
         }
 
+        public void BeginChunkSequence()
+        {
+            shellSlot.Release();
+            chunkAggregateSlot.Release();
+            chunkAggregateOpen = true;
+        }
+
         public void GenerateShell(
             PlanetRecipe recipe,
             PlanetPlacement placement,
@@ -124,6 +132,8 @@ namespace MarchingCubesPlanet.MarchingCubes
             PlanetMarchingCubesSettings settings = PlanetMarchingCubesSettings.Default();
             settings.chunkRange.chunkSize = PlanetChunkLodUtility.GetChunkSizeForLod(lod);
             PrepareCandidateChunks(recipe, lod);
+            chunkAggregateSlot.Release();
+            chunkAggregateOpen = false;
             Generate(
                 in lodRecipe,
                 in placement,
@@ -132,7 +142,8 @@ namespace MarchingCubesPlanet.MarchingCubes
                 settings.chunkRange.chunkSize,
                 settings.outputVertexCapacity,
                 0,
-                shellSlot);
+                shellSlot,
+                true);
         }
 
         public void GenerateChunk(
@@ -144,16 +155,21 @@ namespace MarchingCubesPlanet.MarchingCubes
         {
             PlanetRecipe lodRecipe = PlanetChunkLodUtility.BuildRecipeForLod(in recipe, lod);
             PlanetMarchingCubesChunkOrigin[] origins = { chunkId.ToChunkOrigin(lod) };
-            GpuSurfaceSlot slot = GetChunkSlot(chunkId);
+            if (!chunkAggregateOpen)
+            {
+                BeginChunkSequence();
+            }
+
             Generate(
                 in lodRecipe,
                 in placement,
                 materialSource,
                 origins,
                 PlanetChunkLodUtility.GetChunkSizeForLod(lod),
-                PlanetMarchingCubesSettings.GetOutputVertexCapacityBudgetForLod(lod),
+                PlanetMarchingCubesSettings.DefaultOutputVertexCapacity,
                 0,
-                slot);
+                chunkAggregateSlot,
+                !chunkAggregateSlot.hasDrawable);
         }
 
         public void Render()
@@ -169,10 +185,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
 
             RenderSlot(shellSlot);
-            for (int i = 0; i < chunkSlots.Count; i++)
-            {
-                RenderSlot(chunkSlots[i]);
-            }
+            RenderSlot(chunkAggregateSlot);
         }
 
         public void Release()
@@ -183,12 +196,8 @@ namespace MarchingCubesPlanet.MarchingCubes
             ReleaseBuffer(ref stateBuffer);
             ReleaseBuffer(ref chunkOriginBuffer);
             shellSlot.Release();
-            for (int i = 0; i < chunkSlots.Count; i++)
-            {
-                chunkSlots[i].Release();
-            }
-
-            chunkSlots.Clear();
+            chunkAggregateSlot.Release();
+            chunkAggregateOpen = false;
             DestroyUnityObject(runtimeMaterial);
             DestroyUnityObject(runtimeSurfaceAtlas);
             runtimeMaterial = null;
@@ -213,7 +222,8 @@ namespace MarchingCubesPlanet.MarchingCubes
             int chunkSize,
             int outputVertexCapacity,
             int chunkIndexBase,
-            GpuSurfaceSlot slot)
+            GpuSurfaceSlot slot,
+            bool resetDrawArgs)
         {
             if (origins == null || origins.Length == 0)
             {
@@ -246,12 +256,16 @@ namespace MarchingCubesPlanet.MarchingCubes
             edgeTableBuffer.SetData(PlanetMarchingCubesLookupTables.EdgeTable);
             triTableBuffer.SetData(PlanetMarchingCubesLookupTables.TriTable);
             ResetState(origins.Length);
-            ResetDrawArgs(slot);
+            if (resetDrawArgs)
+            {
+                ResetDrawArgs(slot);
+            }
 
             BindBuffers(slot);
             marchingShader.SetInt(ChunkSizeId, Mathf.Max(1, chunkSize));
             marchingShader.SetInt(ChunkIndexBaseId, Mathf.Max(0, chunkIndexBase));
             marchingShader.SetInt(OutputPrimitiveLimitId, Mathf.Max(1, outputVertexCapacity) / 3);
+            marchingShader.SetInt(OutputVertexLimitId, Mathf.Max(1, outputVertexCapacity));
             marchingShader.SetInt(WriteEnabledId, 1);
             marchingShader.SetInt(DrawArgsEnabledId, 1);
             Dispatch(activeCellCount);
@@ -451,24 +465,6 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
         }
 
-        private GpuSurfaceSlot GetChunkSlot(PlanetGridCoordinates chunkId)
-        {
-            for (int i = 0; i < chunkSlots.Count; i++)
-            {
-                if (chunkSlots[i].chunkId.Equals(chunkId))
-                {
-                    return chunkSlots[i];
-                }
-            }
-
-            GpuSurfaceSlot slot = new GpuSurfaceSlot("Chunk_" + chunkId)
-            {
-                chunkId = chunkId
-            };
-            chunkSlots.Add(slot);
-            return slot;
-        }
-
         private void RenderSlot(GpuSurfaceSlot slot)
         {
             if (slot == null ||
@@ -633,7 +629,6 @@ namespace MarchingCubesPlanet.MarchingCubes
         private sealed class GpuSurfaceSlot
         {
             public readonly string name;
-            public PlanetGridCoordinates chunkId;
             public ComputeBuffer vertexBuffer;
             public ComputeBuffer drawArgsBuffer;
             public Bounds drawBounds;

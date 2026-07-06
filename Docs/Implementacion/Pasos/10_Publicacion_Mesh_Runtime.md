@@ -158,9 +158,10 @@ La ruta visual conserva buffers GPU vivos mientras el componente esta vivo:
 chunk origins, vertices, state, indirect args, edge table, tri table y shape
 evaluator. Se machacan los datos sobre los mismos recursos y solo se recrean si
 la nueva capacidad no cabe.
-En modo Chunk, cada coordenada confirmada por `PlanetGrid` mantiene su propio
-slot visible GPU para que los chunks generados sigan vivos y no sean sustituidos
-por el siguiente chunk.
+En modo Chunk del panel, las coordenadas confirmadas por `PlanetGrid` se agregan
+en un unico slot visible GPU de chunks. No se reserva un buffer LOD0 por chunk:
+el buffer agregado usa la misma escala de capacidad que la shell para que el modo
+chunks no consuma mas memoria que generar la shell equivalente.
 GenerateShell conserva temporalmente la capacidad global por defecto de 3M como
 deuda explicita hasta medir y cerrar la reduccion de shell LOD2.
 La ruta legacy de Mesh puede mantener sus scratch buffers reutilizables mientras
@@ -180,6 +181,21 @@ GPU escribe vertices visuales.
 GPU incrementa indirect args[0] con vertexCountWritten.
 CPU emite DrawProceduralIndirect.
 Los vertices visuales no vuelven a CPU.
+```
+
+En el panel de preview:
+
+```text
+Shell -> un slot GPU visible.
+Chunk -> un slot GPU agregado para todos los chunks generados en la secuencia.
+```
+
+Motivo:
+
+```text
+LOD0 chunk budget = 500k vertices ~= 15.3 MiB.
+Shell default = 3M vertices ~= 91.6 MiB.
+Si cada chunk mantiene su propio buffer LOD0, 7 chunks ya superan la shell.
 ```
 
 El material visible usa shader URP de superficie compatible con el atlas actual.
