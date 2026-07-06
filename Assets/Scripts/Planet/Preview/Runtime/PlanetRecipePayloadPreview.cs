@@ -1,7 +1,6 @@
 using System;
 using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.Lab;
-using MarchingCubesPlanet.TrianglePools;
 using UnityEngine;
 
 namespace MarchingCubesPlanet.Preview
@@ -13,7 +12,7 @@ namespace MarchingCubesPlanet.Preview
         [SerializeField] private PlanetRecipe recipe = PlanetRecipe.Default();
         [SerializeField] private PlanetPlacement placement = PlanetPlacement.Default();
 
-        [Header("09 Environment Budget")]
+        [Header("Temporary Triangle Capacity")]
         [SerializeField] private int requestedTrianglePayload = 126000;
 
         [Header("Memory Diagnostics")]
@@ -115,7 +114,13 @@ namespace MarchingCubesPlanet.Preview
             recipe = PlanetRecipe.Default();
             SyncPlacementFromTransform();
             SetRequestedTrianglePayload(126000);
-            lastDiagnostic = "Demo recipe reset for managed 09 generation. PlanetPlacement was synced from Transform.position.";
+            lastDiagnostic = "Demo recipe reset for 10 chunk mesh generation. PlanetPlacement was synced from Transform.position.";
+        }
+
+        public void GenerateRandomSeed()
+        {
+            recipe.Seed = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
+            Generate();
         }
 
         public void SetRequestedTrianglePayload(int value)
@@ -188,7 +193,7 @@ namespace MarchingCubesPlanet.Preview
             }
 
             RefreshDerivedValues();
-            lastDiagnostic = "Managed 09 preview released.";
+            lastDiagnostic = "10 chunk mesh preview released.";
         }
 
         private PlanetRecipePayloadPreviewGenerationFlow ResolveGenerationFlow()
@@ -204,11 +209,6 @@ namespace MarchingCubesPlanet.Preview
 
         private Vector3 ResolvePriorityOriginWorld()
         {
-            if (PlanetTrianglePoolRegistry.HasPlayerViewData)
-            {
-                return PlanetTrianglePoolRegistry.PlayerPositionWorld;
-            }
-
             PlanetMinimalXrRig rig = FindFirstObjectByType<PlanetMinimalXrRig>();
             if (rig != null && rig.Head != null)
             {
@@ -283,7 +283,7 @@ namespace MarchingCubesPlanet.Preview
 
             if (resourceRegistry == null && updateDiagnostic)
             {
-                lastDiagnostic = "Memory snapshot cannot see managed 09 preview resources: PlanetLabResourceRegistry was not found in the scene.";
+                lastDiagnostic = "Memory snapshot cannot see preview resources: PlanetLabResourceRegistry was not found in the scene.";
             }
 
             return resourceRegistry;

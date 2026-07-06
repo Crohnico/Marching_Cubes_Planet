@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Collections.Generic;
 using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.MarchingCubes;
-using MarchingCubesPlanet.TrianglePools;
 using UnityEngine;
 
 namespace MarchingCubesPlanet.Lab
@@ -241,7 +240,7 @@ namespace MarchingCubesPlanet.Lab
                 ApplyChunkCacheLoadSummary(cacheLoadSummary);
                 lastDiagnostic = PlanetLabDiagnostic.Warning(
                     "Cached chunk list is empty",
-                    "09 can only paint meshes that 10 has already loaded.",
+                    "10 can only paint meshes that it has already loaded.",
                     "Load chunk meshes in 10 before calling PaintCachedChunks.",
                     "chunks=0");
                 lastAction = "Paint Cached Chunks failed.";
@@ -254,7 +253,7 @@ namespace MarchingCubesPlanet.Lab
             {
                 lastDiagnostic = PlanetLabDiagnostic.Critical(
                     "Paint target MeshFilter is missing",
-                    "09 needs a MeshFilter target to display cached chunks.",
+                    "10 needs a MeshFilter target to display cached chunks.",
                     "Pass the PlanetRecipePayloadPreview MeshFilter or assign the Lab MeshFilter.",
                     "targetMeshFilter=null");
                 lastAction = "Paint Cached Chunks failed.";
@@ -266,7 +265,7 @@ namespace MarchingCubesPlanet.Lab
             {
                 lastDiagnostic = PlanetLabDiagnostic.Critical(
                     "Paint target MeshRenderer is missing",
-                    "09 needs a MeshRenderer target to display cached chunks.",
+                    "10 needs a MeshRenderer target to display cached chunks.",
                     "Pass the PlanetRecipePayloadPreview MeshRenderer or assign the Lab MeshRenderer.",
                     "targetMeshRenderer=null");
                 lastAction = "Paint Cached Chunks failed.";
@@ -367,7 +366,7 @@ namespace MarchingCubesPlanet.Lab
             {
                 lastDiagnostic = PlanetLabDiagnostic.Critical(
                     "Paint target MeshFilter is missing",
-                    "09 needs a MeshFilter target to display a named mesh.",
+                    "10 needs a MeshFilter target to display a named mesh.",
                     "Pass the PlanetRecipePayloadPreview MeshFilter.",
                     "targetMeshFilter=null");
                 lastAction = "Paint Named Mesh failed.";
@@ -379,7 +378,7 @@ namespace MarchingCubesPlanet.Lab
             {
                 lastDiagnostic = PlanetLabDiagnostic.Critical(
                     "Paint target MeshRenderer is missing",
-                    "09 needs a MeshRenderer target to display a named mesh.",
+                    "10 needs a MeshRenderer target to display a named mesh.",
                     "Pass the PlanetRecipePayloadPreview MeshRenderer.",
                     "targetMeshRenderer=null");
                 lastAction = "Paint Named Mesh failed.";
@@ -434,7 +433,7 @@ namespace MarchingCubesPlanet.Lab
                 lastDiagnostic = PlanetLabDiagnostic.Warning(
                     "Named mesh paint blocked",
                     exception.Message,
-                    "Send 09 a valid meshId and meshes already prepared by 10.",
+                    "Send 10 a valid meshId and meshes already prepared by 10.",
                     "meshId=" + meshId);
                 lastAction = "Paint Named Mesh blocked.";
                 stopwatch.Stop();
@@ -444,7 +443,6 @@ namespace MarchingCubesPlanet.Lab
 
             hasLiveMesh = painter.RuntimeMesh != null ||
                           painter.RuntimeWaterMesh != null ||
-                          painter.HasVisibleGpuWater ||
                           painter.RuntimeChunkMeshCount > 0 ||
                           painter.RuntimeChunkWaterMeshCount > 0;
             lastSourceTriangleCount = result.SourceTriangleCount;
@@ -483,7 +481,7 @@ namespace MarchingCubesPlanet.Lab
             {
                 lastDiagnostic = PlanetLabDiagnostic.Critical(
                     "Paint target MeshFilter is missing",
-                    "09 needs a MeshFilter target to display a named cached mesh.",
+                    "10 needs a MeshFilter target to display a named cached mesh.",
                     "Pass the PlanetRecipePayloadPreview MeshFilter.",
                     "targetMeshFilter=null");
                 lastAction = "Paint Named Cached Mesh failed.";
@@ -495,7 +493,7 @@ namespace MarchingCubesPlanet.Lab
             {
                 lastDiagnostic = PlanetLabDiagnostic.Critical(
                     "Paint target MeshRenderer is missing",
-                    "09 needs a MeshRenderer target to display a named cached mesh.",
+                    "10 needs a MeshRenderer target to display a named cached mesh.",
                     "Pass the PlanetRecipePayloadPreview MeshRenderer.",
                     "targetMeshRenderer=null");
                 lastAction = "Paint Named Cached Mesh failed.";
@@ -507,7 +505,7 @@ namespace MarchingCubesPlanet.Lab
             {
                 lastDiagnostic = PlanetLabDiagnostic.Warning(
                     "Chunk cache is missing",
-                    "09 cannot load a named cached mesh without a cache instance.",
+                    "10 cannot load a named cached mesh without a cache instance.",
                     "Pass the active PlanetChunkMeshCache.",
                     "cache=null");
                 lastAction = "Paint Named Cached Mesh failed.";
@@ -563,7 +561,7 @@ namespace MarchingCubesPlanet.Lab
                 lastDiagnostic = PlanetLabDiagnostic.Warning(
                     "Named cached mesh paint blocked",
                     exception.Message,
-                    "Send 09 a valid meshId, cache, chunkId and LOD.",
+                    "Send 10 a valid meshId, cache, chunkId and LOD.",
                     "meshId=" + meshId +
                     "\nchunkId=" + cacheChunkId +
                     "\nlod=" + cacheLod);
@@ -575,7 +573,6 @@ namespace MarchingCubesPlanet.Lab
 
             hasLiveMesh = painter.RuntimeMesh != null ||
                           painter.RuntimeWaterMesh != null ||
-                          painter.HasVisibleGpuWater ||
                           painter.RuntimeChunkMeshCount > 0 ||
                           painter.RuntimeChunkWaterMeshCount > 0;
             lastSourceTriangleCount = result.SourceTriangleCount;
@@ -621,7 +618,7 @@ namespace MarchingCubesPlanet.Lab
             {
                 lastDiagnostic = PlanetLabDiagnostic.Critical(
                     "Marching Cubes Lab reference is missing",
-                    "09 needs the latest 07 extraction to paint a named mesh.",
+                    "10 needs the latest 07 extraction to paint a named mesh.",
                     "Assign PlanetMarchingCubesLab from the same scene.",
                     "marchingCubesLab=null");
                 lastAction = "Paint Named Extraction failed.";
@@ -633,7 +630,7 @@ namespace MarchingCubesPlanet.Lab
             {
                 lastDiagnostic = PlanetLabDiagnostic.Critical(
                     "Paint target is missing",
-                    "09 needs a MeshFilter and MeshRenderer target to display a named extraction.",
+                    "10 needs a MeshFilter and MeshRenderer target to display a named extraction.",
                     "Pass the PlanetRecipePayloadPreview render target.",
                     "targetMeshFilter=" + targetMeshFilter + "\ntargetMeshRenderer=" + targetMeshRenderer);
                 lastAction = "Paint Named Extraction failed.";
@@ -701,7 +698,6 @@ namespace MarchingCubesPlanet.Lab
 
             hasLiveMesh = painter.RuntimeMesh != null ||
                           painter.RuntimeWaterMesh != null ||
-                          painter.HasVisibleGpuWater ||
                           painter.RuntimeChunkMeshCount > 0 ||
                           painter.RuntimeChunkWaterMeshCount > 0;
             lastSourceTriangleCount = result.SourceTriangleCount;
@@ -735,7 +731,7 @@ namespace MarchingCubesPlanet.Lab
             {
                 lastDiagnostic = PlanetLabDiagnostic.Critical(
                     "Paint target is missing",
-                    "09 needs a MeshFilter and MeshRenderer target to display global water.",
+                    "10 needs a MeshFilter and MeshRenderer target to display global water.",
                     "Pass the PlanetRecipePayloadPreview render target.",
                     "targetMeshFilter=" + targetMeshFilter + "\ntargetMeshRenderer=" + targetMeshRenderer);
                 lastAction = "Paint Global Water failed.";
@@ -796,7 +792,6 @@ namespace MarchingCubesPlanet.Lab
 
             hasLiveMesh = painter.RuntimeMesh != null ||
                           painter.RuntimeWaterMesh != null ||
-                          painter.HasVisibleGpuWater ||
                           painter.RuntimeChunkMeshCount > 0 ||
                           painter.RuntimeChunkWaterMeshCount > 0;
             lastWaterTriangleCount = result.WaterTriangleCount;
@@ -883,7 +878,7 @@ namespace MarchingCubesPlanet.Lab
                 lastDiagnostic = PlanetLabDiagnostic.Warning(
                     "Marching Cubes mesh paint blocked",
                     exception.Message,
-                    "Check the 09 Environment painter budget and the source extraction diagnostics.",
+                    "Check the 10 chunk mesh painter and the source extraction diagnostics.",
                     settings.ToString());
                 lastAction = paintByChunks ? "Paint Last Extraction By Chunks blocked." : "Paint Last Extraction blocked.";
                 stopwatch.Stop();
@@ -1023,16 +1018,6 @@ namespace MarchingCubesPlanet.Lab
                     lastWaterMeshEstimatedBytes,
                     lastWaterVertexCount,
                     0);
-            }
-            else if (painter.HasVisibleGpuWater)
-            {
-                waterMeshResourceId = resourceRegistry.RegisterResource(
-                    "PlanetMarchingCubesPaint GPU Water Buffer",
-                    PlanetLabResourceType.GraphicsBuffer,
-                    OwnerName,
-                    painter.RuntimeGpuWaterEstimatedBytes,
-                    lastWaterVertexCount,
-                    PlanetTriangleGpuVertex.Stride);
             }
 
             if (painter.RuntimeChunkMeshCount > 0)

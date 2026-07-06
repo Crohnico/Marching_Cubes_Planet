@@ -20,7 +20,7 @@ namespace MarchingCubesPlanet.Preview.Editor
             EditorGUILayout.LabelField("IsoLevel", preview.IsoLevel.ToString("0.###"));
             EditorGUILayout.LabelField("PlanetWorldCenter", preview.TransformPlanetWorldCenter.ToString("0.###"));
             EditorGUILayout.LabelField("PlanetRotation", preview.TransformPlanetRotation.eulerAngles.ToString("0.###"));
-            EditorGUILayout.LabelField("requested triangles", preview.RequestedTrianglePayload.ToString());
+            EditorGUILayout.LabelField("temporary triangle capacity", preview.RequestedTrianglePayload.ToString());
             EditorGUILayout.LabelField("mesh live", preview.HasLiveMesh ? "yes" : "no");
 
             EditorGUILayout.Space();
@@ -34,7 +34,7 @@ namespace MarchingCubesPlanet.Preview.Editor
             }
 
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Payload Presets", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Temporary Triangle Capacity Presets", EditorStyles.boldLabel);
 
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -78,9 +78,14 @@ namespace MarchingCubesPlanet.Preview.Editor
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Commands", EditorStyles.boldLabel);
 
-            if (GUILayout.Button("Generate Via 09"))
+            if (GUILayout.Button("Generate"))
             {
                 Apply(preview, p => p.Generate());
+            }
+
+            if (GUILayout.Button("Generate Random Seed"))
+            {
+                Apply(preview, p => p.GenerateRandomSeed());
             }
 
             if (GUILayout.Button("Release"))

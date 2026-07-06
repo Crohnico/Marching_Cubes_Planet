@@ -15,7 +15,7 @@ publicacion por chunks.
 ## Objetivo inicial
 
 10 debe hacer que el planeta se materialice por partes pequenas, persistibles y
-recuperables, evitando generar o pedir a 09 publicar la mesh completa como una
+recuperables, evitando generar o publicar la mesh completa como una
 sola unidad.
 
 La unidad de trabajo inicial sera:
@@ -30,14 +30,9 @@ Registro de la hipotesis anterior de publicacion runtime de Mesh:
 Docs/Implementacion/Pasos/10_Publicacion_Mesh_Runtime.md
 ```
 
-Backend visible vigente de 09:
+09 queda eliminado. No hay pool global de triangulos ni backend externo de publicacion.
 
-```text
-Docs/Implementacion/Pasos/09_Backend_GPU_Triangulos.md
-```
-
-Cada chunk se puede generar, guardar, cargar y pedir a 09 que publique o libere
-de forma independiente.
+Cada chunk se puede generar, guardar, cargar, publicar y liberar de forma independiente dentro de 10.
 
 Regla de validacion:
 
@@ -48,8 +43,7 @@ Los botones de Inspector pueden existir como diagnostico o comparacion, pero no 
 
 ## Paso 1 - Pintado por chunk
 
-En vez de pedir una mesh completa del planeta, 10 pedira a 09 publicar cada chunk
-por separado.
+En vez de publicar una mesh completa del planeta, 10 publicara cada chunk por separado.
 
 Cada chunk tendra:
 
@@ -72,10 +66,9 @@ Motivo:
 ```text
 Reducir variables y coste runtime mientras se depuran los tirones de LOD dinamico.
 Evitar millones de segmentos/meshes de agua asociadas a chunks.
-El agua chunked queda TBD hasta decidir si vuelve como backend GPU separado,
+El agua chunked queda TBD hasta decidir si vuelve como mesh derivada por chunk,
 cache derivada o sistema especifico de ocean/render.
-La ruta provisional usa el backend GPU de 09 para no mezclar agua MeshRenderer
-con terreno procedural.
+La ruta provisional usa una mesh runtime global propia de 10.
 ```
 
 ## Paso 2 - Cache directa a disco
@@ -337,7 +330,7 @@ Fuente de player/camara:
 ```text
 La posicion del jugador y la direccion de mirada vienen de un LODAgent.
 El LODAgent empuja un snapshot plano: playerPositionWorld, cameraForwardWorld y version.
-10/09 consumen ese snapshot desde el registry comun, no desde PlanetMinimalXrRig.
+10 consume directamente la posicion del rig/camara disponible para el Lab, sin registry de 09.
 PlanetMinimalXrRig puede mover camara y manos, pero no es la autoridad de LOD.
 ```
 
@@ -445,9 +438,8 @@ Primera fase runtime sin paquetes ni Transvoxel:
 5. 10 registra los chunks visibles actuales y su centro en mundo.
 6. En runtime, 10 recalcula desiredLOD cuando cambia la posicion/mirada del jugador.
 7. 10 mantiene la tabla chunkId -> currentLOD + desiredLOD.
-8. 10 no envia esa tabla a 09 como estado logico.
-9. 09 solo recibe una orden cuando hay mesh/triangulos concretos que pintar,
-   sustituir, liberar o confiscar.
+8. 10 mantiene esa tabla como estado logico propio.
+9. 10 solo publica, sustituye o libera meshes concretas cuando hay un cambio de chunk/LOD.
 ```
 
 Esta fase permite validar que 10 decide LOD en movimiento y que el primer pintado
@@ -497,10 +489,9 @@ Flujo:
 Decision de publicacion runtime:
 
 ```text
-Los cambios runtime de LOD no publican el chunk entero en un unico upload si la
-ruta visible usa el backend GPU de 09.
-10 pide la sustitucion del chunk logico y 09 lo publica internamente como 3x3x3
-segmentos, escribiendo 3 segmentos por frame.
+Los cambios runtime de LOD publican el chunk logico sustituyendo su mesh runtime
+propia. La segmentacion por partes queda eliminada con 09 y se rediseñara solo
+si vuelve a aparecer como necesidad medida.
 ```
 
 Lectura:
@@ -508,8 +499,8 @@ Lectura:
 ```text
 El objetivo es que un cambio de LOD sustituya piezas del chunk durante varios
 frames en vez de cambiar todos los datos visibles del chunk en un unico pico.
-Para 10 el chunk sigue siendo una unidad logica con un unico meshId estable.
-La segmentacion es una politica de publicacion de 09.
+Para 10 el chunk sigue siendo una unidad logica con un unico meshId estable
+dentro de su propio painter.
 ```
 
 Lectura:
@@ -679,11 +670,8 @@ Regla adicional:
 
 ```text
 La shell LOD2 inicial mantiene publicacion inmediata.
-Aunque sea inmediata, 09 la registra con los mismos segmentos internos que los
-swaps LOD0/LOD1 para que el chunk refinado reemplace LOD2 y no convivan ambas
-geometrias.
-Los refinamientos y swaps runtime pueden usar publicacion segmentada de 09 para
-repartir el upload visible en 9 frames por chunk.
+Los refinamientos LOD0/LOD1 sustituyen la mesh del mismo meshId local para que
+el chunk refinado reemplace LOD2 y no convivan ambas geometrias.
 ```
 
 Regla:
@@ -756,7 +744,7 @@ Pasos pendientes antes de pasar al Paso 6:
 7. Si no existe, cambiar temporalmente 06/07 a receta LOD1 y pedir a 07 solo ese candidateChunkIndex.
 8. Pintar ese resultado como chunk LOD1 sin reconstruir toda la shell.
 9. Guardar ese chunk LOD1 en cache como chunkId/LOD1.
-10. Anadir a 09/painter una operacion publica para sustituir solo un chunk:
+10. Anadir al painter de 10 una operacion publica para sustituir solo un chunk:
     quitar/ocultar GameObjects LOD2 de ese chunkId y publicar los GameObjects LOD1.
 11. Actualizar metricas/debug para mostrar cuantos chunks del paquete se han cargado,
     generado, guardado y sustituido.
@@ -844,7 +832,7 @@ El flujo inicial sera:
 9. Si el chunk no existe, 10 pide/genera la data necesaria para ese chunk y LOD.
 10. 10 construye la mesh del chunk si hace falta.
 11. 10 guarda mesh y chunk_data en cache segun corresponda.
-12. 10 pide a 09 pintar/publicar ese chunk sustituyendo su representacion LOD2.
+12. 10 pinta/publica ese chunk sustituyendo su representacion LOD2.
 13. 10 pasa al siguiente paquete sin saturar el sistema.
 ```
 
@@ -858,27 +846,20 @@ No recalcular el planeta entero por cada chunk.
 
 ## Relacion con 09
 
-10 no necesita un contrato especial nuevo para que 09 entienda chunks.
+09 queda eliminado.
 
 Desde 10, la operacion visible es:
 
 ```text
-pinta esto
+pinta/sustituye/libera este meshId local de chunk
 ```
-
-09 debe saber, por su propia responsabilidad, que mesh esta modificando y si
-necesita coger triangulos de paquetes lejanos para hacer sitio.
 
 Regla:
 
 ```text
-10 entrega meshes o paquetes de triangulos para publicar.
 10 decide chunks, LOD deseado, cache y prioridad.
-09 no calcula LOD ni conserva el estado logico de LOD/chunk de 10; solo conserva
-las referencias de meshes que necesita para publicar, liberar, guardar o
-confiscar.
-09 gestiona la residencia, sustitucion y confiscacion de triangulos.
-10 no decide desde aqui que triangulos lejanos confisca 09.
+10 crea, sustituye, guarda y libera sus Mesh runtime por meshId estable.
+No hay confiscacion de triangulos ni pool global.
 ```
 
 ## Decisiones cerradas por ahora
@@ -898,7 +879,7 @@ La hysteresis inicial sera LOD0 sale al pasar de 4 chunks y LOD1 sale al pasar d
 10 asigna LOD0, LOD1 o LOD2 a cada chunk en funcion de esa puntuacion.
 10 recalcula desiredLOD en runtime para los chunks visibles actuales.
 10 mantiene currentLOD y desiredLOD dentro de 10.
-Cuando currentLOD != desiredLOD, 10 resuelve ese chunk y pide a 09 sustituir la mesh por meshId.
+Cuando currentLOD != desiredLOD, 10 resuelve ese chunk y sustituye la mesh por meshId.
 LOD2 se usa como fallback barato inicial.
 LOD2 fallback se prioriza como primer desiredLOD de todos los chunks, con currentLOD inicial -1.
 Generar o cambiar un chunk solo calcula ese chunk y su halo minimo, nunca el planeta entero.
@@ -911,10 +892,9 @@ Generate usa MeshOnly hasta que exista una necesidad real de Transvoxel o cambio
 10 procesa refinamientos por paquetes para no saturar el sistema.
 El paquete inicial de refinamiento tendra 5 o 6 chunks.
 No se fija presupuesto por frame, disco o RAM hasta medir la primera ruta.
-09 recibe la orden de pintar/publicar y gestiona internamente residencia y confiscacion.
 Si no hay trabajo visible urgente, 10 cocina lentamente LODs restantes en disco.
 06 no debe forzar la generacion de toda la mesh a la vez para que 10 pueda pedir
-la publicacion por chunks.
+la publicacion por chunks propia de 10.
 ```
 
 ## Pendientes

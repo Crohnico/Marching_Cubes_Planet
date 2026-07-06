@@ -6,7 +6,6 @@
         "MarchingCubesPlanet.Coordinates",
         "MarchingCubesPlanet.MarchingCubes",
         "MarchingCubesPlanet.Shape",
-        "MarchingCubesPlanet.TrianglePools",
         "Unity.ugui"
     ],
     "includePlatforms": [],

@@ -92,7 +92,7 @@ El planeta base es campo escalar implicito, no volumen materializado.
 07 decide que zona muestrear con una rejilla temporal.
 07 convierte ese muestreo en triangulos reales de superficie.
 08 parte 1 pinta esos triangulos.
-09 decide despues el backend/pool de pintado gestionado.
+10 decide despues el reparto y la publicacion de meshes por chunk.
 10 decide despues el shell adaptativo del planeta activo por distancia, mirada, movimiento y frustum local.
 11 queda despues como senales auxiliares de visibilidad/oclusion, no como pintor ni como LOD del planeta.
 ```
@@ -137,7 +137,7 @@ La fase debe dejar preparado un evaluador que pueda usarse por:
 
 ```text
 07_Marching_Cubes.
-09_Pool_Global_Triangulos.
+10_Optimizacion_Adaptativa_Poligonaje.
 10_Optimizacion_Adaptativa_Poligonaje.
 11_Visibilidad_Oclusion_Frustum.
 12_Proxy_Planeta_Lejano.
@@ -174,7 +174,7 @@ Regla:
 
 ```text
 Si una prueba visual exige triangulos, pertenece a 07.
-Si una prueba visual exige una mesh low-res final, pertenece a 09.
+Si una prueba visual exige una mesh low-res final, pertenece a 10 o a un documento futuro de proxy.
 ```
 
 ## Relacion con otros documentos
@@ -199,7 +199,6 @@ Este documento prepara directamente:
 ```text
 07_Marching_Cubes
 08_Pintado_Resultado_Marching_Cubes
-09_Pool_Global_Triangulos
 10_Optimizacion_Adaptativa_Poligonaje
 11_Visibilidad_Oclusion_Frustum
 _deadline_06-08
@@ -1336,5 +1335,5 @@ Ese deadline valida conjuntamente:
 Forma GPU.
 Marching Cubes.
 Pintado del resultado de Marching Cubes.
-Pool global, reparto de detalle y visibilidad quedan reservados para 09, 10 y 11.
+Reparto de detalle y visibilidad quedan reservados para 10 y 11.
 ```

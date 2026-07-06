@@ -2,17 +2,18 @@
 
 ## Estado
 
-Documento superseded por el cambio de decision de 09 hacia backend visible GPU.
+Documento vigente tras eliminar el paso 09.
 
-Este documento queda como registro de la hipotesis anterior: optimizar la
-publicacion de `Mesh` runtime. La direccion vigente pasa a ser:
+10 vuelve a ser propietario de crear, publicar, reutilizar y liberar sus propias
+`Mesh` runtime por chunk. No existe pool global de triangulos ni backend visible
+externo para publicar el resultado de 10.
 
 ```text
-Docs/Implementacion/Pasos/09_Backend_GPU_Triangulos.md
+07 calcula/extraccion -> 08 pinta datos -> 10 crea/publica/libera Mesh runtime
 ```
 
-10 sigue decidiendo `desiredLOD`, `requestedLOD`, prioridad y cancelacion. 09
-pasa a decidir como publica visualmente los triangulos aceptados.
+10 sigue decidiendo `desiredLOD`, `requestedLOD`, prioridad, cancelacion y
+publicacion visible.
 
 ## Problema
 
@@ -65,14 +66,13 @@ Calculo de desiredLOD.
 Tamanos canonicos de chunk.
 Politica de cache por chunk/LOD.
 Transvoxel.
-Presupuesto de triangulos de 09.
+Pool global de triangulos.
 ```
 
-La pieza GPU-resident ya ha dejado de estar fuera de alcance. Vive en 09:
+La pieza visible GPU-resident queda dentro de la publicacion de `Mesh` runtime de
+10. Si se cambia esta decision, debe documentarse explicitamente antes de bajar a
+codigo.
 
-```text
-Docs/Implementacion/Pasos/09_Backend_GPU_Triangulos.md
-```
 
 ## Linea base actual
 

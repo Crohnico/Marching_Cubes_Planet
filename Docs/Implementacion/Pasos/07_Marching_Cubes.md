@@ -109,18 +109,17 @@ como se miden sus vertices/triangulos/bytes.
 como se liberan sus recursos visuales.
 ```
 
-09, 10 y 11 empiezan despues.
+10 y 11 empiezan despues.
 
 ```text
-09 = pool global fijo de triangulos.
-10 = reparto interno de detalle/BVH o estructura equivalente.
+10 = reparto interno de detalle, cache y publicacion de meshes por chunk.
 11 = visibilidad, oclusion y frustum.
 ```
 
 Regla importante:
 
 ```text
-No meter en 07 una optimizacion que pertenece a 09, 10 u 11.
+No meter en 07 una optimizacion que pertenece a 10 u 11.
 No usar 07 para hacer una version ligera del planeta.
 No usar 07 para resolver presupuesto de triangulos.
 ```
@@ -176,7 +175,6 @@ Regla:
 
 ```text
 Si una decision trata de pintar triangulos generados, pertenece a 08.
-Si una decision trata de conceder o reclamar slots del presupuesto global, pertenece a 09.
 Si una decision trata de repartir detalle dentro de una geometria adaptable, pertenece a 10.
 Si una decision trata de no gastar tris en lo que no se ve, pertenece a 11.
 Si una decision trata de una mesh low-res final del planeta entero, pertenece a 12.
@@ -204,7 +202,6 @@ Este documento prepara directamente:
 
 ```text
 08_Pintado_Resultado_Marching_Cubes
-09_Pool_Global_Triangulos
 10_Optimizacion_Adaptativa_Poligonaje
 11_Visibilidad_Oclusion_Frustum
 _deadline_06-08
@@ -382,7 +379,7 @@ Regla:
 El limite de triangulos de 07 es capacidad temporal de extraccion, no presupuesto de poligonaje.
 Si no cabe la extraccion completa, 07 no debe exponer una malla parcial como resultado valido.
 07 debe reportar overflow/capacidad insuficiente.
-La politica de calidad empieza en 09/10/11.
+La politica de calidad empieza en 10/11.
 ```
 
 ## Decision de extraccion inicial
@@ -622,7 +619,6 @@ Regla:
 No hay deduplicacion de vertices en 07.
 No hay indexacion compartida real en 07.
 08 pintara el resultado.
-09 decidira asignacion global de slots de triangulos.
 10 decidira reparto interno/compactacion para geometria adaptable.
 11 decidira visibilidad/occlusion/frustum.
 ```
@@ -1034,10 +1030,9 @@ Material/color mode de validacion.
 Frame time visual con geometria pintada.
 ```
 
-Metricas diferidas a 09/10/11:
+Metricas diferidas a 10/11:
 
 ```text
-Triangulos concedidos/reclamados por el pool global.
 Triangulos redistribuidos/degradados por geometria adaptable.
 Triangulos descartados o no pedidos por visibilidad.
 Payload final por planeta/estado/distancia.
@@ -1151,7 +1146,6 @@ Readback acotado y solo para visualizacion actual.
 Flip de normal hacia fuera.
 Owner de recursos separado.
 08 pinta la salida de 07.
-09 decide pool global.
 10 decide reparto adaptativo de paginas LOD.
 11 queda como senales auxiliares de visibilidad/oclusion, no como autoridad de pintado o LOD del planeta.
 ```
@@ -1175,7 +1169,6 @@ Los indices son lineales y se generan en CPU solo para la Mesh visual.
 Las normales son geometricas por triangulo y salen del winding de triTable.
 El readback es acotado y solo para visualizacion actual.
 El pintado queda para 08.
-El pool global de tris queda para 09.
 El reparto de detalle queda para 10.
 La visibilidad queda para 11.
 El extractor cubemap/radial no forma parte del 07 canonico.
@@ -1210,5 +1203,5 @@ Ese deadline valida conjuntamente:
 Forma GPU.
 Marching Cubes cartesiano bruto.
 Pintado del resultado de Marching Cubes.
-Pool global, reparto de detalle y visibilidad quedan reservados para 09, 10 y 11.
+Reparto de detalle y visibilidad quedan reservados para 10 y 11.
 ```

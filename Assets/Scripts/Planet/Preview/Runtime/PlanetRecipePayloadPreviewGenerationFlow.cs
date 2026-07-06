@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.Lab;
 using MarchingCubesPlanet.MarchingCubes;
-using MarchingCubesPlanet.TrianglePools;
 using UnityEngine;
 
 namespace MarchingCubesPlanet.Preview
@@ -154,7 +153,7 @@ namespace MarchingCubesPlanet.Preview
             ResolveReferences();
             if (shapeLab == null || marchingCubesLab == null || paintLab == null)
             {
-                lastDiagnostic = "Generate blocked: runtime chain is incomplete. Required modules: 06 Shape, 07 Marching Cubes, 08 Paint, 09 Environment.";
+                lastDiagnostic = "Generate blocked: runtime chain is incomplete. Required modules: 06 Shape, 07 Marching Cubes and 08/10 Paint.";
                 Debug.LogError(LogPrefix + lastDiagnostic +
                                " shapeLab=" + shapeLab +
                                " marchingCubesLab=" + marchingCubesLab +
@@ -167,12 +166,10 @@ namespace MarchingCubesPlanet.Preview
             cachedChunks.Clear();
             ClearRuntimeChunkLods();
 
-            int safeTriangleBudget = Mathf.Max(1, requestedTriangleBudget);
-            int temporaryTriangleCapacity = Mathf.Max(safeTriangleBudget, Mathf.Max(1, minimumTemporaryTriangleCapacity));
-            PlanetTrianglePoolRegistry.SetEnvironmentTriangleBudget(safeTriangleBudget);
-            PlanetTrianglePoolRegistry.SetFallbackPriorityOriginWorld(priorityOriginWorld);
-            Debug.Log(LogPrefix + "Budget applied environmentTriangles=" + safeTriangleBudget +
-                      " temporaryTriangleCapacity=" + temporaryTriangleCapacity);
+            int temporaryTriangleCapacity = Mathf.Max(
+                Mathf.Max(1, requestedTriangleBudget),
+                Mathf.Max(1, minimumTemporaryTriangleCapacity));
+            Debug.Log(LogPrefix + "Temporary triangle capacity applied=" + temporaryTriangleCapacity);
 
             PlanetChunkLod fallbackLod = PlanetChunkLodUtility.InitialFallbackLod;
             int fallbackLodIndex = (int)fallbackLod;
@@ -224,7 +221,7 @@ namespace MarchingCubesPlanet.Preview
 
             if (paintLab.RuntimeTerrainVertexCount <= 0)
             {
-                lastDiagnostic = "Generate finished without visible 09 Environment triangles after initial LOD changes. " +
+                lastDiagnostic = "Generate finished without visible 10 terrain meshes after initial LOD changes. " +
                                  FormatLabDiagnostic(paintLab.LastDiagnostic);
                 Debug.LogError(LogPrefix + lastDiagnostic +
                                " runtimeChunks=" + runtimeChunkLods.Count +
@@ -259,8 +256,6 @@ namespace MarchingCubesPlanet.Preview
             {
                 paintLab.ReleaseModule();
             }
-
-            PlanetTrianglePoolRegistry.ReleaseAllSlots();
 
             if (marchingCubesLab != null)
             {
@@ -310,7 +305,7 @@ namespace MarchingCubesPlanet.Preview
                 ApplyChunkLodSummary(ForceRuntimeDesiredLod(PlanetChunkLodUtility.InitialFallbackLod));
                 lastRuntimeLodChangedChunkCount = ProcessRuntimeChunkLodChangesImmediate();
                 lastRuntimeLodUpdateCount++;
-                lastRuntimeLodViewVersion = PlanetTrianglePoolRegistry.PlayerViewVersion;
+                lastRuntimeLodViewVersion++;
                 lastRuntimeLodRefreshTime = Time.unscaledTime;
                 hasRuntimeLodRingState = false;
                 hasRuntimeChunkLods = runtimeChunkLods.Count > 0;
@@ -334,9 +329,10 @@ namespace MarchingCubesPlanet.Preview
 
             PlanetChunkLodActivationConfig activationConfig = ResolveRuntimeLodActivationConfig();
             activationConfig.EnsureValid();
-            int viewVersion = PlanetTrianglePoolRegistry.PlayerViewVersion;
+            int viewVersion = lastRuntimeLodViewVersion + 1;
+            Vector3 playerPositionWorld = ResolveRuntimeLodPlayerPositionWorld();
             Vector3 centerChunkCoords = CalculateRuntimeLodCenterChunkCoords(
-                PlanetTrianglePoolRegistry.PlayerPositionWorld,
+                playerPositionWorld,
                 in activationConfig);
             float lod0RadiusChunks = CalculateRuntimeLodRadiusChunks(
                 activationConfig.enableLod0 ? activationConfig.lod0MaxDistanceWorld : -1f,
@@ -352,7 +348,7 @@ namespace MarchingCubesPlanet.Preview
                 PlanetChunkLodSummary summary = PlanetChunkLodRuntimePlanner.EvaluateEntries(
                     runtimeChunkLods,
                     in runtimeLod1Recipe,
-                    PlanetTrianglePoolRegistry.PlayerPositionWorld,
+                    playerPositionWorld,
                     activationConfig,
                     out changedLodCount);
                 ApplyChunkLodSummary(summary);
@@ -800,8 +796,9 @@ namespace MarchingCubesPlanet.Preview
                 return 0;
             }
 
+            Vector3 playerPositionWorld = ResolveRuntimeLodPlayerPositionWorld();
             PlanetChunkLodResolutionContext context = new PlanetChunkLodResolutionContext(
-                PlanetTrianglePoolRegistry.PlayerPositionWorld,
+                playerPositionWorld,
                 PlanetChunkLodUtility.CalculateBaseChunkWorldSize(in runtimeLod1Recipe, in activationConfig),
                 activationConfig);
             int changedLodCount = 0;
@@ -1317,6 +1314,23 @@ namespace MarchingCubesPlanet.Preview
                 PlanetRotation = preview.TransformPlanetRotation
             };
             return placement;
+        }
+
+        private Vector3 ResolveRuntimeLodPlayerPositionWorld()
+        {
+            PlanetMinimalXrRig rig = FindFirstObjectByType<PlanetMinimalXrRig>();
+            if (rig != null && rig.Head != null)
+            {
+                return rig.Head.position;
+            }
+
+            Camera mainCamera = Camera.main;
+            if (mainCamera != null)
+            {
+                return mainCamera.transform.position;
+            }
+
+            return runtimePlacement.PlanetWorldCenter;
         }
 
         private static long CalculateMarchingCubesTemporaryBufferBytes(int temporaryTriangleCapacity)

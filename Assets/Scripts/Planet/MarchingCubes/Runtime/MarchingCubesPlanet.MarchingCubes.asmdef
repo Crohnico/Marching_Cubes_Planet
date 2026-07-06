@@ -4,8 +4,7 @@
     "references": [
         "MarchingCubesPlanet.Compute",
         "MarchingCubesPlanet.Coordinates",
-        "MarchingCubesPlanet.Shape",
-        "MarchingCubesPlanet.TrianglePools"
+        "MarchingCubesPlanet.Shape"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

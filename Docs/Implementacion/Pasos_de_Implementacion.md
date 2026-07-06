@@ -214,7 +214,6 @@ _deadline_01-05
 06_Forma_Planeta_GPU
 07_Marching_Cubes
 08_Pintado_Resultado_Marching_Cubes
-09_Pool_Global_Triangulos
 10_Optimizacion_Adaptativa_Poligonaje
 11_Visibilidad_Oclusion_Frustum
 _deadline_06-08
@@ -456,8 +455,7 @@ La cell logica sigue siendo 1x1x1.
 La salida inicial son vertices no indexados.
 La Mesh de validacion no es payload final.
 08 pinta el resultado de 07.
-09 decide el pool global fijo de triangulos.
-10 decide reparto adaptativo de detalle para geometria planetaria.
+10 decide reparto adaptativo de detalle y publica sus propias meshes runtime por chunk.
 11 queda como senales auxiliares de visibilidad/oclusion, no como autoridad de pintado o LOD del planeta.
 ```
 
@@ -501,38 +499,20 @@ Decisiones cerradas:
 08 parte 1 no define reparto adaptativo de detalle.
 08 parte 1 usa Mesh runtime de validacion.
 08 parte 1 puede truncar solo por cortafuegos de validacion.
-El budget real de poligonaje empieza en 09 como pool global fijo.
+El budget real de poligonaje de planeta queda dentro de 10 como politica propia de chunks, LOD y meshes runtime.
 ```
 
-## 09 - Pool global de triangulos
+## 09 - Eliminado
 
-Documento para crear el presupuesto global de triangulos compartido por todo el universo.
-
-Documento propio:
-
-```text
-Docs/Implementacion/Pasos/09_Pool_Global_Triangulos.md
-```
-
-Debe concretar:
-
-```text
-Pool fijo inicial de 1M tris.
-Asignaciones por owner/sistema.
-Peticiones de "pintame esto en meshId X".
-Draw(meshId, datos, priority) como contrato mental.
-Reclamacion de slots de peor prioridad si el pool esta lleno.
-priorityScore recibido en la request como criterio inicial.
-Metricas de tris concedidos, denegados y reclamados.
-Release de slots por owner.
-```
+El paso 09 queda retirado.
 
 Regla:
 
 ```text
-09 no cambia el poligonaje de ninguna geometria.
-09 solo reparte slots de triangulos del presupuesto global.
-09 no calcula vision, mirada, frustum, oclusion ni LOD del planeta.
+No existe pool global de triangulos.
+No existe backend EnvironmentArtist.
+No existe publicacion de 10 hacia 09.
+10 es responsable de construir, sustituir y liberar sus meshes runtime por chunk.
 ```
 
 ## 10 - Optimizacion adaptativa de poligonaje
@@ -560,17 +540,16 @@ Frustum/interes local del planeta activo.
 Mas detalle donde mira/esta el player.
 Menos detalle conforme se aleja.
 Relacion con terreno planetario y Marching Cubes adaptativo.
-Publicacion con meshId estable y priorityScore hacia 09.
+Publicacion con meshId estable dentro del propio sistema 10.
 Metricas de calidad/coste.
-Ruta Mesh inicial y backend GPU-resident como paso final futuro.
+Ruta Mesh inicial gestionada por 10.
 ```
 
 Regla:
 
 ```text
-10 no consume ni recibe un budget concedido por 09 para decidir su reparto.
-10 publica su resultado a 09 como backend de dibujo gestionado.
-10 no cambia su LOD por una respuesta de 09.
+10 no consume ni recibe un budget concedido por otro sistema para decidir su reparto.
+10 publica, sustituye y libera sus propias meshes runtime.
 10 no se disena como BVH de triangulos.
 10 no genera un planeta denso completo para simplificarlo despues.
 10 calcula la resolucion y vision/interes del planeta activo.
@@ -602,14 +581,14 @@ Regla:
 
 ```text
 11 no pinta.
-11 no libera slots de 09 directamente.
+11 no libera meshes de 10 directamente.
 11 no decide LOD ni vision del planeta activo.
 Si afecta al planeta, lo hace como entrada documentada de 10.
 ```
 
 ## Deadline 06-08 - Validacion de forma, Marching Cubes y pintado
 
-Documento para cerrar el gate entre `06_Forma_Planeta_GPU`, `07_Marching_Cubes`, `08_Pintado_Resultado_Marching_Cubes` y el inicio de `09_Pool_Global_Triangulos`.
+Documento para cerrar el gate entre `06_Forma_Planeta_GPU`, `07_Marching_Cubes`, `08_Pintado_Resultado_Marching_Cubes` y el inicio de `10_Optimizacion_Adaptativa_Poligonaje`.
 
 Debe concretar:
 
@@ -627,7 +606,7 @@ Resultado de ejecucion del deadline.
 Regla:
 
 ```text
-No se empieza 09_Pool_Global_Triangulos hasta que _deadline_06-08 este en verde.
+No se empieza 10_Optimizacion_Adaptativa_Poligonaje hasta que _deadline_06-08 este en verde.
 ```
 
 ## 12 - Proxy planeta lejano

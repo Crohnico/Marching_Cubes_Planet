@@ -62,10 +62,9 @@ Si el resultado de 07 no cabe en la Mesh temporal de validacion:
 08 no muestra una malla parcial.
 ```
 
-09, 10 y 11, en documentos separados, definiran:
+10 y 11, en documentos separados, definiran:
 
 ```text
-pool global fijo de triangulos.
 reparto interno de detalle para geometria adaptable.
 visibilidad, oclusion y frustum.
 ```
@@ -76,14 +75,13 @@ Regla para cuando entre 10:
 08 deja de ser quien decide pintar el planeta completo.
 10 toma el control de paginas, LOD y publicacion adaptativa.
 10 puede reutilizar la informacion de pintado/formato de 08 para preparar cada pagina.
-09 sigue siendo backend gestionado de dibujo, no respuesta que 08/10 usen para recalcular geometria.
+10 gestiona su propia publicacion de meshes por chunk.
 ```
 
 Regla:
 
 ```text
 Si el problema es "no se ve lo que genera 07", pertenece a 08 parte 1.
-Si el problema es "quien recibe triangulos del millon global", pertenece a 09.
 Si el problema es "donde pongo mas/menos detalle dentro de una geometria adaptable", pertenece a 10.
 Si el problema es "no deberia haber tris porque no lo veo", pertenece a 11.
 ```
@@ -136,7 +134,7 @@ Regla:
 ```text
 08 parte 1 no descarta triangulos por presupuesto.
 Si hay un limite de seguridad de Mesh temporal y el resultado no cabe, se bloquea el pintado con diagnostico.
-El presupuesto real queda para 09.
+El presupuesto real de poligonaje/chunks queda para 10.
 La optimizacion interna de geometria queda para 10.
 La visibilidad/occlusion/frustum queda para 11.
 ```
@@ -161,7 +159,6 @@ Docs/Implementacion/Pasos/07_Marching_Cubes.md
 Este documento prepara directamente:
 
 ```text
-09_Pool_Global_Triangulos
 10_Optimizacion_Adaptativa_Poligonaje
 11_Visibilidad_Oclusion_Frustum
 _deadline_06-08
@@ -347,7 +344,6 @@ Este limite no es el presupuesto final del juego.
 Es un cortafuegos de validacion.
 Si 07 produce mas triangulos de los que caben, 08 parte 1 no pinta una malla parcial.
 08 debe fallar con diagnostico de capacidad insuficiente.
-El pool real de triangulos queda para 09.
 El reparto por distancia/camara queda para 10 y 11.
 ```
 
@@ -658,10 +654,9 @@ colorMode.
 lastDiagnostic.
 ```
 
-Metricas diferidas a 09/10/11:
+Metricas diferidas a 10/11:
 
 ```text
-Triangulos concedidos/reclamados por el pool global.
 Triangulos redistribuidos por geometria adaptable.
 Triangulos descartados por oclusion/frustum.
 Coste de estructura espacial.
@@ -685,7 +680,7 @@ Liberar recursos de 07 desde 08.
 Mitigaciones:
 
 ```text
-Frontera clara: 07 extrae, 08 parte 1 pinta, 09 reparte slots, 10 adapta detalle, 11 filtra visibilidad.
+Frontera clara: 07 extrae, 08 parte 1 pinta validacion, 10 adapta detalle/publica chunks, 11 filtra visibilidad.
 meshTriangleCapacity solo como cortafuegos.
 Owner de recursos separado.
 Diagnostico de capacidad insuficiente obligatorio.
@@ -706,7 +701,6 @@ Los vertex colors quedan reservados a modos de diagnostico.
 08 parte 1 mantiene vertices no indexados.
 meshTriangleCapacity es cortafuegos de validacion, no presupuesto final.
 08 no pinta parciales.
-El budget global de poligonaje queda para 09.
 Reparto adaptativo de detalle queda para 10.
 Oclusion/frustum queda para 11.
 ```
@@ -722,8 +716,7 @@ Este documento queda listo para implementar cuando aceptemos este contrato:
 08 parte 1 no optimiza por distancia/camara.
 08 parte 1 registra y libera su Mesh/material.
 08 parte 1 mide triangulos pintados, vertices, bytes y tiempos.
-09 queda reservado para backend/pool global de pintado.
-10 queda reservado para reparto interno, shell adaptativo y vision/interes del planeta activo.
+10 queda reservado para reparto interno, shell adaptativo, publicacion de chunks y vision/interes del planeta activo.
 11 queda reservado para senales auxiliares de visibilidad/oclusion.
 ```
 

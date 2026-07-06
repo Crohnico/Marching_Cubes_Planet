@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.Shape;
-using MarchingCubesPlanet.TrianglePools;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -20,11 +19,16 @@ namespace MarchingCubesPlanet.MarchingCubes
         private const int SurfaceAtlasResolution = 256;
         private const float SurfaceAtlasSeaLevelV = 0.5f;
         private const float SurfaceAtlasLandRangeScale = 0.6f;
-        private const uint PlanetSurfaceMeshId = 1u;
-        private const uint PlanetChunkSurfaceMeshIdBase = 0x10000000u;
         private const int DefaultMeshUploadBufferCapacity = 65536;
         private const int GlobalWaterLongitudeSegments = 128;
         private const int GlobalWaterLatitudeSegments = 64;
+
+        private readonly List<RuntimeChunkMesh> runtimeChunks = new List<RuntimeChunkMesh>();
+        private readonly List<Vector3> meshUploadPositions = new List<Vector3>(DefaultMeshUploadBufferCapacity);
+        private readonly List<Vector3> meshUploadNormals = new List<Vector3>(DefaultMeshUploadBufferCapacity);
+        private readonly List<Vector2> meshUploadUvs = new List<Vector2>(DefaultMeshUploadBufferCapacity);
+        private readonly List<Color32> meshUploadColors = new List<Color32>(DefaultMeshUploadBufferCapacity);
+        private readonly List<int> meshUploadIndices = new List<int>(DefaultMeshUploadBufferCapacity);
 
         private Mesh runtimeMesh;
         private Mesh runtimeWaterMesh;
@@ -32,33 +36,14 @@ namespace MarchingCubesPlanet.MarchingCubes
         private Material runtimeWaterMaterial;
         private Texture2D runtimeSurfaceAtlas;
         private GameObject runtimeWaterObject;
-        private readonly List<RuntimeChunkMesh> runtimeChunks = new List<RuntimeChunkMesh>();
-        private readonly PlanetTrianglePoolWriter trianglePoolWriter =
-            new PlanetTrianglePoolWriter(PlanetTrianglePoolRegistry.Environment);
-        private readonly List<Vector3> meshUploadPositions = new List<Vector3>(DefaultMeshUploadBufferCapacity);
-        private readonly List<Vector3> meshUploadNormals = new List<Vector3>(DefaultMeshUploadBufferCapacity);
-        private readonly List<Vector2> meshUploadUvs = new List<Vector2>(DefaultMeshUploadBufferCapacity);
-        private readonly List<Color32> meshUploadColors = new List<Color32>(DefaultMeshUploadBufferCapacity);
-        private readonly List<int> meshUploadIndices = new List<int>(DefaultMeshUploadBufferCapacity);
-        private readonly List<PlanetTriangleGpuVertex> gpuUploadVertices = new List<PlanetTriangleGpuVertex>(DefaultMeshUploadBufferCapacity);
-        private readonly List<Vector3> cacheGpuVertices = new List<Vector3>(DefaultMeshUploadBufferCapacity);
-        private readonly List<Vector3> cacheGpuNormals = new List<Vector3>(DefaultMeshUploadBufferCapacity);
-        private readonly List<Vector2> cacheGpuUvs = new List<Vector2>(DefaultMeshUploadBufferCapacity);
-        private readonly List<Color32> cacheGpuColors = new List<Color32>(DefaultMeshUploadBufferCapacity);
-        private readonly List<int> cacheGpuIndices = new List<int>(DefaultMeshUploadBufferCapacity);
-        private readonly Vector3[] waterClipBuffer = new Vector3[4];
-        private int[] chunkTriangleCountsBuffer = Array.Empty<int>();
-        private int[] chunkStartsBuffer = Array.Empty<int>();
-        private int[] chunkWriteCursorsBuffer = Array.Empty<int>();
-        private int[] sourceTriangleIndicesBuffer = Array.Empty<int>();
 
         public Mesh RuntimeMesh => runtimeMesh;
         public Mesh RuntimeWaterMesh => runtimeWaterMesh;
         public Material RuntimeMaterial => runtimeMaterial;
         public Material RuntimeWaterMaterial => runtimeWaterMaterial;
         public Texture2D RuntimeSurfaceAtlas => runtimeSurfaceAtlas;
-        public bool HasVisibleGpuWater => PlanetTrianglePoolRegistry.Environment.GpuBackend.HasVisibleWaterData;
-        public long RuntimeGpuWaterEstimatedBytes => PlanetTrianglePoolRegistry.Environment.GpuBackend.EstimatedWaterGpuBytes;
+        public bool HasVisibleGpuWater => false;
+        public long RuntimeGpuWaterEstimatedBytes => 0L;
         public bool OwnsRuntimeMaterial => runtimeMaterial != null;
         public bool OwnsRuntimeWaterMaterial => runtimeWaterMaterial != null;
         public bool OwnsRuntimeSurfaceAtlas => runtimeSurfaceAtlas != null;
@@ -69,123 +54,15 @@ namespace MarchingCubesPlanet.MarchingCubes
             ? runtimeSurfaceAtlas.width * runtimeSurfaceAtlas.height
             : 0;
         public int RuntimeChunkCount => runtimeChunks.Count;
-        public int RuntimeChunkMeshCount
-        {
-            get
-            {
-                int count = 0;
-                for (int i = 0; i < runtimeChunks.Count; i++)
-                {
-                    if (runtimeChunks[i].surfaceMesh != null)
-                    {
-                        count++;
-                    }
-                }
+        public int RuntimeChunkMeshCount => CountRuntimeChunkMeshes(false);
+        public int RuntimeChunkWaterMeshCount => CountRuntimeChunkMeshes(true);
+        public int RuntimeChunkVertexCount => SumRuntimeChunkVertices(false);
+        public int RuntimeChunkTriangleCount => SumRuntimeChunkTriangles(false);
+        public int RuntimeChunkWaterVertexCount => SumRuntimeChunkVertices(true);
+        public int RuntimeChunkWaterTriangleCount => SumRuntimeChunkTriangles(true);
+        public long RuntimeChunkMeshEstimatedBytes => SumRuntimeChunkBytes(false);
+        public long RuntimeChunkWaterMeshEstimatedBytes => SumRuntimeChunkBytes(true);
 
-                return count;
-            }
-        }
-
-        public int RuntimeChunkWaterMeshCount
-        {
-            get
-            {
-                int count = 0;
-                for (int i = 0; i < runtimeChunks.Count; i++)
-                {
-                    if (runtimeChunks[i].waterMesh != null)
-                    {
-                        count++;
-                    }
-                }
-
-                return count;
-            }
-        }
-
-        public int RuntimeChunkVertexCount
-        {
-            get
-            {
-                int count = 0;
-                for (int i = 0; i < runtimeChunks.Count; i++)
-                {
-                    count += runtimeChunks[i].surfaceVertexCount;
-                }
-
-                return count;
-            }
-        }
-
-        public int RuntimeChunkTriangleCount
-        {
-            get
-            {
-                int count = 0;
-                for (int i = 0; i < runtimeChunks.Count; i++)
-                {
-                    count += runtimeChunks[i].surfaceTriangleCount;
-                }
-
-                return count;
-            }
-        }
-
-        public int RuntimeChunkWaterVertexCount
-        {
-            get
-            {
-                int count = 0;
-                for (int i = 0; i < runtimeChunks.Count; i++)
-                {
-                    count += runtimeChunks[i].waterVertexCount;
-                }
-
-                return count;
-            }
-        }
-
-        public int RuntimeChunkWaterTriangleCount
-        {
-            get
-            {
-                int count = 0;
-                for (int i = 0; i < runtimeChunks.Count; i++)
-                {
-                    count += runtimeChunks[i].waterTriangleCount;
-                }
-
-                return count;
-            }
-        }
-
-        public long RuntimeChunkMeshEstimatedBytes
-        {
-            get
-            {
-                long bytes = 0L;
-                for (int i = 0; i < runtimeChunks.Count; i++)
-                {
-                    bytes += runtimeChunks[i].surfaceEstimatedBytes;
-                }
-
-                return bytes;
-            }
-        }
-
-        public long RuntimeChunkWaterMeshEstimatedBytes
-        {
-            get
-            {
-                long bytes = 0L;
-                for (int i = 0; i < runtimeChunks.Count; i++)
-                {
-                    bytes += runtimeChunks[i].waterEstimatedBytes;
-                }
-
-                return bytes;
-            }
-        }
         private sealed class RuntimeChunkMesh
         {
             public string meshId;
@@ -194,10 +71,18 @@ namespace MarchingCubesPlanet.MarchingCubes
             public MeshFilter surfaceMeshFilter;
             public MeshRenderer surfaceMeshRenderer;
             public Mesh surfaceMesh;
+            public GameObject surfaceBackObject;
+            public MeshFilter surfaceBackMeshFilter;
+            public MeshRenderer surfaceBackMeshRenderer;
+            public Mesh surfaceBackMesh;
             public GameObject waterObject;
             public MeshFilter waterMeshFilter;
             public MeshRenderer waterMeshRenderer;
             public Mesh waterMesh;
+            public GameObject waterBackObject;
+            public MeshFilter waterBackMeshFilter;
+            public MeshRenderer waterBackMeshRenderer;
+            public Mesh waterBackMesh;
             public int surfaceTriangleCount;
             public int surfaceVertexCount;
             public int waterTriangleCount;
@@ -220,109 +105,50 @@ namespace MarchingCubesPlanet.MarchingCubes
             in PlanetPlacement placement,
             PlanetMarchingCubesPaintSettings settings)
         {
-            if (meshFilter == null)
-            {
-                throw new ArgumentNullException(nameof(meshFilter));
-            }
-
-            if (meshRenderer == null)
-            {
-                throw new ArgumentNullException(nameof(meshRenderer));
-            }
-
-            if (source == null)
-            {
-                throw new ArgumentNullException(nameof(source));
-            }
-
-            if (!settings.Validate(out string message))
-            {
-                throw new ArgumentException(message, nameof(settings));
-            }
-
-            if (!recipe.IsValid(out string recipeMessage))
-            {
-                throw new ArgumentException(recipeMessage, nameof(recipe));
-            }
-
+            ValidatePaintInputs(meshFilter, meshRenderer, source, in recipe, settings);
             int sourceVertexCount = source.VertexCount - source.VertexCount % 3;
             int sourceTriangleCount = sourceVertexCount / 3;
-            Vector3 priorityOriginWorld = PlanetTrianglePoolRegistry.PriorityOriginWorld;
-            PlanetRecipe recipeCopy = recipe;
-            PlanetPlacement placementCopy = placement;
-            PlanetMarchingCubesVertex[] sourceVertices = source.Vertices;
-            PlanetTriangleDrawResult drawResult = trianglePoolWriter.Draw(
-                sourceTriangleCount,
-                triangleIndex => EvaluateTriangleScore(
-                    sourceVertices,
-                    triangleIndex,
-                    recipeCopy,
-                    placementCopy,
-                    priorityOriginWorld),
-                triangleIndex => EvaluateOutputTriangleCost(
-                    sourceVertices,
-                    triangleIndex,
-                    recipeCopy.GridRadius),
-                PlanetTriangleOwnerId.PlanetSurfaceValue,
-                PlanetSurfaceMeshId);
-            int paintedTriangleCount = drawResult.SelectedSourceTriangleCount;
-            int paintedVertexCount = paintedTriangleCount * 3;
-            PlanetGpuShapeCell[] cells = new PlanetGpuShapeCell[recipe.VoronoiDivision];
-            PlanetGpuShapeCellBuilder.Build(in recipe, cells);
+            ValidateTriangleCapacity(sourceTriangleCount, settings);
 
+            PlanetGpuShapeCell[] cells = BuildCells(in recipe);
             Release(meshFilter, meshRenderer);
 
             runtimeMesh = new Mesh
             {
                 name = "PlanetMarchingCubesPaint_Mesh_Runtime",
-                indexFormat = paintedVertexCount > ushort.MaxValue ? IndexFormat.UInt32 : IndexFormat.UInt16
+                indexFormat = sourceVertexCount > ushort.MaxValue ? IndexFormat.UInt32 : IndexFormat.UInt16
             };
-
-            if (paintedVertexCount > 0)
-            {
-                BuildMesh(
-                    runtimeMesh,
-                    meshFilter.transform,
-                    source.Vertices,
-                    sourceVertexCount,
-                    trianglePoolWriter,
-                    paintedVertexCount,
-                    cells,
-                    in recipe,
-                    in placement,
-                    settings);
-            }
+            BuildMeshFromExtraction(
+                runtimeMesh,
+                meshFilter.transform,
+                source.Vertices,
+                sourceVertexCount,
+                in recipe,
+                in placement,
+                settings,
+                cells);
 
             meshFilter.sharedMesh = runtimeMesh;
             meshRenderer.sharedMaterial = ResolveMaterial(materialOverride, settings.colorMode, cells);
 
-            BuildWaterMesh(
-                meshFilter,
-                meshRenderer,
-                source.Vertices,
-                sourceVertexCount,
-                trianglePoolWriter,
-                in recipe,
-                in placement,
-                settings,
-                out int waterVertexCount,
-                out int waterTriangleCount);
-
-            long estimatedBytes = PlanetMarchingCubesPaintResult.CalculateMeshEstimatedBytes(
-                paintedVertexCount,
-                paintedTriangleCount);
-            long waterEstimatedBytes = PlanetMarchingCubesPaintResult.CalculateMeshEstimatedBytes(
-                waterVertexCount,
-                waterTriangleCount);
             return new PlanetMarchingCubesPaintResult(
                 sourceTriangleCount,
-                paintedTriangleCount,
-                paintedVertexCount,
-                estimatedBytes,
-                waterTriangleCount,
-                waterVertexCount,
-                waterEstimatedBytes,
+                sourceTriangleCount,
+                sourceVertexCount,
+                PlanetMarchingCubesPaintResult.CalculateMeshEstimatedBytes(sourceVertexCount, sourceTriangleCount),
                 settings.colorMode);
+        }
+
+        public PlanetMarchingCubesPaintResult PaintChunks(
+            MeshFilter meshFilter,
+            MeshRenderer meshRenderer,
+            Material materialOverride,
+            PlanetMarchingCubesExtractionResult source,
+            in PlanetRecipe recipe,
+            in PlanetPlacement placement,
+            PlanetMarchingCubesPaintSettings settings)
+        {
+            return Paint(meshFilter, meshRenderer, materialOverride, source, in recipe, in placement, settings);
         }
 
         public PlanetMarchingCubesPaintResult PaintGlobalWater(
@@ -342,9 +168,9 @@ namespace MarchingCubesPlanet.MarchingCubes
                 throw new ArgumentNullException(nameof(meshRenderer));
             }
 
-            if (!settings.Validate(out string message))
+            if (!settings.Validate(out string settingsMessage))
             {
-                throw new ArgumentException(message, nameof(settings));
+                throw new ArgumentException(settingsMessage, nameof(settings));
             }
 
             if (!recipe.IsValid(out string recipeMessage))
@@ -352,13 +178,33 @@ namespace MarchingCubesPlanet.MarchingCubes
                 throw new ArgumentException(recipeMessage, nameof(recipe));
             }
 
+            ReleaseWater();
             int triangleCount = GlobalWaterLatitudeSegments * GlobalWaterLongitudeSegments * 2;
             int vertexCount = triangleCount * 3;
-            EnsureListCapacity(gpuUploadVertices, vertexCount);
-            gpuUploadVertices.Clear();
-            Bounds waterBounds = default;
-            bool hasWaterBounds = false;
-            Color32 waterColor = Color.white;
+            runtimeWaterObject = new GameObject("PlanetGlobalWater_Mesh_Runtime");
+            runtimeWaterObject.transform.SetParent(meshFilter.transform, false);
+
+            MeshFilter waterFilter = runtimeWaterObject.AddComponent<MeshFilter>();
+            MeshRenderer waterRenderer = runtimeWaterObject.AddComponent<MeshRenderer>();
+            CopyRendererSettings(meshRenderer, waterRenderer);
+            waterRenderer.sharedMaterial = ResolveWaterMaterial();
+
+            runtimeWaterMesh = new Mesh
+            {
+                name = "PlanetGlobalWater_Mesh_Runtime",
+                indexFormat = vertexCount > ushort.MaxValue ? IndexFormat.UInt32 : IndexFormat.UInt16
+            };
+
+            EnsureListCapacity(meshUploadPositions, vertexCount);
+            EnsureListCapacity(meshUploadNormals, vertexCount);
+            EnsureListCapacity(meshUploadUvs, vertexCount);
+            EnsureListCapacity(meshUploadColors, vertexCount);
+            EnsureListCapacity(meshUploadIndices, vertexCount);
+            meshUploadPositions.Clear();
+            meshUploadNormals.Clear();
+            meshUploadUvs.Clear();
+            meshUploadColors.Clear();
+            meshUploadIndices.Clear();
 
             for (int latitude = 0; latitude < GlobalWaterLatitudeSegments; latitude++)
             {
@@ -368,38 +214,13 @@ namespace MarchingCubesPlanet.MarchingCubes
                     Vector3 upperRight = EvaluateGlobalWaterDirection(latitude, longitude + 1);
                     Vector3 lowerLeft = EvaluateGlobalWaterDirection(latitude + 1, longitude);
                     Vector3 lowerRight = EvaluateGlobalWaterDirection(latitude + 1, longitude + 1);
-
-                    AddGlobalWaterGpuTriangle(
-                        upperLeft,
-                        upperRight,
-                        lowerLeft,
-                        waterColor,
-                        in recipe,
-                        in placement,
-                        ref waterBounds,
-                        ref hasWaterBounds);
-                    AddGlobalWaterGpuTriangle(
-                        upperRight,
-                        lowerRight,
-                        lowerLeft,
-                        waterColor,
-                        in recipe,
-                        in placement,
-                        ref waterBounds,
-                        ref hasWaterBounds);
+                    AddGlobalWaterTriangle(meshFilter.transform, upperLeft, upperRight, lowerLeft, in recipe, in placement);
+                    AddGlobalWaterTriangle(meshFilter.transform, upperRight, lowerRight, lowerLeft, in recipe, in placement);
                 }
             }
 
-            bool published = PlanetTrianglePoolRegistry.Environment.GpuBackend.PublishWater(
-                gpuUploadVertices,
-                gpuUploadVertices.Count,
-                hasWaterBounds ? waterBounds : new Bounds(Vector3.zero, Vector3.one),
-                ResolveWaterMaterial());
-            if (!published)
-            {
-                return new PlanetMarchingCubesPaintResult(0, 0, 0, 0L, 0, 0, 0L, settings.colorMode);
-            }
-
+            ApplyMeshData(runtimeWaterMesh);
+            waterFilter.sharedMesh = runtimeWaterMesh;
             return new PlanetMarchingCubesPaintResult(
                 0,
                 0,
@@ -411,265 +232,19 @@ namespace MarchingCubesPlanet.MarchingCubes
                 settings.colorMode);
         }
 
-        private void AddGlobalWaterGpuTriangle(
-            Vector3 aDirection,
-            Vector3 bDirection,
-            Vector3 cDirection,
-            Color32 color,
-            in PlanetRecipe recipe,
-            in PlanetPlacement placement,
-            ref Bounds bounds,
-            ref bool hasBounds)
-        {
-            AddGlobalWaterGpuVertex(aDirection, color, in recipe, in placement, ref bounds, ref hasBounds);
-            AddGlobalWaterGpuVertex(bDirection, color, in recipe, in placement, ref bounds, ref hasBounds);
-            AddGlobalWaterGpuVertex(cDirection, color, in recipe, in placement, ref bounds, ref hasBounds);
-        }
-
-        private void AddGlobalWaterGpuVertex(
-            Vector3 gridDirection,
-            Color32 color,
-            in PlanetRecipe recipe,
-            in PlanetPlacement placement,
-            ref Bounds bounds,
-            ref bool hasBounds)
-        {
-            Vector3 gridPosition = gridDirection * recipe.GridRadius;
-            Vector3 worldPosition = PlanetCoordinateConverter.GridToWorld(gridPosition, in recipe, in placement);
-            Vector3 worldNormal = (placement.PlanetRotation * gridDirection).normalized;
-            gpuUploadVertices.Add(new PlanetTriangleGpuVertex(worldPosition, worldNormal, Vector2.zero, color, true));
-            IncludePointInBounds(ref bounds, ref hasBounds, worldPosition);
-        }
-
-        private static Vector3 EvaluateGlobalWaterDirection(int latitude, int longitude)
-        {
-            float latitude01 = Mathf.Clamp01(latitude / (float)GlobalWaterLatitudeSegments);
-            float longitude01 = Mathf.Repeat(longitude / (float)GlobalWaterLongitudeSegments, 1f);
-            float theta = latitude01 * Mathf.PI;
-            float phi = longitude01 * Mathf.PI * 2f;
-            float ringRadius = Mathf.Sin(theta);
-            return new Vector3(
-                Mathf.Cos(phi) * ringRadius,
-                Mathf.Cos(theta),
-                Mathf.Sin(phi) * ringRadius).normalized;
-        }
-
-        public PlanetMarchingCubesPaintResult PaintChunks(
-            MeshFilter meshFilter,
-            MeshRenderer meshRenderer,
-            Material materialOverride,
-            PlanetMarchingCubesExtractionResult source,
-            in PlanetRecipe recipe,
-            in PlanetPlacement placement,
-            PlanetMarchingCubesPaintSettings settings)
-        {
-            if (meshFilter == null)
-            {
-                throw new ArgumentNullException(nameof(meshFilter));
-            }
-
-            if (meshRenderer == null)
-            {
-                throw new ArgumentNullException(nameof(meshRenderer));
-            }
-
-            if (source == null)
-            {
-                throw new ArgumentNullException(nameof(source));
-            }
-
-            if (!settings.Validate(out string message))
-            {
-                throw new ArgumentException(message, nameof(settings));
-            }
-
-            if (!recipe.IsValid(out string recipeMessage))
-            {
-                throw new ArgumentException(recipeMessage, nameof(recipe));
-            }
-
-            int sourceVertexCount = source.VertexCount - source.VertexCount % 3;
-            int sourceTriangleCount = sourceVertexCount / 3;
-            PlanetMarchingCubesVertex[] sourceVertices = source.Vertices;
-            PlanetGpuShapeCell[] cells = new PlanetGpuShapeCell[recipe.VoronoiDivision];
-            PlanetGpuShapeCellBuilder.Build(in recipe, cells);
-
-            Release(meshFilter, meshRenderer);
-            meshFilter.sharedMesh = null;
-            meshRenderer.sharedMaterial = null;
-
-            if (sourceTriangleCount <= 0)
-            {
-                return new PlanetMarchingCubesPaintResult(
-                    0,
-                    0,
-                    0,
-                    0L,
-                    0,
-                    0,
-                    0L,
-                    settings.colorMode,
-                    0);
-            }
-
-            Material surfaceMaterial = ResolveMaterial(materialOverride, settings.colorMode, cells);
-            int maxChunkIndex = FindMaxSourceChunkIndex(sourceVertices, sourceTriangleCount);
-            int chunkSlotCount = maxChunkIndex + 1;
-            int[] chunkTriangleCounts = EnsureIntBuffer(ref chunkTriangleCountsBuffer, chunkSlotCount);
-            Array.Clear(chunkTriangleCounts, 0, chunkSlotCount);
-
-            for (int sourceTriangleIndex = 0; sourceTriangleIndex < sourceTriangleCount; sourceTriangleIndex++)
-            {
-                int chunkIndex = ReadSourceChunkIndex(sourceVertices, sourceTriangleIndex);
-                chunkTriangleCounts[chunkIndex]++;
-            }
-
-            int[] chunkStarts = EnsureIntBuffer(ref chunkStartsBuffer, chunkSlotCount);
-            Array.Clear(chunkStarts, 0, chunkSlotCount);
-            int runningStart = 0;
-            for (int chunkIndex = 0; chunkIndex < chunkSlotCount; chunkIndex++)
-            {
-                chunkStarts[chunkIndex] = runningStart;
-                runningStart += chunkTriangleCounts[chunkIndex];
-            }
-
-            int[] chunkWriteCursors = EnsureIntBuffer(ref chunkWriteCursorsBuffer, chunkSlotCount);
-            Array.Clear(chunkWriteCursors, 0, chunkSlotCount);
-            int[] sourceTriangleIndices = EnsureIntBuffer(ref sourceTriangleIndicesBuffer, sourceTriangleCount);
-            for (int sourceTriangleIndex = 0; sourceTriangleIndex < sourceTriangleCount; sourceTriangleIndex++)
-            {
-                int chunkIndex = ReadSourceChunkIndex(sourceVertices, sourceTriangleIndex);
-                int writeIndex = chunkStarts[chunkIndex] + chunkWriteCursors[chunkIndex];
-                sourceTriangleIndices[writeIndex] = sourceTriangleIndex;
-                chunkWriteCursors[chunkIndex]++;
-            }
-
-            int paintedTriangleTotal = 0;
-            int paintedVertexTotal = 0;
-            int waterTriangleTotal = 0;
-            int waterVertexTotal = 0;
-            long meshEstimatedBytesTotal = 0L;
-            long waterEstimatedBytesTotal = 0L;
-            int visibleChunkCount = 0;
-            Vector3 priorityOriginWorld = PlanetTrianglePoolRegistry.PriorityOriginWorld;
-            PlanetRecipe recipeCopy = recipe;
-            PlanetPlacement placementCopy = placement;
-
-            for (int chunkIndex = 0; chunkIndex < chunkSlotCount; chunkIndex++)
-            {
-                int chunkTriangleCount = chunkTriangleCounts[chunkIndex];
-                if (chunkTriangleCount <= 0)
-                {
-                    continue;
-                }
-
-                int chunkStart = chunkStarts[chunkIndex];
-                PlanetTriangleDrawResult drawResult = trianglePoolWriter.Draw(
-                    chunkTriangleCount,
-                    localTriangleIndex => EvaluateTriangleScore(
-                        sourceVertices,
-                        sourceTriangleIndices[chunkStart + localTriangleIndex],
-                        recipeCopy,
-                        placementCopy,
-                        priorityOriginWorld),
-                    localTriangleIndex => EvaluateOutputTriangleCost(
-                        sourceVertices,
-                        sourceTriangleIndices[chunkStart + localTriangleIndex],
-                        recipeCopy.GridRadius),
-                    PlanetTriangleOwnerId.PlanetSurfaceValue,
-                    MakeChunkSurfaceMeshId(chunkIndex));
-
-                int paintedTriangleCount = drawResult.SelectedSourceTriangleCount;
-                if (paintedTriangleCount <= 0)
-                {
-                    continue;
-                }
-
-                RuntimeChunkMesh runtimeChunk = new RuntimeChunkMesh
-                {
-                    meshId = BuildChunkMeshId(chunkIndex),
-                    chunkIndex = chunkIndex,
-                    surfaceTriangleCount = paintedTriangleCount,
-                    surfaceVertexCount = paintedTriangleCount * 3
-                };
-
-                runtimeChunk.surfaceObject = CreateChunkObject(
-                    meshFilter.transform,
-                    meshFilter.gameObject.layer,
-                    "PlanetChunk_" + chunkIndex + "_Surface_Runtime");
-                MeshFilter chunkMeshFilter = runtimeChunk.surfaceObject.AddComponent<MeshFilter>();
-                MeshRenderer chunkMeshRenderer = runtimeChunk.surfaceObject.AddComponent<MeshRenderer>();
-                CopyRendererSettings(meshRenderer, chunkMeshRenderer);
-                chunkMeshRenderer.sharedMaterial = surfaceMaterial;
-
-                runtimeChunk.surfaceMesh = new Mesh
-                {
-                    name = "PlanetChunk_" + chunkIndex + "_SurfaceMesh_Runtime",
-                    indexFormat = runtimeChunk.surfaceVertexCount > ushort.MaxValue ? IndexFormat.UInt32 : IndexFormat.UInt16
-                };
-
-                BuildMeshFromTriangleSegment(
-                    runtimeChunk.surfaceMesh,
-                    meshFilter.transform,
-                    sourceVertices,
-                    sourceTriangleIndices,
-                    chunkStart,
-                    chunkTriangleCount,
-                    trianglePoolWriter,
-                    runtimeChunk.surfaceVertexCount,
-                    cells,
-                    in recipe,
-                    in placement,
-                    settings);
-                chunkMeshFilter.sharedMesh = runtimeChunk.surfaceMesh;
-
-                runtimeChunk.surfaceEstimatedBytes = PlanetMarchingCubesPaintResult.CalculateMeshEstimatedBytes(
-                    runtimeChunk.surfaceVertexCount,
-                    runtimeChunk.surfaceTriangleCount);
-
-                BuildChunkWaterMesh(
-                    runtimeChunk,
-                    meshFilter.transform,
-                    meshFilter.gameObject.layer,
-                    meshRenderer,
-                    sourceVertices,
-                    sourceTriangleIndices,
-                    chunkStart,
-                    chunkTriangleCount,
-                    trianglePoolWriter,
-                    in recipe,
-                    in placement);
-
-                runtimeChunks.Add(runtimeChunk);
-                visibleChunkCount++;
-                paintedTriangleTotal += runtimeChunk.surfaceTriangleCount;
-                paintedVertexTotal += runtimeChunk.surfaceVertexCount;
-                waterTriangleTotal += runtimeChunk.waterTriangleCount;
-                waterVertexTotal += runtimeChunk.waterVertexCount;
-                meshEstimatedBytesTotal += runtimeChunk.surfaceEstimatedBytes;
-                waterEstimatedBytesTotal += runtimeChunk.waterEstimatedBytes;
-            }
-
-            return new PlanetMarchingCubesPaintResult(
-                sourceTriangleCount,
-                paintedTriangleTotal,
-                paintedVertexTotal,
-                meshEstimatedBytesTotal,
-                waterTriangleTotal,
-                waterVertexTotal,
-                waterEstimatedBytesTotal,
-                settings.colorMode,
-                visibleChunkCount);
-        }
-
         public PlanetMarchingCubesPaintResult PaintCachedChunks(
             MeshFilter meshFilter,
             MeshRenderer meshRenderer,
             Material materialOverride,
-            IList<PlanetCachedChunkMesh> cachedChunks,
+            List<PlanetCachedChunkMesh> chunks,
             in PlanetRecipe recipe,
             PlanetMarchingCubesPaintSettings settings)
         {
+            if (chunks == null)
+            {
+                throw new ArgumentNullException(nameof(chunks));
+            }
+
             if (meshFilter == null)
             {
                 throw new ArgumentNullException(nameof(meshFilter));
@@ -680,14 +255,9 @@ namespace MarchingCubesPlanet.MarchingCubes
                 throw new ArgumentNullException(nameof(meshRenderer));
             }
 
-            if (cachedChunks == null)
+            if (!settings.Validate(out string settingsMessage))
             {
-                throw new ArgumentNullException(nameof(cachedChunks));
-            }
-
-            if (!settings.Validate(out string message))
-            {
-                throw new ArgumentException(message, nameof(settings));
+                throw new ArgumentException(settingsMessage, nameof(settings));
             }
 
             if (!recipe.IsValid(out string recipeMessage))
@@ -695,91 +265,52 @@ namespace MarchingCubesPlanet.MarchingCubes
                 throw new ArgumentException(recipeMessage, nameof(recipe));
             }
 
-            PlanetGpuShapeCell[] cells = new PlanetGpuShapeCell[recipe.VoronoiDivision];
-            PlanetGpuShapeCellBuilder.Build(in recipe, cells);
-
             Release(meshFilter, meshRenderer);
-            meshFilter.sharedMesh = null;
-            meshRenderer.sharedMaterial = null;
-
+            PlanetGpuShapeCell[] cells = BuildCells(in recipe);
             Material surfaceMaterial = ResolveMaterial(materialOverride, settings.colorMode, cells);
-            int paintedTriangleTotal = 0;
-            int paintedVertexTotal = 0;
-            int waterTriangleTotal = 0;
-            int waterVertexTotal = 0;
-            long meshEstimatedBytesTotal = 0L;
-            long waterEstimatedBytesTotal = 0L;
-            int visibleChunkCount = 0;
 
-            for (int i = 0; i < cachedChunks.Count; i++)
+            int surfaceTriangles = 0;
+            int surfaceVertices = 0;
+            int waterTriangles = 0;
+            int waterVertices = 0;
+            long surfaceBytes = 0L;
+            long waterBytes = 0L;
+            int visibleChunks = 0;
+
+            for (int i = 0; i < chunks.Count; i++)
             {
-                PlanetCachedChunkMesh cachedChunk = cachedChunks[i];
-                if (cachedChunk == null || cachedChunk.SurfaceMesh == null && cachedChunk.WaterMesh == null)
+                PlanetCachedChunkMesh cached = chunks[i];
+                if (cached == null)
                 {
                     continue;
                 }
 
-                RuntimeChunkMesh runtimeChunk = new RuntimeChunkMesh
+                RuntimeChunkMesh slot = GetOrCreateRuntimeMeshSlot(BuildChunkMeshId(cached.ChunkId), cached.ChunkId);
+                CopyCachedMeshIntoSlot(slot, cached.SurfaceMesh, cached.WaterMesh, meshFilter, meshRenderer, surfaceMaterial);
+                UpdateRuntimeMeshSlotMetrics(slot);
+                if (slot.surfaceTriangleCount > 0 || slot.waterTriangleCount > 0)
                 {
-                    meshId = BuildChunkMeshId(cachedChunk.ChunkId),
-                    chunkIndex = cachedChunk.ChunkId,
-                    surfaceMesh = cachedChunk.SurfaceMesh,
-                    surfaceTriangleCount = cachedChunk.SurfaceTriangleCount,
-                    surfaceVertexCount = cachedChunk.SurfaceVertexCount,
-                    surfaceEstimatedBytes = cachedChunk.SurfaceEstimatedBytes,
-                    waterMesh = cachedChunk.WaterMesh,
-                    waterTriangleCount = cachedChunk.WaterTriangleCount,
-                    waterVertexCount = cachedChunk.WaterVertexCount,
-                    waterEstimatedBytes = cachedChunk.WaterEstimatedBytes
-                };
-
-                if (runtimeChunk.surfaceMesh != null)
-                {
-                    runtimeChunk.surfaceObject = CreateChunkObject(
-                        meshFilter.transform,
-                        meshFilter.gameObject.layer,
-                        "PlanetChunk_" + runtimeChunk.chunkIndex + "_Surface_Cached");
-                    MeshFilter chunkMeshFilter = runtimeChunk.surfaceObject.AddComponent<MeshFilter>();
-                    MeshRenderer chunkMeshRenderer = runtimeChunk.surfaceObject.AddComponent<MeshRenderer>();
-                    CopyRendererSettings(meshRenderer, chunkMeshRenderer);
-                    chunkMeshRenderer.sharedMaterial = surfaceMaterial;
-                    chunkMeshFilter.sharedMesh = runtimeChunk.surfaceMesh;
+                    visibleChunks++;
                 }
 
-                if (runtimeChunk.waterMesh != null)
-                {
-                    runtimeChunk.waterObject = CreateChunkObject(
-                        meshFilter.transform,
-                        meshFilter.gameObject.layer,
-                        "PlanetChunk_" + runtimeChunk.chunkIndex + "_Water_Cached");
-                    MeshFilter waterMeshFilter = runtimeChunk.waterObject.AddComponent<MeshFilter>();
-                    MeshRenderer waterMeshRenderer = runtimeChunk.waterObject.AddComponent<MeshRenderer>();
-                    CopyRendererSettings(meshRenderer, waterMeshRenderer);
-                    waterMeshRenderer.shadowCastingMode = ShadowCastingMode.Off;
-                    waterMeshRenderer.sharedMaterial = ResolveWaterMaterial();
-                    waterMeshFilter.sharedMesh = runtimeChunk.waterMesh;
-                }
-
-                runtimeChunks.Add(runtimeChunk);
-                visibleChunkCount++;
-                paintedTriangleTotal += runtimeChunk.surfaceTriangleCount;
-                paintedVertexTotal += runtimeChunk.surfaceVertexCount;
-                waterTriangleTotal += runtimeChunk.waterTriangleCount;
-                waterVertexTotal += runtimeChunk.waterVertexCount;
-                meshEstimatedBytesTotal += runtimeChunk.surfaceEstimatedBytes;
-                waterEstimatedBytesTotal += runtimeChunk.waterEstimatedBytes;
+                surfaceTriangles += slot.surfaceTriangleCount;
+                surfaceVertices += slot.surfaceVertexCount;
+                waterTriangles += slot.waterTriangleCount;
+                waterVertices += slot.waterVertexCount;
+                surfaceBytes += slot.surfaceEstimatedBytes;
+                waterBytes += slot.waterEstimatedBytes;
             }
 
             return new PlanetMarchingCubesPaintResult(
-                paintedTriangleTotal,
-                paintedTriangleTotal,
-                paintedVertexTotal,
-                meshEstimatedBytesTotal,
-                waterTriangleTotal,
-                waterVertexTotal,
-                waterEstimatedBytesTotal,
+                surfaceTriangles,
+                surfaceTriangles,
+                surfaceVertices,
+                surfaceBytes,
+                waterTriangles,
+                waterVertices,
+                waterBytes,
                 settings.colorMode,
-                visibleChunkCount);
+                visibleChunks);
         }
 
         public PlanetMarchingCubesPaintResult PaintNamedMesh(
@@ -793,94 +324,15 @@ namespace MarchingCubesPlanet.MarchingCubes
             PlanetMarchingCubesPaintSettings settings,
             int cacheChunkId = -1)
         {
-            if (meshFilter == null)
-            {
-                throw new ArgumentNullException(nameof(meshFilter));
-            }
-
-            if (meshRenderer == null)
-            {
-                throw new ArgumentNullException(nameof(meshRenderer));
-            }
-
-            if (string.IsNullOrWhiteSpace(meshId))
-            {
-                throw new ArgumentException("meshId cannot be empty.", nameof(meshId));
-            }
-
-            if (!settings.Validate(out string message))
-            {
-                throw new ArgumentException(message, nameof(settings));
-            }
-
-            if (!recipe.IsValid(out string recipeMessage))
-            {
-                throw new ArgumentException(recipeMessage, nameof(recipe));
-            }
-
-            PlanetGpuShapeCell[] cells = new PlanetGpuShapeCell[recipe.VoronoiDivision];
-            PlanetGpuShapeCellBuilder.Build(in recipe, cells);
+            ValidateNamedInputs(meshFilter, meshRenderer, meshId, in recipe, settings);
+            PlanetGpuShapeCell[] cells = BuildCells(in recipe);
             Material surfaceMaterial = ResolveMaterial(materialOverride, settings.colorMode, cells);
-            if (meshRenderer != null)
-            {
-                meshRenderer.sharedMaterial = surfaceMaterial;
-            }
-
-            RuntimeChunkMesh runtimeMeshSlot = GetOrCreateRuntimeMeshSlot(meshId, cacheChunkId);
-            string safeMeshId = SanitizeObjectName(meshId);
-
-            if (surfaceMesh != null)
-            {
-                EnsureNamedSurfaceSlot(
-                    runtimeMeshSlot,
-                    meshFilter.transform,
-                    meshFilter.gameObject.layer,
-                    safeMeshId + "_Surface_Named",
-                    meshRenderer,
-                    surfaceMaterial);
-                CopyMeshData(surfaceMesh, runtimeMeshSlot.surfaceMesh);
-                if (surfaceMesh != runtimeMeshSlot.surfaceMesh)
-                {
-                    DestroyRuntimeObject(surfaceMesh);
-                }
-            }
-            else
-            {
-                PlanetTrianglePoolRegistry.Environment.GpuBackend.ReleasePublication(
-                    cacheChunkId >= 0 ? MakeChunkSurfaceMeshId(cacheChunkId) : PlanetSurfaceMeshId);
-                ClearNamedSurfaceSlot(runtimeMeshSlot);
-            }
-
-            if (waterMesh != null)
-            {
-                EnsureNamedWaterSlot(
-                    runtimeMeshSlot,
-                    meshFilter.transform,
-                    meshFilter.gameObject.layer,
-                    safeMeshId + "_Water_Named",
-                    meshRenderer);
-                CopyMeshData(waterMesh, runtimeMeshSlot.waterMesh);
-                if (waterMesh != runtimeMeshSlot.waterMesh)
-                {
-                    DestroyRuntimeObject(waterMesh);
-                }
-            }
-            else
-            {
-                ClearNamedWaterSlot(runtimeMeshSlot);
-            }
-
-            UpdateRuntimeMeshSlotMetrics(runtimeMeshSlot);
-            return new PlanetMarchingCubesPaintResult(
-                runtimeMeshSlot.surfaceTriangleCount,
-                runtimeMeshSlot.surfaceTriangleCount,
-                runtimeMeshSlot.surfaceVertexCount,
-                runtimeMeshSlot.surfaceEstimatedBytes,
-                runtimeMeshSlot.waterTriangleCount,
-                runtimeMeshSlot.waterVertexCount,
-                runtimeMeshSlot.waterEstimatedBytes,
-                settings.colorMode,
-                1);
+            RuntimeChunkMesh slot = GetOrCreateRuntimeMeshSlot(meshId, cacheChunkId);
+            CopyCachedMeshIntoSlot(slot, surfaceMesh, waterMesh, meshFilter, meshRenderer, surfaceMaterial);
+            UpdateRuntimeMeshSlotMetrics(slot);
+            DestroyIfNotOwned(surfaceMesh, slot.surfaceMesh);
+            DestroyIfNotOwned(waterMesh, slot.waterMesh);
+            return BuildNamedPaintResult(slot, settings);
         }
 
         public PlanetMarchingCubesPaintResult PaintNamedCachedMesh(
@@ -895,102 +347,77 @@ namespace MarchingCubesPlanet.MarchingCubes
             PlanetMarchingCubesPaintSettings settings,
             bool stagedGpuPublish = false)
         {
-            if (meshFilter == null)
-            {
-                throw new ArgumentNullException(nameof(meshFilter));
-            }
-
-            if (meshRenderer == null)
-            {
-                throw new ArgumentNullException(nameof(meshRenderer));
-            }
-
+            _ = stagedGpuPublish;
+            ValidateNamedInputs(meshFilter, meshRenderer, meshId, in recipe, settings);
             if (cache == null)
             {
                 throw new ArgumentNullException(nameof(cache));
             }
 
-            if (string.IsNullOrWhiteSpace(meshId))
-            {
-                throw new ArgumentException("meshId cannot be empty.", nameof(meshId));
-            }
-
-            if (!settings.Validate(out string message))
-            {
-                throw new ArgumentException(message, nameof(settings));
-            }
-
-            if (!recipe.IsValid(out string recipeMessage))
-            {
-                throw new ArgumentException(recipeMessage, nameof(recipe));
-            }
-
+            RuntimeChunkMesh slot = GetOrCreateRuntimeMeshSlot(meshId, cacheChunkId);
             if (!cache.TryGetChunkMeshAvailability(cacheChunkId, cacheLod, out bool hasSurfaceMesh, out bool hasWaterMesh))
             {
-                return new PlanetMarchingCubesPaintResult(0, 0, 0, 0L, 0, 0, 0L, settings.colorMode, 0);
+                return BuildEmptyPaintResult(settings);
             }
-
-            PlanetGpuShapeCell[] cells = new PlanetGpuShapeCell[recipe.VoronoiDivision];
-            PlanetGpuShapeCellBuilder.Build(in recipe, cells);
-            Material surfaceMaterial = ResolveMaterial(materialOverride, settings.colorMode, cells);
-            RuntimeChunkMesh runtimeMeshSlot = GetOrCreateRuntimeMeshSlot(meshId, cacheChunkId);
 
             if (hasSurfaceMesh)
             {
-                bool loadedSurfaceMesh = cache.TryLoadChunkSurfaceMeshData(
-                        cacheChunkId,
-                        cacheLod,
-                        cacheGpuVertices,
-                        cacheGpuNormals,
-                        cacheGpuUvs,
-                        cacheGpuColors,
-                        cacheGpuIndices,
-                        out Bounds cacheBounds);
-                if (loadedSurfaceMesh &&
-                    PublishGpuCachedSurface(
-                        cacheChunkId >= 0 ? MakeChunkSurfaceMeshId(cacheChunkId) : PlanetSurfaceMeshId,
-                        cacheGpuVertices,
-                        cacheGpuNormals,
-                        cacheGpuUvs,
-                        cacheGpuColors,
-                        cacheGpuIndices,
-                        meshFilter != null ? meshFilter.transform : null,
-                        cacheBounds,
-                        surfaceMaterial,
-                        stagedGpuPublish,
-                        out int gpuSurfaceVertexCount,
-                        out Bounds _))
-                {
-                    ClearNamedSurfaceSlot(runtimeMeshSlot);
-                    runtimeMeshSlot.surfaceVertexCount = gpuSurfaceVertexCount;
-                    runtimeMeshSlot.surfaceTriangleCount = gpuSurfaceVertexCount / 3;
-                    runtimeMeshSlot.surfaceEstimatedBytes = PlanetMarchingCubesPaintResult.CalculateMeshEstimatedBytes(
-                        runtimeMeshSlot.surfaceVertexCount,
-                        runtimeMeshSlot.surfaceTriangleCount);
-                }
-                else if (loadedSurfaceMesh)
-                {
-                    UpdateRuntimeMeshSlotMetricsPreservingGpuSurface(runtimeMeshSlot);
-                    return BuildNamedPaintResult(runtimeMeshSlot, settings);
-                }
-                else
-                {
-                    PlanetTrianglePoolRegistry.Environment.GpuBackend.ReleasePublication(
-                        cacheChunkId >= 0 ? MakeChunkSurfaceMeshId(cacheChunkId) : PlanetSurfaceMeshId);
-                    ClearNamedSurfaceSlot(runtimeMeshSlot);
-                }
+                PlanetGpuShapeCell[] cells = BuildCells(in recipe);
+                Material surfaceMaterial = ResolveMaterial(materialOverride, settings.colorMode, cells);
+                EnsureNamedSurfaceBackSlot(
+                    slot,
+                    meshFilter.transform,
+                    meshFilter.gameObject.layer,
+                    SanitizeObjectName(meshId) + "_Surface_Runtime",
+                    meshRenderer,
+                    surfaceMaterial);
+            }
+
+            if (hasWaterMesh)
+            {
+                EnsureNamedWaterBackSlot(
+                    slot,
+                    meshFilter.transform,
+                    meshFilter.gameObject.layer,
+                    SanitizeObjectName(meshId) + "_Water_Runtime",
+                    meshRenderer);
+            }
+
+            Mesh surfaceTarget = hasSurfaceMesh ? slot.surfaceBackMesh : null;
+            Mesh waterTarget = hasWaterMesh ? slot.waterBackMesh : null;
+            if (!cache.TryLoadChunkMeshInto(
+                    cacheChunkId,
+                    cacheLod,
+                    PlanetChunkCachePayloadMode.MeshOnly,
+                    surfaceTarget,
+                    waterTarget,
+                    out bool loadedSurfaceMesh,
+                    out bool loadedWaterMesh,
+                    out _))
+            {
+                return BuildEmptyPaintResult(settings);
+            }
+
+            if (loadedSurfaceMesh)
+            {
+                SwapNamedSurfaceSlot(slot);
             }
             else
             {
-                PlanetTrianglePoolRegistry.Environment.GpuBackend.ReleasePublication(
-                    cacheChunkId >= 0 ? MakeChunkSurfaceMeshId(cacheChunkId) : PlanetSurfaceMeshId);
-                ClearNamedSurfaceSlot(runtimeMeshSlot);
+                ClearNamedSurfaceSlot(slot);
             }
 
-            ClearNamedWaterSlot(runtimeMeshSlot);
+            if (loadedWaterMesh)
+            {
+                SwapNamedWaterSlot(slot);
+            }
+            else
+            {
+                ClearNamedWaterSlot(slot);
+            }
 
-            UpdateRuntimeMeshSlotMetricsPreservingGpuSurface(runtimeMeshSlot);
-            return BuildNamedPaintResult(runtimeMeshSlot, settings);
+            UpdateRuntimeMeshSlotMetrics(slot);
+            return BuildNamedPaintResult(slot, settings);
         }
 
         public PlanetMarchingCubesPaintResult PaintNamedExtraction(
@@ -1007,138 +434,54 @@ namespace MarchingCubesPlanet.MarchingCubes
             int cacheLod,
             bool stagedGpuPublish = false)
         {
-            if (source == null)
+            _ = stagedGpuPublish;
+            ValidatePaintInputs(meshFilter, meshRenderer, source, in recipe, settings);
+            if (string.IsNullOrWhiteSpace(meshId))
             {
-                throw new ArgumentNullException(nameof(source));
-            }
-
-            if (!settings.Validate(out string message))
-            {
-                throw new ArgumentException(message, nameof(settings));
-            }
-
-            if (!recipe.IsValid(out string recipeMessage))
-            {
-                throw new ArgumentException(recipeMessage, nameof(recipe));
+                throw new ArgumentException("meshId cannot be empty.", nameof(meshId));
             }
 
             int sourceVertexCount = source.VertexCount - source.VertexCount % 3;
             int sourceTriangleCount = sourceVertexCount / 3;
-            RuntimeChunkMesh runtimeMeshSlot = GetOrCreateRuntimeMeshSlot(meshId, cacheChunkId);
+            ValidateTriangleCapacity(sourceTriangleCount, settings);
+
+            RuntimeChunkMesh slot = GetOrCreateRuntimeMeshSlot(meshId, cacheChunkId);
             if (sourceTriangleCount <= 0)
             {
-                PlanetTrianglePoolRegistry.Environment.GpuBackend.ReleasePublication(
-                    cacheChunkId >= 0 ? MakeChunkSurfaceMeshId(cacheChunkId) : PlanetSurfaceMeshId);
-                ClearNamedSurfaceSlot(runtimeMeshSlot);
-                ClearNamedWaterSlot(runtimeMeshSlot);
-                UpdateRuntimeMeshSlotMetrics(runtimeMeshSlot);
-                return BuildNamedPaintResult(runtimeMeshSlot, settings);
+                ClearNamedSurfaceSlot(slot);
+                ClearNamedWaterSlot(slot);
+                UpdateRuntimeMeshSlotMetrics(slot);
+                return BuildNamedPaintResult(slot, settings);
             }
 
-            Vector3 priorityOriginWorld = PlanetTrianglePoolRegistry.PriorityOriginWorld;
-            PlanetRecipe recipeCopy = recipe;
-            PlanetPlacement placementCopy = placement;
-            PlanetMarchingCubesVertex[] sourceVertices = source.Vertices;
-            PlanetTriangleDrawResult drawResult = trianglePoolWriter.Draw(
-                sourceTriangleCount,
-                triangleIndex => EvaluateTriangleScore(
-                    sourceVertices,
-                    triangleIndex,
-                    recipeCopy,
-                    placementCopy,
-                    priorityOriginWorld),
-                _ => 1,
-                PlanetTriangleOwnerId.PlanetSurfaceValue,
-                cacheChunkId >= 0 ? MakeChunkSurfaceMeshId(cacheChunkId) : PlanetSurfaceMeshId);
-
-            int paintedTriangleCount = drawResult.SelectedSourceTriangleCount;
-            int paintedVertexCount = paintedTriangleCount * 3;
-            PlanetGpuShapeCell[] cells = new PlanetGpuShapeCell[recipe.VoronoiDivision];
-            PlanetGpuShapeCellBuilder.Build(in recipe, cells);
+            PlanetGpuShapeCell[] cells = BuildCells(in recipe);
             Material surfaceMaterial = ResolveMaterial(materialOverride, settings.colorMode, cells);
-            if (meshRenderer != null)
+            EnsureNamedSurfaceBackSlot(
+                slot,
+                meshFilter.transform,
+                meshFilter.gameObject.layer,
+                SanitizeObjectName(meshId) + "_Surface_Runtime",
+                meshRenderer,
+                surfaceMaterial);
+            BuildMeshFromExtraction(
+                slot.surfaceBackMesh,
+                slot.surfaceBackObject.transform,
+                source.Vertices,
+                sourceVertexCount,
+                in recipe,
+                in placement,
+                settings,
+                cells);
+            SwapNamedSurfaceSlot(slot);
+            ClearNamedWaterSlot(slot);
+            UpdateRuntimeMeshSlotMetrics(slot);
+
+            if (cache != null && cacheChunkId >= 0 && cacheLod >= 0)
             {
-                meshRenderer.sharedMaterial = surfaceMaterial;
+                cache.SaveChunk(cacheChunkId, cacheLod, slot.surfaceMesh, null);
             }
 
-            string safeMeshId = SanitizeObjectName(meshId);
-
-            if (paintedVertexCount > 0)
-            {
-                if (PublishGpuExtractionSurface(
-                    cacheChunkId >= 0 ? MakeChunkSurfaceMeshId(cacheChunkId) : PlanetSurfaceMeshId,
-                    source.Vertices,
-                    sourceVertexCount,
-                    trianglePoolWriter,
-                    in recipe,
-                    in placement,
-                    settings,
-                    surfaceMaterial,
-                    stagedGpuPublish,
-                    out Bounds _))
-                {
-                    ClearNamedSurfaceSlot(runtimeMeshSlot);
-                    runtimeMeshSlot.surfaceVertexCount = paintedVertexCount;
-                    runtimeMeshSlot.surfaceTriangleCount = paintedTriangleCount;
-                    runtimeMeshSlot.surfaceEstimatedBytes = PlanetMarchingCubesPaintResult.CalculateMeshEstimatedBytes(
-                        paintedVertexCount,
-                        paintedTriangleCount);
-                }
-                else
-                {
-                    ClearNamedSurfaceSlot(runtimeMeshSlot);
-                }
-            }
-            else
-            {
-                PlanetTrianglePoolRegistry.Environment.GpuBackend.ReleasePublication(
-                    cacheChunkId >= 0 ? MakeChunkSurfaceMeshId(cacheChunkId) : PlanetSurfaceMeshId);
-                ClearNamedSurfaceSlot(runtimeMeshSlot);
-            }
-
-            ClearNamedWaterSlot(runtimeMeshSlot);
-
-            UpdateRuntimeMeshSlotMetricsPreservingGpuSurface(runtimeMeshSlot);
-            if ((runtimeMeshSlot.surfaceTriangleCount > 0 || runtimeMeshSlot.waterTriangleCount > 0) &&
-                cache != null &&
-                cacheChunkId >= 0 &&
-                cacheLod >= 0)
-            {
-                Mesh cacheSurfaceMesh = null;
-                try
-                {
-                    if (paintedVertexCount > 0)
-                    {
-                        cacheSurfaceMesh = new Mesh
-                        {
-                            name = safeMeshId + "_Surface_CacheWrite",
-                            indexFormat = paintedVertexCount > ushort.MaxValue ? IndexFormat.UInt32 : IndexFormat.UInt16
-                        };
-                        BuildMesh(
-                            cacheSurfaceMesh,
-                            meshFilter != null ? meshFilter.transform : null,
-                            source.Vertices,
-                            sourceVertexCount,
-                            trianglePoolWriter,
-                            paintedVertexCount,
-                            cells,
-                            in recipe,
-                            in placement,
-                            settings);
-                    }
-
-                    cache.SaveChunk(cacheChunkId, cacheLod, cacheSurfaceMesh, null);
-                }
-                finally
-                {
-                    if (cacheSurfaceMesh != null)
-                    {
-                        DestroyRuntimeObject(cacheSurfaceMesh);
-                    }
-                }
-            }
-
-            return BuildNamedPaintResult(runtimeMeshSlot, settings);
+            return BuildNamedPaintResult(slot, settings);
         }
 
         public int SaveRuntimeChunksToCache(PlanetChunkMeshCache cache, int lod)
@@ -1171,7 +514,6 @@ namespace MarchingCubesPlanet.MarchingCubes
             ReleaseMeshOnly(meshFilter);
             ReleaseWater();
             ReleaseChunks();
-            PlanetTrianglePoolRegistry.Environment.GpuBackend.ReleaseAllPublications();
 
             if (runtimeMaterial != null)
             {
@@ -1191,53 +533,370 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
         }
 
-        private void ReleaseMeshOnly(MeshFilter meshFilter)
+        private static void ValidatePaintInputs(
+            MeshFilter meshFilter,
+            MeshRenderer meshRenderer,
+            PlanetMarchingCubesExtractionResult source,
+            in PlanetRecipe recipe,
+            PlanetMarchingCubesPaintSettings settings)
         {
-            if (runtimeMesh == null)
+            if (meshFilter == null)
             {
-                return;
+                throw new ArgumentNullException(nameof(meshFilter));
             }
 
-            if (meshFilter != null && meshFilter.sharedMesh == runtimeMesh)
+            if (meshRenderer == null)
             {
-                meshFilter.sharedMesh = null;
+                throw new ArgumentNullException(nameof(meshRenderer));
             }
 
-            DestroyRuntimeObject(runtimeMesh);
-            runtimeMesh = null;
-        }
-
-        private void ReleaseWater()
-        {
-            PlanetTrianglePoolRegistry.Environment.GpuBackend.ReleaseWaterPublication();
-
-            if (runtimeWaterMesh != null)
+            if (source == null)
             {
-                DestroyRuntimeObject(runtimeWaterMesh);
-                runtimeWaterMesh = null;
+                throw new ArgumentNullException(nameof(source));
             }
 
-            if (runtimeWaterMaterial != null)
+            if (!settings.Validate(out string settingsMessage))
             {
-                DestroyRuntimeObject(runtimeWaterMaterial);
-                runtimeWaterMaterial = null;
+                throw new ArgumentException(settingsMessage, nameof(settings));
             }
 
-            if (runtimeWaterObject != null)
+            if (!recipe.IsValid(out string recipeMessage))
             {
-                DestroyRuntimeObject(runtimeWaterObject);
-                runtimeWaterObject = null;
+                throw new ArgumentException(recipeMessage, nameof(recipe));
             }
         }
 
-        private void ReleaseChunks()
+        private static void ValidateNamedInputs(
+            MeshFilter meshFilter,
+            MeshRenderer meshRenderer,
+            string meshId,
+            in PlanetRecipe recipe,
+            PlanetMarchingCubesPaintSettings settings)
         {
+            if (meshFilter == null)
+            {
+                throw new ArgumentNullException(nameof(meshFilter));
+            }
+
+            if (meshRenderer == null)
+            {
+                throw new ArgumentNullException(nameof(meshRenderer));
+            }
+
+            if (string.IsNullOrWhiteSpace(meshId))
+            {
+                throw new ArgumentException("meshId cannot be empty.", nameof(meshId));
+            }
+
+            if (!settings.Validate(out string settingsMessage))
+            {
+                throw new ArgumentException(settingsMessage, nameof(settings));
+            }
+
+            if (!recipe.IsValid(out string recipeMessage))
+            {
+                throw new ArgumentException(recipeMessage, nameof(recipe));
+            }
+        }
+
+        private static void ValidateTriangleCapacity(int triangleCount, PlanetMarchingCubesPaintSettings settings)
+        {
+            if (triangleCount > settings.meshTriangleCapacity)
+            {
+                throw new InvalidOperationException(
+                    "Marching Cubes paint capacity is too small. sourceTriangles=" + triangleCount +
+                    " meshTriangleCapacity=" + settings.meshTriangleCapacity + ".");
+            }
+        }
+
+        private void BuildMeshFromExtraction(
+            Mesh mesh,
+            Transform targetTransform,
+            PlanetMarchingCubesVertex[] sourceVertices,
+            int sourceVertexCount,
+            in PlanetRecipe recipe,
+            in PlanetPlacement placement,
+            PlanetMarchingCubesPaintSettings settings,
+            PlanetGpuShapeCell[] cells)
+        {
+            EnsureListCapacity(meshUploadPositions, sourceVertexCount);
+            EnsureListCapacity(meshUploadNormals, sourceVertexCount);
+            EnsureListCapacity(meshUploadUvs, sourceVertexCount);
+            EnsureListCapacity(meshUploadColors, sourceVertexCount);
+            EnsureListCapacity(meshUploadIndices, sourceVertexCount);
+            meshUploadPositions.Clear();
+            meshUploadNormals.Clear();
+            meshUploadUvs.Clear();
+            meshUploadColors.Clear();
+            meshUploadIndices.Clear();
+
+            float minRadius = float.MaxValue;
+            float maxRadius = 0f;
+            for (int i = 0; i < sourceVertexCount; i++)
+            {
+                float radius = ReadGridPosition(sourceVertices[i]).magnitude;
+                minRadius = Mathf.Min(minRadius, radius);
+                maxRadius = Mathf.Max(maxRadius, radius);
+            }
+
+            for (int i = 0; i < sourceVertexCount; i++)
+            {
+                PlanetMarchingCubesVertex source = sourceVertices[i];
+                Vector3 gridPosition = ReadGridPosition(source);
+                Vector3 worldPosition = PlanetCoordinateConverter.GridToWorld(gridPosition, in recipe, in placement);
+                Vector3 localPosition = targetTransform != null
+                    ? targetTransform.InverseTransformPoint(worldPosition)
+                    : worldPosition;
+                Vector3 normal = new Vector3(
+                    source.normalAndDiagnostic.x,
+                    source.normalAndDiagnostic.y,
+                    source.normalAndDiagnostic.z).normalized;
+                Vector3 worldNormal = placement.PlanetRotation * normal;
+                Vector3 localNormal = targetTransform != null
+                    ? targetTransform.InverseTransformDirection(worldNormal).normalized
+                    : worldNormal.normalized;
+                int triangleIndex = i / 3;
+                int caseIndex = Mathf.RoundToInt(source.positionAndCase.w);
+                float radiusValue = gridPosition.magnitude;
+                Vector2 uv = EvaluateSurfaceAtlasUv(radiusValue, in recipe);
+                float height01 = EvaluateHeight01(radiusValue, minRadius, maxRadius);
+
+                meshUploadPositions.Add(localPosition);
+                meshUploadNormals.Add(localNormal.sqrMagnitude > 0.0001f ? localNormal : Vector3.up);
+                meshUploadUvs.Add(uv);
+                meshUploadColors.Add(EvaluateColor(settings, gridPosition, normal, caseIndex, triangleIndex, minRadius, maxRadius, height01));
+                meshUploadIndices.Add(i);
+            }
+
+            ApplyMeshData(mesh);
+        }
+
+        private void CopyCachedMeshIntoSlot(
+            RuntimeChunkMesh slot,
+            Mesh surfaceMesh,
+            Mesh waterMesh,
+            MeshFilter targetMeshFilter,
+            MeshRenderer targetMeshRenderer,
+            Material surfaceMaterial)
+        {
+            if (surfaceMesh != null)
+            {
+                EnsureNamedSurfaceBackSlot(
+                    slot,
+                    targetMeshFilter.transform,
+                    targetMeshFilter.gameObject.layer,
+                    SanitizeObjectName(slot.meshId) + "_Surface_Runtime",
+                    targetMeshRenderer,
+                    surfaceMaterial);
+                CopyMeshData(surfaceMesh, slot.surfaceBackMesh);
+                SwapNamedSurfaceSlot(slot);
+            }
+            else
+            {
+                ClearNamedSurfaceSlot(slot);
+            }
+
+            if (waterMesh != null)
+            {
+                EnsureNamedWaterBackSlot(
+                    slot,
+                    targetMeshFilter.transform,
+                    targetMeshFilter.gameObject.layer,
+                    SanitizeObjectName(slot.meshId) + "_Water_Runtime",
+                    targetMeshRenderer);
+                CopyMeshData(waterMesh, slot.waterBackMesh);
+                SwapNamedWaterSlot(slot);
+            }
+            else
+            {
+                ClearNamedWaterSlot(slot);
+            }
+        }
+
+        private void AddGlobalWaterTriangle(
+            Transform targetTransform,
+            Vector3 aDirection,
+            Vector3 bDirection,
+            Vector3 cDirection,
+            in PlanetRecipe recipe,
+            in PlanetPlacement placement)
+        {
+            AddGlobalWaterVertex(targetTransform, aDirection, in recipe, in placement);
+            AddGlobalWaterVertex(targetTransform, bDirection, in recipe, in placement);
+            AddGlobalWaterVertex(targetTransform, cDirection, in recipe, in placement);
+        }
+
+        private void AddGlobalWaterVertex(
+            Transform targetTransform,
+            Vector3 gridDirection,
+            in PlanetRecipe recipe,
+            in PlanetPlacement placement)
+        {
+            Vector3 gridPosition = gridDirection * recipe.GridRadius;
+            Vector3 worldPosition = PlanetCoordinateConverter.GridToWorld(gridPosition, in recipe, in placement);
+            Vector3 localPosition = targetTransform != null ? targetTransform.InverseTransformPoint(worldPosition) : worldPosition;
+            Vector3 worldNormal = (placement.PlanetRotation * gridDirection).normalized;
+            Vector3 localNormal = targetTransform != null ? targetTransform.InverseTransformDirection(worldNormal).normalized : worldNormal;
+            int index = meshUploadPositions.Count;
+            meshUploadPositions.Add(localPosition);
+            meshUploadNormals.Add(localNormal);
+            meshUploadUvs.Add(Vector2.zero);
+            meshUploadColors.Add(Color.white);
+            meshUploadIndices.Add(index);
+        }
+
+        private static Vector3 EvaluateGlobalWaterDirection(int latitude, int longitude)
+        {
+            float latitude01 = Mathf.Clamp01(latitude / (float)GlobalWaterLatitudeSegments);
+            float longitude01 = Mathf.Repeat(longitude / (float)GlobalWaterLongitudeSegments, 1f);
+            float theta = latitude01 * Mathf.PI;
+            float phi = longitude01 * Mathf.PI * 2f;
+            float ringRadius = Mathf.Sin(theta);
+            return new Vector3(
+                Mathf.Cos(phi) * ringRadius,
+                Mathf.Cos(theta),
+                Mathf.Sin(phi) * ringRadius).normalized;
+        }
+
+        private static PlanetGpuShapeCell[] BuildCells(in PlanetRecipe recipe)
+        {
+            PlanetGpuShapeCell[] cells = new PlanetGpuShapeCell[recipe.VoronoiDivision];
+            PlanetGpuShapeCellBuilder.Build(in recipe, cells);
+            return cells;
+        }
+
+        private void ApplyMeshData(Mesh mesh)
+        {
+            mesh.Clear();
+            mesh.SetVertices(meshUploadPositions);
+            mesh.SetNormals(meshUploadNormals);
+            mesh.SetUVs(0, meshUploadUvs);
+            mesh.SetColors(meshUploadColors);
+            mesh.SetTriangles(meshUploadIndices, 0, true);
+            mesh.RecalculateBounds();
+        }
+
+        private void CopyMeshData(Mesh source, Mesh target)
+        {
+            int vertexCount = source.vertexCount;
+            EnsureListCapacity(meshUploadPositions, vertexCount);
+            EnsureListCapacity(meshUploadNormals, vertexCount);
+            EnsureListCapacity(meshUploadUvs, vertexCount);
+            EnsureListCapacity(meshUploadColors, vertexCount);
+            meshUploadPositions.Clear();
+            meshUploadNormals.Clear();
+            meshUploadUvs.Clear();
+            meshUploadColors.Clear();
+
+            source.GetVertices(meshUploadPositions);
+            source.GetNormals(meshUploadNormals);
+            source.GetUVs(0, meshUploadUvs);
+            source.GetColors(meshUploadColors);
+
+            target.Clear();
+            target.indexFormat = vertexCount > ushort.MaxValue ? IndexFormat.UInt32 : IndexFormat.UInt16;
+            target.SetVertices(meshUploadPositions);
+            if (meshUploadNormals.Count == vertexCount)
+            {
+                target.SetNormals(meshUploadNormals);
+            }
+
+            if (meshUploadUvs.Count == vertexCount)
+            {
+                target.SetUVs(0, meshUploadUvs);
+            }
+
+            if (meshUploadColors.Count == vertexCount)
+            {
+                target.SetColors(meshUploadColors);
+            }
+
+            int subMeshCount = Mathf.Max(1, source.subMeshCount);
+            target.subMeshCount = subMeshCount;
+            for (int i = 0; i < subMeshCount; i++)
+            {
+                int indexCount = (int)source.GetIndexCount(i);
+                EnsureListCapacity(meshUploadIndices, indexCount);
+                meshUploadIndices.Clear();
+                source.GetIndices(meshUploadIndices, i);
+                target.SetIndices(meshUploadIndices, source.GetTopology(i), i, false);
+            }
+
+            target.bounds = source.bounds;
+        }
+
+        private static PlanetMarchingCubesPaintResult BuildEmptyPaintResult(
+            PlanetMarchingCubesPaintSettings settings)
+        {
+            return new PlanetMarchingCubesPaintResult(
+                0,
+                0,
+                0,
+                0L,
+                settings.colorMode);
+        }
+
+        private PlanetMarchingCubesPaintResult BuildNamedPaintResult(
+            RuntimeChunkMesh slot,
+            PlanetMarchingCubesPaintSettings settings)
+        {
+            return new PlanetMarchingCubesPaintResult(
+                slot.surfaceTriangleCount,
+                slot.surfaceTriangleCount,
+                slot.surfaceVertexCount,
+                slot.surfaceEstimatedBytes,
+                slot.waterTriangleCount,
+                slot.waterVertexCount,
+                slot.waterEstimatedBytes,
+                settings.colorMode,
+                slot.surfaceTriangleCount > 0 || slot.waterTriangleCount > 0 ? 1 : 0);
+        }
+
+        private int CountRuntimeChunkMeshes(bool water)
+        {
+            int count = 0;
             for (int i = 0; i < runtimeChunks.Count; i++)
             {
-                ReleaseRuntimeMesh(runtimeChunks[i]);
+                if (water ? runtimeChunks[i].waterMesh != null : runtimeChunks[i].surfaceMesh != null)
+                {
+                    count++;
+                }
             }
 
-            runtimeChunks.Clear();
+            return count;
+        }
+
+        private int SumRuntimeChunkVertices(bool water)
+        {
+            int count = 0;
+            for (int i = 0; i < runtimeChunks.Count; i++)
+            {
+                count += water ? runtimeChunks[i].waterVertexCount : runtimeChunks[i].surfaceVertexCount;
+            }
+
+            return count;
+        }
+
+        private int SumRuntimeChunkTriangles(bool water)
+        {
+            int count = 0;
+            for (int i = 0; i < runtimeChunks.Count; i++)
+            {
+                count += water ? runtimeChunks[i].waterTriangleCount : runtimeChunks[i].surfaceTriangleCount;
+            }
+
+            return count;
+        }
+
+        private long SumRuntimeChunkBytes(bool water)
+        {
+            long bytes = 0L;
+            for (int i = 0; i < runtimeChunks.Count; i++)
+            {
+                bytes += water ? runtimeChunks[i].waterEstimatedBytes : runtimeChunks[i].surfaceEstimatedBytes;
+            }
+
+            return bytes;
         }
 
         private int FindRuntimeMeshIndex(string meshId)
@@ -1278,32 +937,77 @@ namespace MarchingCubesPlanet.MarchingCubes
             int layer,
             string objectName,
             MeshRenderer sourceRenderer,
-            Material material)
+            Material surfaceMaterial)
         {
             if (slot.surfaceObject == null)
             {
-                slot.surfaceObject = CreateChunkObject(parent, layer, objectName);
-            }
-
-            slot.surfaceObject.SetActive(true);
-            slot.surfaceObject.name = objectName;
-            slot.surfaceObject.layer = layer;
-            EnsureChunkTransform(slot.surfaceObject.transform, parent);
-            slot.surfaceMeshFilter = EnsureComponent(slot.surfaceObject, slot.surfaceMeshFilter);
-            slot.surfaceMeshRenderer = EnsureComponent(slot.surfaceObject, slot.surfaceMeshRenderer);
-            CopyRendererSettings(sourceRenderer, slot.surfaceMeshRenderer);
-            slot.surfaceMeshRenderer.sharedMaterial = material;
-
-            if (slot.surfaceMesh == null)
-            {
-                slot.surfaceMesh = new Mesh
-                {
-                    name = objectName + "_Mesh"
-                };
+                slot.surfaceObject = new GameObject(objectName);
+                slot.surfaceObject.transform.SetParent(parent, false);
+                slot.surfaceObject.layer = layer;
+                slot.surfaceMeshFilter = slot.surfaceObject.AddComponent<MeshFilter>();
+                slot.surfaceMeshRenderer = slot.surfaceObject.AddComponent<MeshRenderer>();
+                slot.surfaceMesh = new Mesh { name = objectName + "_Mesh" };
                 slot.surfaceMesh.MarkDynamic();
+                slot.surfaceMeshFilter.sharedMesh = slot.surfaceMesh;
             }
 
-            slot.surfaceMeshFilter.sharedMesh = slot.surfaceMesh;
+            CopyRendererSettings(sourceRenderer, slot.surfaceMeshRenderer);
+            slot.surfaceMeshRenderer.sharedMaterial = surfaceMaterial;
+        }
+
+        private void EnsureNamedSurfaceBackSlot(
+            RuntimeChunkMesh slot,
+            Transform parent,
+            int layer,
+            string objectName,
+            MeshRenderer sourceRenderer,
+            Material surfaceMaterial)
+        {
+            if (slot.surfaceBackObject == null)
+            {
+                slot.surfaceBackObject = new GameObject(objectName + "_Back");
+                slot.surfaceBackObject.transform.SetParent(parent, false);
+                slot.surfaceBackObject.layer = layer;
+                slot.surfaceBackMeshFilter = slot.surfaceBackObject.AddComponent<MeshFilter>();
+                slot.surfaceBackMeshRenderer = slot.surfaceBackObject.AddComponent<MeshRenderer>();
+                slot.surfaceBackMesh = new Mesh { name = objectName + "_Back_Mesh" };
+                slot.surfaceBackMesh.MarkDynamic();
+                slot.surfaceBackMeshFilter.sharedMesh = slot.surfaceBackMesh;
+            }
+
+            slot.surfaceBackObject.SetActive(false);
+            CopyRendererSettings(sourceRenderer, slot.surfaceBackMeshRenderer);
+            slot.surfaceBackMeshRenderer.sharedMaterial = surfaceMaterial;
+        }
+
+        private static void SwapNamedSurfaceSlot(RuntimeChunkMesh slot)
+        {
+            if (slot.surfaceBackObject == null || slot.surfaceBackMesh == null)
+            {
+                return;
+            }
+
+            if (slot.surfaceObject != null)
+            {
+                slot.surfaceObject.SetActive(false);
+            }
+
+            slot.surfaceBackObject.SetActive(true);
+
+            GameObject oldObject = slot.surfaceObject;
+            MeshFilter oldFilter = slot.surfaceMeshFilter;
+            MeshRenderer oldRenderer = slot.surfaceMeshRenderer;
+            Mesh oldMesh = slot.surfaceMesh;
+
+            slot.surfaceObject = slot.surfaceBackObject;
+            slot.surfaceMeshFilter = slot.surfaceBackMeshFilter;
+            slot.surfaceMeshRenderer = slot.surfaceBackMeshRenderer;
+            slot.surfaceMesh = slot.surfaceBackMesh;
+
+            slot.surfaceBackObject = oldObject;
+            slot.surfaceBackMeshFilter = oldFilter;
+            slot.surfaceBackMeshRenderer = oldRenderer;
+            slot.surfaceBackMesh = oldMesh;
         }
 
         private void EnsureNamedWaterSlot(
@@ -1315,81 +1019,49 @@ namespace MarchingCubesPlanet.MarchingCubes
         {
             if (slot.waterObject == null)
             {
-                slot.waterObject = CreateChunkObject(parent, layer, objectName);
-            }
-
-            slot.waterObject.SetActive(true);
-            slot.waterObject.name = objectName;
-            slot.waterObject.layer = layer;
-            EnsureChunkTransform(slot.waterObject.transform, parent);
-            slot.waterMeshFilter = EnsureComponent(slot.waterObject, slot.waterMeshFilter);
-            slot.waterMeshRenderer = EnsureComponent(slot.waterObject, slot.waterMeshRenderer);
-            CopyRendererSettings(sourceRenderer, slot.waterMeshRenderer);
-            slot.waterMeshRenderer.shadowCastingMode = ShadowCastingMode.Off;
-            slot.waterMeshRenderer.sharedMaterial = ResolveWaterMaterial();
-
-            if (slot.waterMesh == null)
-            {
-                slot.waterMesh = new Mesh
-                {
-                    name = objectName + "_Mesh"
-                };
+                slot.waterObject = new GameObject(objectName);
+                slot.waterObject.transform.SetParent(parent, false);
+                slot.waterObject.layer = layer;
+                slot.waterMeshFilter = slot.waterObject.AddComponent<MeshFilter>();
+                slot.waterMeshRenderer = slot.waterObject.AddComponent<MeshRenderer>();
+                slot.waterMesh = new Mesh { name = objectName + "_Mesh" };
                 slot.waterMesh.MarkDynamic();
+                slot.waterMeshFilter.sharedMesh = slot.waterMesh;
             }
 
-            slot.waterMeshFilter.sharedMesh = slot.waterMesh;
+            CopyRendererSettings(sourceRenderer, slot.waterMeshRenderer);
+            slot.waterMeshRenderer.sharedMaterial = ResolveWaterMaterial();
         }
 
-        private static T EnsureComponent<T>(GameObject owner, T cached) where T : Component
+        private void EnsureNamedWaterBackSlot(
+            RuntimeChunkMesh slot,
+            Transform parent,
+            int layer,
+            string objectName,
+            MeshRenderer sourceRenderer)
         {
-            if (cached != null)
+            if (slot.waterBackObject == null)
             {
-                return cached;
+                slot.waterBackObject = new GameObject(objectName + "_Back");
+                slot.waterBackObject.transform.SetParent(parent, false);
+                slot.waterBackObject.layer = layer;
+                slot.waterBackMeshFilter = slot.waterBackObject.AddComponent<MeshFilter>();
+                slot.waterBackMeshRenderer = slot.waterBackObject.AddComponent<MeshRenderer>();
+                slot.waterBackMesh = new Mesh { name = objectName + "_Back_Mesh" };
+                slot.waterBackMesh.MarkDynamic();
+                slot.waterBackMeshFilter.sharedMesh = slot.waterBackMesh;
             }
 
-            T component = owner.GetComponent<T>();
-            return component != null ? component : owner.AddComponent<T>();
+            slot.waterBackObject.SetActive(false);
+            CopyRendererSettings(sourceRenderer, slot.waterBackMeshRenderer);
+            slot.waterBackMeshRenderer.sharedMaterial = ResolveWaterMaterial();
         }
 
-        private static void EnsureChunkTransform(Transform chunkTransform, Transform parent)
+        private static void SwapNamedWaterSlot(RuntimeChunkMesh slot)
         {
-            if (chunkTransform == null)
+            if (slot.waterBackObject == null || slot.waterBackMesh == null)
             {
                 return;
-            }
-
-            if (parent != null && chunkTransform.parent != parent)
-            {
-                chunkTransform.SetParent(parent, false);
-            }
-
-            chunkTransform.localPosition = Vector3.zero;
-            chunkTransform.localRotation = Quaternion.identity;
-            chunkTransform.localScale = Vector3.one;
-        }
-
-        private static void ClearNamedSurfaceSlot(RuntimeChunkMesh slot)
-        {
-            if (slot.surfaceMesh != null)
-            {
-                slot.surfaceMesh.Clear();
-            }
-
-            if (slot.surfaceObject != null)
-            {
-                slot.surfaceObject.SetActive(false);
-            }
-
-            slot.surfaceVertexCount = 0;
-            slot.surfaceTriangleCount = 0;
-            slot.surfaceEstimatedBytes = 0L;
-        }
-
-        private static void ClearNamedWaterSlot(RuntimeChunkMesh slot)
-        {
-            if (slot.waterMesh != null)
-            {
-                slot.waterMesh.Clear();
             }
 
             if (slot.waterObject != null)
@@ -1397,1159 +1069,154 @@ namespace MarchingCubesPlanet.MarchingCubes
                 slot.waterObject.SetActive(false);
             }
 
-            slot.waterVertexCount = 0;
-            slot.waterTriangleCount = 0;
-            slot.waterEstimatedBytes = 0L;
+            slot.waterBackObject.SetActive(true);
+
+            GameObject oldObject = slot.waterObject;
+            MeshFilter oldFilter = slot.waterMeshFilter;
+            MeshRenderer oldRenderer = slot.waterMeshRenderer;
+            Mesh oldMesh = slot.waterMesh;
+
+            slot.waterObject = slot.waterBackObject;
+            slot.waterMeshFilter = slot.waterBackMeshFilter;
+            slot.waterMeshRenderer = slot.waterBackMeshRenderer;
+            slot.waterMesh = slot.waterBackMesh;
+
+            slot.waterBackObject = oldObject;
+            slot.waterBackMeshFilter = oldFilter;
+            slot.waterBackMeshRenderer = oldRenderer;
+            slot.waterBackMesh = oldMesh;
         }
 
-        private void CopyMeshData(Mesh source, Mesh target)
+        private static void ClearNamedSurfaceSlot(RuntimeChunkMesh slot)
         {
-            if (source == null || target == null)
+            if (slot.surfaceMesh != null)
             {
-                return;
+                DestroyRuntimeObject(slot.surfaceMesh);
+                slot.surfaceMesh = null;
             }
 
-            meshUploadPositions.Clear();
-            meshUploadNormals.Clear();
-            meshUploadUvs.Clear();
-            meshUploadColors.Clear();
-            meshUploadIndices.Clear();
-            source.GetVertices(meshUploadPositions);
-            source.GetNormals(meshUploadNormals);
-            source.GetUVs(0, meshUploadUvs);
-            source.GetColors(meshUploadColors);
-            source.GetTriangles(meshUploadIndices, 0);
-
-            target.indexFormat = source.indexFormat;
-            target.Clear();
-            target.SetVertices(meshUploadPositions);
-            if (meshUploadNormals.Count == meshUploadPositions.Count)
+            if (slot.surfaceObject != null)
             {
-                target.SetNormals(meshUploadNormals);
+                DestroyRuntimeObject(slot.surfaceObject);
+                slot.surfaceObject = null;
+                slot.surfaceMeshFilter = null;
+                slot.surfaceMeshRenderer = null;
             }
 
-            if (meshUploadUvs.Count == meshUploadPositions.Count)
+            if (slot.surfaceBackMesh != null)
             {
-                target.SetUVs(0, meshUploadUvs);
+                DestroyRuntimeObject(slot.surfaceBackMesh);
+                slot.surfaceBackMesh = null;
             }
 
-            if (meshUploadColors.Count == meshUploadPositions.Count)
+            if (slot.surfaceBackObject != null)
             {
-                target.SetColors(meshUploadColors);
+                DestroyRuntimeObject(slot.surfaceBackObject);
+                slot.surfaceBackObject = null;
+                slot.surfaceBackMeshFilter = null;
+                slot.surfaceBackMeshRenderer = null;
             }
 
-            target.SetTriangles(meshUploadIndices, 0, true);
-            target.bounds = source.bounds;
+            slot.surfaceTriangleCount = 0;
+            slot.surfaceVertexCount = 0;
+            slot.surfaceEstimatedBytes = 0L;
+        }
+
+        private static void ClearNamedWaterSlot(RuntimeChunkMesh slot)
+        {
+            if (slot.waterMesh != null)
+            {
+                DestroyRuntimeObject(slot.waterMesh);
+                slot.waterMesh = null;
+            }
+
+            if (slot.waterObject != null)
+            {
+                DestroyRuntimeObject(slot.waterObject);
+                slot.waterObject = null;
+                slot.waterMeshFilter = null;
+                slot.waterMeshRenderer = null;
+            }
+
+            if (slot.waterBackMesh != null)
+            {
+                DestroyRuntimeObject(slot.waterBackMesh);
+                slot.waterBackMesh = null;
+            }
+
+            if (slot.waterBackObject != null)
+            {
+                DestroyRuntimeObject(slot.waterBackObject);
+                slot.waterBackObject = null;
+                slot.waterBackMeshFilter = null;
+                slot.waterBackMeshRenderer = null;
+            }
+
+            slot.waterTriangleCount = 0;
+            slot.waterVertexCount = 0;
+            slot.waterEstimatedBytes = 0L;
         }
 
         private static void UpdateRuntimeMeshSlotMetrics(RuntimeChunkMesh slot)
         {
             slot.surfaceVertexCount = slot.surfaceMesh != null ? slot.surfaceMesh.vertexCount : 0;
-            slot.surfaceTriangleCount = slot.surfaceMesh != null ? CountMeshTriangles(slot.surfaceMesh) : 0;
-            slot.waterVertexCount = slot.waterMesh != null ? slot.waterMesh.vertexCount : 0;
-            slot.waterTriangleCount = slot.waterMesh != null ? CountMeshTriangles(slot.waterMesh) : 0;
+            slot.surfaceTriangleCount = slot.surfaceMesh != null ? (int)slot.surfaceMesh.GetIndexCount(0) / 3 : 0;
             slot.surfaceEstimatedBytes = PlanetMarchingCubesPaintResult.CalculateMeshEstimatedBytes(
                 slot.surfaceVertexCount,
                 slot.surfaceTriangleCount);
-            slot.waterEstimatedBytes = PlanetMarchingCubesPaintResult.CalculateMeshEstimatedBytes(
-                slot.waterVertexCount,
-                slot.waterTriangleCount);
-        }
-
-        private static void UpdateRuntimeMeshSlotMetricsPreservingGpuSurface(RuntimeChunkMesh slot)
-        {
             slot.waterVertexCount = slot.waterMesh != null ? slot.waterMesh.vertexCount : 0;
-            slot.waterTriangleCount = slot.waterMesh != null ? CountMeshTriangles(slot.waterMesh) : 0;
+            slot.waterTriangleCount = slot.waterMesh != null ? (int)slot.waterMesh.GetIndexCount(0) / 3 : 0;
             slot.waterEstimatedBytes = PlanetMarchingCubesPaintResult.CalculateMeshEstimatedBytes(
                 slot.waterVertexCount,
                 slot.waterTriangleCount);
         }
 
-        private bool PublishGpuExtractionSurface(
-            uint meshId,
-            PlanetMarchingCubesVertex[] sourceVertices,
-            int sourceVertexCount,
-            PlanetTrianglePoolWriter poolWriter,
-            in PlanetRecipe recipe,
-            in PlanetPlacement placement,
-            PlanetMarchingCubesPaintSettings settings,
-            Material material,
-            bool stagedGpuPublish,
-            out Bounds bounds)
+        private void ReleaseMeshOnly(MeshFilter meshFilter)
         {
-            bounds = default;
-            gpuUploadVertices.Clear();
-            int sourceTriangleCount = sourceVertexCount / 3;
-            float minRadius = float.MaxValue;
-            float maxRadius = float.MinValue;
-            for (int sourceTriangleIndex = 0; sourceTriangleIndex < sourceTriangleCount; sourceTriangleIndex++)
-            {
-                if (!poolWriter.IsSourceTriangleSelected(sourceTriangleIndex))
-                {
-                    continue;
-                }
-
-                int sourceVertexIndex = sourceTriangleIndex * 3;
-                for (int corner = 0; corner < 3; corner++)
-                {
-                    Vector3 gridPosition = ReadGridPosition(sourceVertices[sourceVertexIndex + corner]);
-                    float radius = gridPosition.magnitude;
-                    minRadius = Mathf.Min(minRadius, radius);
-                    maxRadius = Mathf.Max(maxRadius, radius);
-                }
-            }
-
-            if (minRadius == float.MaxValue)
-            {
-                minRadius = 0f;
-                maxRadius = 1f;
-            }
-
-            bool hasBounds = false;
-            for (int sourceTriangleIndex = 0; sourceTriangleIndex < sourceTriangleCount; sourceTriangleIndex++)
-            {
-                if (!poolWriter.IsSourceTriangleSelected(sourceTriangleIndex))
-                {
-                    continue;
-                }
-
-                int sourceVertexIndex = sourceTriangleIndex * 3;
-                Vector3 a = ReadGridPosition(sourceVertices[sourceVertexIndex]);
-                Vector3 b = ReadGridPosition(sourceVertices[sourceVertexIndex + 1]);
-                Vector3 c = ReadGridPosition(sourceVertices[sourceVertexIndex + 2]);
-                Vector3 triangleCenter = (a + b + c) * 0.33333334f;
-                Vector2 triangleUv = EvaluateSurfaceAtlasUv(triangleCenter.magnitude, in recipe);
-
-                for (int corner = 0; corner < 3; corner++)
-                {
-                    PlanetMarchingCubesVertex sourceVertex = sourceVertices[sourceVertexIndex + corner];
-                    Vector4 packedPosition = sourceVertex.positionAndCase;
-                    Vector4 packedNormal = sourceVertex.normalAndDiagnostic;
-                    Vector3 gridPosition = new Vector3(packedPosition.x, packedPosition.y, packedPosition.z);
-                    Vector3 gridNormal = new Vector3(packedNormal.x, packedNormal.y, packedNormal.z);
-                    if (gridNormal.sqrMagnitude > 0.0001f)
-                    {
-                        gridNormal.Normalize();
-                    }
-                    else
-                    {
-                        gridNormal = Vector3.up;
-                    }
-
-                    Vector3 worldPosition = PlanetCoordinateConverter.GridToWorld(gridPosition, in recipe, in placement);
-                    Vector3 worldNormal = (placement.PlanetRotation * gridNormal).normalized;
-                    float height01 = triangleUv.y;
-                    Color32 color = EvaluateColor(
-                        settings,
-                        gridPosition,
-                        gridNormal,
-                        Mathf.RoundToInt(packedPosition.w),
-                        sourceTriangleIndex,
-                        minRadius,
-                        maxRadius,
-                        height01);
-                    gpuUploadVertices.Add(new PlanetTriangleGpuVertex(worldPosition, worldNormal, triangleUv, color, true));
-                    IncludePointInBounds(ref bounds, ref hasBounds, worldPosition);
-                }
-            }
-
-            if (!hasBounds)
-            {
-                bounds = new Bounds(Vector3.zero, Vector3.one);
-            }
-
-            PlanetTriangleGpuBackend gpuBackend = PlanetTrianglePoolRegistry.Environment.GpuBackend;
-            return stagedGpuPublish
-                ? gpuBackend.PublishStaged(
-                    meshId,
-                    gpuUploadVertices,
-                    gpuUploadVertices.Count,
-                    bounds,
-                    material)
-                : gpuBackend.Publish(
-                    meshId,
-                    gpuUploadVertices,
-                    gpuUploadVertices.Count,
-                    bounds,
-                    material);
-        }
-
-        private bool PublishGpuCachedSurface(
-            uint meshId,
-            List<Vector3> vertices,
-            List<Vector3> normals,
-            List<Vector2> uvs,
-            List<Color32> colors,
-            List<int> indices,
-            Transform localToWorld,
-            Bounds localBounds,
-            Material material,
-            bool stagedGpuPublish,
-            out int publishedVertexCount,
-            out Bounds bounds)
-        {
-            publishedVertexCount = 0;
-            bounds = default;
-            gpuUploadVertices.Clear();
-            bool hasBounds = false;
-            int indexCount = indices.Count - indices.Count % 3;
-            int sourceTriangleCount = indexCount / 3;
-            Vector3 priorityOriginWorld = PlanetTrianglePoolRegistry.PriorityOriginWorld;
-            trianglePoolWriter.Draw(
-                sourceTriangleCount,
-                triangleIndex => EvaluateCachedTriangleScore(
-                    vertices,
-                    indices,
-                    triangleIndex,
-                    localToWorld,
-                    priorityOriginWorld),
-                _ => 1,
-                PlanetTriangleOwnerId.PlanetSurfaceValue,
-                meshId);
-
-            for (int i = 0; i < indexCount; i++)
-            {
-                int sourceTriangleIndex = i / 3;
-                if (!trianglePoolWriter.IsSourceTriangleSelected(sourceTriangleIndex))
-                {
-                    i += 2 - i % 3;
-                    continue;
-                }
-
-                int vertexIndex = indices[i];
-                if (vertexIndex < 0 || vertexIndex >= vertices.Count)
-                {
-                    continue;
-                }
-
-                Vector3 position = vertices[vertexIndex];
-                Vector3 normal = vertexIndex < normals.Count ? normals[vertexIndex] : Vector3.up;
-                Vector2 uv = vertexIndex < uvs.Count ? uvs[vertexIndex] : Vector2.zero;
-                Color32 color = vertexIndex < colors.Count ? colors[vertexIndex] : Color.white;
-                Vector3 worldPosition = localToWorld != null ? localToWorld.TransformPoint(position) : position;
-                Vector3 worldNormal = localToWorld != null ? localToWorld.TransformDirection(normal).normalized : normal.normalized;
-                if (worldNormal.sqrMagnitude <= 0.0001f)
-                {
-                    worldNormal = Vector3.up;
-                }
-
-                gpuUploadVertices.Add(new PlanetTriangleGpuVertex(worldPosition, worldNormal, uv, color, true));
-                IncludePointInBounds(ref bounds, ref hasBounds, worldPosition);
-            }
-
-            publishedVertexCount = gpuUploadVertices.Count - gpuUploadVertices.Count % 3;
-            if (publishedVertexCount <= 0)
-            {
-                PlanetTrianglePoolRegistry.Environment.GpuBackend.ReleasePublication(meshId);
-                bounds = localToWorld != null ? TransformBounds(localToWorld, localBounds) : localBounds;
-                return true;
-            }
-
-            if (!hasBounds)
-            {
-                bounds = localToWorld != null ? TransformBounds(localToWorld, localBounds) : localBounds;
-            }
-
-            PlanetTriangleGpuBackend gpuBackend = PlanetTrianglePoolRegistry.Environment.GpuBackend;
-            bool published = stagedGpuPublish
-                ? gpuBackend.PublishStaged(
-                    meshId,
-                    gpuUploadVertices,
-                    publishedVertexCount,
-                    bounds,
-                    material)
-                : gpuBackend.Publish(
-                    meshId,
-                    gpuUploadVertices,
-                    publishedVertexCount,
-                    bounds,
-                    material);
-            publishedVertexCount = gpuBackend.LastPublishedVertexCount;
-            return published;
-        }
-
-        private static float EvaluateCachedTriangleScore(
-            List<Vector3> vertices,
-            List<int> indices,
-            int sourceTriangleIndex,
-            Transform localToWorld,
-            Vector3 priorityOriginWorld)
-        {
-            int indexStart = sourceTriangleIndex * 3;
-            Vector3 center = Vector3.zero;
-            int validVertexCount = 0;
-            for (int corner = 0; corner < 3; corner++)
-            {
-                int index = indexStart + corner;
-                if (index < 0 || index >= indices.Count)
-                {
-                    continue;
-                }
-
-                int vertexIndex = indices[index];
-                if (vertexIndex < 0 || vertexIndex >= vertices.Count)
-                {
-                    continue;
-                }
-
-                center += vertices[vertexIndex];
-                validVertexCount++;
-            }
-
-            if (validVertexCount <= 0)
-            {
-                return float.MaxValue;
-            }
-
-            center /= validVertexCount;
-            Vector3 worldCenter = localToWorld != null ? localToWorld.TransformPoint(center) : center;
-            return (worldCenter - priorityOriginWorld).sqrMagnitude;
-        }
-
-        private static void IncludePointInBounds(ref Bounds bounds, ref bool hasBounds, Vector3 point)
-        {
-            if (!hasBounds)
-            {
-                bounds = new Bounds(point, Vector3.zero);
-                hasBounds = true;
-                return;
-            }
-
-            bounds.Encapsulate(point);
-        }
-
-        private static Bounds TransformBounds(Transform transform, Bounds localBounds)
-        {
-            if (transform == null)
-            {
-                return localBounds;
-            }
-
-            Vector3 center = transform.TransformPoint(localBounds.center);
-            Vector3 extents = localBounds.extents;
-            Vector3 axisX = transform.TransformVector(extents.x, 0f, 0f);
-            Vector3 axisY = transform.TransformVector(0f, extents.y, 0f);
-            Vector3 axisZ = transform.TransformVector(0f, 0f, extents.z);
-            extents.x = Mathf.Abs(axisX.x) + Mathf.Abs(axisY.x) + Mathf.Abs(axisZ.x);
-            extents.y = Mathf.Abs(axisX.y) + Mathf.Abs(axisY.y) + Mathf.Abs(axisZ.y);
-            extents.z = Mathf.Abs(axisX.z) + Mathf.Abs(axisY.z) + Mathf.Abs(axisZ.z);
-            return new Bounds(center, extents * 2f);
-        }
-
-        private static PlanetMarchingCubesPaintResult BuildNamedPaintResult(
-            RuntimeChunkMesh slot,
-            PlanetMarchingCubesPaintSettings settings)
-        {
-            int visibleChunkCount = slot.surfaceTriangleCount > 0 || slot.waterTriangleCount > 0 ? 1 : 0;
-            return new PlanetMarchingCubesPaintResult(
-                slot.surfaceTriangleCount,
-                slot.surfaceTriangleCount,
-                slot.surfaceVertexCount,
-                slot.surfaceEstimatedBytes,
-                slot.waterTriangleCount,
-                slot.waterVertexCount,
-                slot.waterEstimatedBytes,
-                settings.colorMode,
-                visibleChunkCount);
-        }
-
-        private void ReleaseRuntimeMeshAt(int index)
-        {
-            if (index < 0 || index >= runtimeChunks.Count)
+            if (runtimeMesh == null)
             {
                 return;
             }
 
-            ReleaseRuntimeMesh(runtimeChunks[index]);
-            runtimeChunks.RemoveAt(index);
+            if (meshFilter != null && meshFilter.sharedMesh == runtimeMesh)
+            {
+                meshFilter.sharedMesh = null;
+            }
+
+            DestroyRuntimeObject(runtimeMesh);
+            runtimeMesh = null;
         }
 
-        private void ReleaseRuntimeMesh(RuntimeChunkMesh chunk)
+        private void ReleaseWater()
         {
-            if (chunk == null)
+            if (runtimeWaterMesh != null)
             {
-                return;
+                DestroyRuntimeObject(runtimeWaterMesh);
+                runtimeWaterMesh = null;
             }
 
-            if (chunk.surfaceMesh != null)
+            if (runtimeWaterMaterial != null)
             {
-                DestroyRuntimeObject(chunk.surfaceMesh);
-                chunk.surfaceMesh = null;
+                DestroyRuntimeObject(runtimeWaterMaterial);
+                runtimeWaterMaterial = null;
             }
 
-            if (chunk.waterMesh != null)
+            if (runtimeWaterObject != null)
             {
-                DestroyRuntimeObject(chunk.waterMesh);
-                chunk.waterMesh = null;
-            }
-
-            if (chunk.waterObject != null)
-            {
-                DestroyRuntimeObject(chunk.waterObject);
-                chunk.waterObject = null;
-            }
-
-            if (chunk.surfaceObject != null)
-            {
-                DestroyRuntimeObject(chunk.surfaceObject);
-                chunk.surfaceObject = null;
+                DestroyRuntimeObject(runtimeWaterObject);
+                runtimeWaterObject = null;
             }
         }
 
-        private static int CountMeshTriangles(Mesh mesh)
+        private void ReleaseChunks()
         {
-            if (mesh == null || mesh.subMeshCount <= 0)
+            for (int i = 0; i < runtimeChunks.Count; i++)
             {
-                return 0;
+                ClearNamedSurfaceSlot(runtimeChunks[i]);
+                ClearNamedWaterSlot(runtimeChunks[i]);
             }
 
-            return (int)mesh.GetIndexCount(0) / 3;
-        }
-
-        private static string SanitizeObjectName(string value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return "NamedMesh";
-            }
-
-            char[] chars = value.ToCharArray();
-            for (int i = 0; i < chars.Length; i++)
-            {
-                char c = chars[i];
-                if (!char.IsLetterOrDigit(c) && c != '_' && c != '-')
-                {
-                    chars[i] = '_';
-                }
-            }
-
-            return new string(chars);
-        }
-
-        private void BuildMesh(
-            Mesh mesh,
-            Transform targetTransform,
-            PlanetMarchingCubesVertex[] sourceVertices,
-            int sourceVertexCount,
-            PlanetTrianglePoolWriter poolWriter,
-            int paintedVertexCount,
-            PlanetGpuShapeCell[] cells,
-            in PlanetRecipe recipe,
-            in PlanetPlacement placement,
-            PlanetMarchingCubesPaintSettings settings)
-        {
-            PrepareMeshUploadBuffers(paintedVertexCount);
-
-            float minRadius = float.MaxValue;
-            float maxRadius = float.MinValue;
-            int sourceTriangleCount = sourceVertexCount / 3;
-            for (int sourceTriangleIndex = 0; sourceTriangleIndex < sourceTriangleCount; sourceTriangleIndex++)
-            {
-                if (!poolWriter.IsSourceTriangleSelected(sourceTriangleIndex))
-                {
-                    continue;
-                }
-
-                int sourceVertexIndex = sourceTriangleIndex * 3;
-                for (int corner = 0; corner < 3; corner++)
-                {
-                    Vector4 packedPosition = sourceVertices[sourceVertexIndex + corner].positionAndCase;
-                    Vector3 gridPosition = new Vector3(packedPosition.x, packedPosition.y, packedPosition.z);
-                    float radius = gridPosition.magnitude;
-                    if (radius < minRadius)
-                    {
-                        minRadius = radius;
-                    }
-
-                    if (radius > maxRadius)
-                    {
-                        maxRadius = radius;
-                    }
-                }
-            }
-
-            if (minRadius == float.MaxValue)
-            {
-                minRadius = 0f;
-                maxRadius = 1f;
-            }
-
-            int writeVertexIndex = 0;
-            for (int sourceTriangleIndex = 0; sourceTriangleIndex < sourceTriangleCount; sourceTriangleIndex++)
-            {
-                if (!poolWriter.IsSourceTriangleSelected(sourceTriangleIndex))
-                {
-                    continue;
-                }
-
-                int sourceVertexIndex = sourceTriangleIndex * 3;
-                Vector3 a = ReadGridPosition(sourceVertices[sourceVertexIndex]);
-                Vector3 b = ReadGridPosition(sourceVertices[sourceVertexIndex + 1]);
-                Vector3 c = ReadGridPosition(sourceVertices[sourceVertexIndex + 2]);
-                Vector3 triangleCenter = (a + b + c) * 0.33333334f;
-                Vector2 triangleUv = EvaluateSurfaceAtlasUv(triangleCenter.magnitude, in recipe);
-
-                for (int corner = 0; corner < 3; corner++)
-                {
-                    PlanetMarchingCubesVertex sourceVertex = sourceVertices[sourceVertexIndex + corner];
-                    Vector4 packedPosition = sourceVertex.positionAndCase;
-                    Vector4 packedNormal = sourceVertex.normalAndDiagnostic;
-                    Vector3 gridPosition = new Vector3(packedPosition.x, packedPosition.y, packedPosition.z);
-                    Vector3 gridNormal = new Vector3(packedNormal.x, packedNormal.y, packedNormal.z);
-                    if (gridNormal.sqrMagnitude > 0.0001f)
-                    {
-                        gridNormal.Normalize();
-                    }
-                    else
-                    {
-                        gridNormal = Vector3.up;
-                    }
-
-                    Vector3 worldPosition = PlanetCoordinateConverter.GridToWorld(gridPosition, in recipe, in placement);
-                    Vector3 worldNormal = placement.PlanetRotation * gridNormal;
-                    meshUploadPositions.Add(targetTransform != null ? targetTransform.InverseTransformPoint(worldPosition) : worldPosition);
-                    meshUploadNormals.Add(targetTransform != null ? targetTransform.InverseTransformDirection(worldNormal).normalized : worldNormal.normalized);
-                    float height01 = triangleUv.y;
-                    meshUploadUvs.Add(triangleUv);
-                    meshUploadColors.Add(EvaluateColor(
-                        settings,
-                        gridPosition,
-                        gridNormal,
-                        Mathf.RoundToInt(packedPosition.w),
-                        sourceTriangleIndex,
-                        minRadius,
-                        maxRadius,
-                        height01));
-                    meshUploadIndices.Add(writeVertexIndex);
-                    writeVertexIndex++;
-                }
-            }
-
-            UploadMeshBuffers(mesh);
-        }
-
-        private void BuildMeshFromTriangleSegment(
-            Mesh mesh,
-            Transform targetTransform,
-            PlanetMarchingCubesVertex[] sourceVertices,
-            int[] sourceTriangleIndices,
-            int segmentStart,
-            int segmentTriangleCount,
-            PlanetTrianglePoolWriter poolWriter,
-            int paintedVertexCount,
-            PlanetGpuShapeCell[] cells,
-            in PlanetRecipe recipe,
-            in PlanetPlacement placement,
-            PlanetMarchingCubesPaintSettings settings)
-        {
-            PrepareMeshUploadBuffers(paintedVertexCount);
-
-            float minRadius = float.MaxValue;
-            float maxRadius = float.MinValue;
-            for (int localTriangleIndex = 0; localTriangleIndex < segmentTriangleCount; localTriangleIndex++)
-            {
-                if (!poolWriter.IsSourceTriangleSelected(localTriangleIndex))
-                {
-                    continue;
-                }
-
-                int sourceTriangleIndex = sourceTriangleIndices[segmentStart + localTriangleIndex];
-                int sourceVertexIndex = sourceTriangleIndex * 3;
-                for (int corner = 0; corner < 3; corner++)
-                {
-                    Vector4 packedPosition = sourceVertices[sourceVertexIndex + corner].positionAndCase;
-                    Vector3 gridPosition = new Vector3(packedPosition.x, packedPosition.y, packedPosition.z);
-                    float radius = gridPosition.magnitude;
-                    if (radius < minRadius)
-                    {
-                        minRadius = radius;
-                    }
-
-                    if (radius > maxRadius)
-                    {
-                        maxRadius = radius;
-                    }
-                }
-            }
-
-            if (minRadius == float.MaxValue)
-            {
-                minRadius = 0f;
-                maxRadius = 1f;
-            }
-
-            int writeVertexIndex = 0;
-            for (int localTriangleIndex = 0; localTriangleIndex < segmentTriangleCount; localTriangleIndex++)
-            {
-                if (!poolWriter.IsSourceTriangleSelected(localTriangleIndex))
-                {
-                    continue;
-                }
-
-                int sourceTriangleIndex = sourceTriangleIndices[segmentStart + localTriangleIndex];
-                int sourceVertexIndex = sourceTriangleIndex * 3;
-                Vector3 a = ReadGridPosition(sourceVertices[sourceVertexIndex]);
-                Vector3 b = ReadGridPosition(sourceVertices[sourceVertexIndex + 1]);
-                Vector3 c = ReadGridPosition(sourceVertices[sourceVertexIndex + 2]);
-                Vector3 triangleCenter = (a + b + c) * 0.33333334f;
-                Vector2 triangleUv = EvaluateSurfaceAtlasUv(triangleCenter.magnitude, in recipe);
-
-                for (int corner = 0; corner < 3; corner++)
-                {
-                    PlanetMarchingCubesVertex sourceVertex = sourceVertices[sourceVertexIndex + corner];
-                    Vector4 packedPosition = sourceVertex.positionAndCase;
-                    Vector4 packedNormal = sourceVertex.normalAndDiagnostic;
-                    Vector3 gridPosition = new Vector3(packedPosition.x, packedPosition.y, packedPosition.z);
-                    Vector3 gridNormal = new Vector3(packedNormal.x, packedNormal.y, packedNormal.z);
-                    if (gridNormal.sqrMagnitude > 0.0001f)
-                    {
-                        gridNormal.Normalize();
-                    }
-                    else
-                    {
-                        gridNormal = Vector3.up;
-                    }
-
-                    Vector3 worldPosition = PlanetCoordinateConverter.GridToWorld(gridPosition, in recipe, in placement);
-                    Vector3 worldNormal = placement.PlanetRotation * gridNormal;
-                    meshUploadPositions.Add(targetTransform != null ? targetTransform.InverseTransformPoint(worldPosition) : worldPosition);
-                    meshUploadNormals.Add(targetTransform != null ? targetTransform.InverseTransformDirection(worldNormal).normalized : worldNormal.normalized);
-                    float height01 = triangleUv.y;
-                    meshUploadUvs.Add(triangleUv);
-                    meshUploadColors.Add(EvaluateColor(
-                        settings,
-                        gridPosition,
-                        gridNormal,
-                        Mathf.RoundToInt(packedPosition.w),
-                        sourceTriangleIndex,
-                        minRadius,
-                        maxRadius,
-                        height01));
-                    meshUploadIndices.Add(writeVertexIndex);
-                    writeVertexIndex++;
-                }
-            }
-
-            UploadMeshBuffers(mesh);
-        }
-
-        private void BuildWaterMesh(
-            MeshFilter surfaceMeshFilter,
-            MeshRenderer surfaceMeshRenderer,
-            PlanetMarchingCubesVertex[] sourceVertices,
-            int sourceVertexCount,
-            PlanetTrianglePoolWriter poolWriter,
-            in PlanetRecipe recipe,
-            in PlanetPlacement placement,
-            PlanetMarchingCubesPaintSettings settings,
-            out int waterVertexCount,
-            out int waterTriangleCount)
-        {
-            waterVertexCount = 0;
-            waterTriangleCount = CountWaterTriangles(sourceVertices, sourceVertexCount, recipe.GridRadius, poolWriter);
-            if (waterTriangleCount <= 0)
-            {
-                return;
-            }
-
-            MeshFilter waterMeshFilter = EnsureWaterRenderer(surfaceMeshFilter, surfaceMeshRenderer, out MeshRenderer waterMeshRenderer);
-            runtimeWaterMesh = new Mesh
-            {
-                name = "PlanetMarchingCubesPaint_WaterMesh_Runtime",
-                indexFormat = waterTriangleCount * 3 > ushort.MaxValue ? IndexFormat.UInt32 : IndexFormat.UInt16
-            };
-
-            waterVertexCount = waterTriangleCount * 3;
-            PrepareMeshUploadBuffers(waterVertexCount);
-            FillWaterMeshData(
-                sourceVertices,
-                sourceVertexCount,
-                recipe.GridRadius,
-                poolWriter,
-                surfaceMeshFilter.transform,
-                in recipe,
-                in placement);
-
-            UploadMeshBuffers(runtimeWaterMesh);
-
-            waterMeshFilter.sharedMesh = runtimeWaterMesh;
-            waterMeshRenderer.sharedMaterial = ResolveWaterMaterial();
-        }
-
-        private void BuildChunkWaterMesh(
-            RuntimeChunkMesh runtimeChunk,
-            Transform rootTransform,
-            int layer,
-            MeshRenderer sourceRenderer,
-            PlanetMarchingCubesVertex[] sourceVertices,
-            int[] sourceTriangleIndices,
-            int segmentStart,
-            int segmentTriangleCount,
-            PlanetTrianglePoolWriter poolWriter,
-            in PlanetRecipe recipe,
-            in PlanetPlacement placement)
-        {
-            int waterTriangleCount = CountWaterTrianglesFromSegment(
-                sourceVertices,
-                sourceTriangleIndices,
-                segmentStart,
-                segmentTriangleCount,
-                recipe.GridRadius,
-                poolWriter);
-            if (waterTriangleCount <= 0)
-            {
-                return;
-            }
-
-            runtimeChunk.waterTriangleCount = waterTriangleCount;
-            runtimeChunk.waterVertexCount = waterTriangleCount * 3;
-            runtimeChunk.waterEstimatedBytes = PlanetMarchingCubesPaintResult.CalculateMeshEstimatedBytes(
-                runtimeChunk.waterVertexCount,
-                runtimeChunk.waterTriangleCount);
-            runtimeChunk.waterObject = CreateChunkObject(
-                rootTransform,
-                layer,
-                "PlanetChunk_" + runtimeChunk.chunkIndex + "_Water_Runtime");
-
-            MeshFilter waterMeshFilter = runtimeChunk.waterObject.AddComponent<MeshFilter>();
-            MeshRenderer waterMeshRenderer = runtimeChunk.waterObject.AddComponent<MeshRenderer>();
-            CopyRendererSettings(sourceRenderer, waterMeshRenderer);
-            waterMeshRenderer.shadowCastingMode = ShadowCastingMode.Off;
-            waterMeshRenderer.sharedMaterial = ResolveWaterMaterial();
-
-            runtimeChunk.waterMesh = new Mesh
-            {
-                name = "PlanetChunk_" + runtimeChunk.chunkIndex + "_WaterMesh_Runtime",
-                indexFormat = runtimeChunk.waterVertexCount > ushort.MaxValue ? IndexFormat.UInt32 : IndexFormat.UInt16
-            };
-
-            PrepareMeshUploadBuffers(runtimeChunk.waterVertexCount);
-            FillWaterMeshDataFromSegment(
-                sourceVertices,
-                sourceTriangleIndices,
-                segmentStart,
-                segmentTriangleCount,
-                recipe.GridRadius,
-                poolWriter,
-                rootTransform,
-                in recipe,
-                in placement);
-
-            UploadMeshBuffers(runtimeChunk.waterMesh);
-            waterMeshFilter.sharedMesh = runtimeChunk.waterMesh;
-        }
-
-        private static int CountWaterTriangles(
-            PlanetMarchingCubesVertex[] sourceVertices,
-            int sourceVertexCount,
-            float seaRadius,
-            PlanetTrianglePoolWriter poolWriter)
-        {
-            int triangleCount = 0;
-            int sourceTriangleCount = sourceVertexCount / 3;
-            for (int sourceTriangleIndex = 0; sourceTriangleIndex < sourceTriangleCount; sourceTriangleIndex++)
-            {
-                if (!poolWriter.IsSourceTriangleSelected(sourceTriangleIndex))
-                {
-                    continue;
-                }
-
-                int i = sourceTriangleIndex * 3;
-                int underwaterCount = 0;
-                if (IsUnderSea(ReadGridPosition(sourceVertices[i]), seaRadius))
-                {
-                    underwaterCount++;
-                }
-
-                if (IsUnderSea(ReadGridPosition(sourceVertices[i + 1]), seaRadius))
-                {
-                    underwaterCount++;
-                }
-
-                if (IsUnderSea(ReadGridPosition(sourceVertices[i + 2]), seaRadius))
-                {
-                    underwaterCount++;
-                }
-
-                if (underwaterCount == 3 || underwaterCount == 1)
-                {
-                    triangleCount++;
-                }
-                else if (underwaterCount == 2)
-                {
-                    triangleCount += 2;
-                }
-            }
-
-            return triangleCount;
-        }
-
-        private static int CountWaterTrianglesFromSegment(
-            PlanetMarchingCubesVertex[] sourceVertices,
-            int[] sourceTriangleIndices,
-            int segmentStart,
-            int segmentTriangleCount,
-            float seaRadius,
-            PlanetTrianglePoolWriter poolWriter)
-        {
-            int triangleCount = 0;
-            for (int localTriangleIndex = 0; localTriangleIndex < segmentTriangleCount; localTriangleIndex++)
-            {
-                if (!poolWriter.IsSourceTriangleSelected(localTriangleIndex))
-                {
-                    continue;
-                }
-
-                int sourceTriangleIndex = sourceTriangleIndices[segmentStart + localTriangleIndex];
-                int i = sourceTriangleIndex * 3;
-                int underwaterCount = 0;
-                if (IsUnderSea(ReadGridPosition(sourceVertices[i]), seaRadius))
-                {
-                    underwaterCount++;
-                }
-
-                if (IsUnderSea(ReadGridPosition(sourceVertices[i + 1]), seaRadius))
-                {
-                    underwaterCount++;
-                }
-
-                if (IsUnderSea(ReadGridPosition(sourceVertices[i + 2]), seaRadius))
-                {
-                    underwaterCount++;
-                }
-
-                if (underwaterCount == 3 || underwaterCount == 1)
-                {
-                    triangleCount++;
-                }
-                else if (underwaterCount == 2)
-                {
-                    triangleCount += 2;
-                }
-            }
-
-            return triangleCount;
-        }
-
-        private void FillWaterMeshData(
-            PlanetMarchingCubesVertex[] sourceVertices,
-            int sourceVertexCount,
-            float seaRadius,
-            PlanetTrianglePoolWriter poolWriter,
-            Transform targetTransform,
-            in PlanetRecipe recipe,
-            in PlanetPlacement placement)
-        {
-            int vertexCursor = 0;
-            int sourceTriangleCount = sourceVertexCount / 3;
-            for (int sourceTriangleIndex = 0; sourceTriangleIndex < sourceTriangleCount; sourceTriangleIndex++)
-            {
-                if (!poolWriter.IsSourceTriangleSelected(sourceTriangleIndex))
-                {
-                    continue;
-                }
-
-                int i = sourceTriangleIndex * 3;
-                Vector3 a = ReadGridPosition(sourceVertices[i]);
-                Vector3 b = ReadGridPosition(sourceVertices[i + 1]);
-                Vector3 c = ReadGridPosition(sourceVertices[i + 2]);
-                int clippedCount = ClipWaterTriangle(a, b, c, seaRadius, waterClipBuffer);
-                if (clippedCount == 3)
-                {
-                    WriteWaterTriangle(
-                        ref vertexCursor,
-                        waterClipBuffer[0],
-                        waterClipBuffer[1],
-                        waterClipBuffer[2],
-                        targetTransform,
-                        in recipe,
-                        in placement);
-                }
-                else if (clippedCount == 4)
-                {
-                    WriteWaterTriangle(
-                        ref vertexCursor,
-                        waterClipBuffer[0],
-                        waterClipBuffer[1],
-                        waterClipBuffer[2],
-                        targetTransform,
-                        in recipe,
-                        in placement);
-                    WriteWaterTriangle(
-                        ref vertexCursor,
-                        waterClipBuffer[0],
-                        waterClipBuffer[2],
-                        waterClipBuffer[3],
-                        targetTransform,
-                        in recipe,
-                        in placement);
-                }
-            }
-        }
-
-        private void FillWaterMeshDataFromSegment(
-            PlanetMarchingCubesVertex[] sourceVertices,
-            int[] sourceTriangleIndices,
-            int segmentStart,
-            int segmentTriangleCount,
-            float seaRadius,
-            PlanetTrianglePoolWriter poolWriter,
-            Transform targetTransform,
-            in PlanetRecipe recipe,
-            in PlanetPlacement placement)
-        {
-            int vertexCursor = 0;
-            for (int localTriangleIndex = 0; localTriangleIndex < segmentTriangleCount; localTriangleIndex++)
-            {
-                if (!poolWriter.IsSourceTriangleSelected(localTriangleIndex))
-                {
-                    continue;
-                }
-
-                int sourceTriangleIndex = sourceTriangleIndices[segmentStart + localTriangleIndex];
-                int i = sourceTriangleIndex * 3;
-                Vector3 a = ReadGridPosition(sourceVertices[i]);
-                Vector3 b = ReadGridPosition(sourceVertices[i + 1]);
-                Vector3 c = ReadGridPosition(sourceVertices[i + 2]);
-                int clippedCount = ClipWaterTriangle(a, b, c, seaRadius, waterClipBuffer);
-                if (clippedCount == 3)
-                {
-                    WriteWaterTriangle(
-                        ref vertexCursor,
-                        waterClipBuffer[0],
-                        waterClipBuffer[1],
-                        waterClipBuffer[2],
-                        targetTransform,
-                        in recipe,
-                        in placement);
-                }
-                else if (clippedCount == 4)
-                {
-                    WriteWaterTriangle(
-                        ref vertexCursor,
-                        waterClipBuffer[0],
-                        waterClipBuffer[1],
-                        waterClipBuffer[2],
-                        targetTransform,
-                        in recipe,
-                        in placement);
-                    WriteWaterTriangle(
-                        ref vertexCursor,
-                        waterClipBuffer[0],
-                        waterClipBuffer[2],
-                        waterClipBuffer[3],
-                        targetTransform,
-                        in recipe,
-                        in placement);
-                }
-            }
-        }
-
-        private static int ClipWaterTriangle(Vector3 a, Vector3 b, Vector3 c, float seaRadius, Vector3[] clipped)
-        {
-            int count = 0;
-            ClipWaterEdge(a, b, seaRadius, clipped, ref count);
-            ClipWaterEdge(b, c, seaRadius, clipped, ref count);
-            ClipWaterEdge(c, a, seaRadius, clipped, ref count);
-            return count;
-        }
-
-        private static void ClipWaterEdge(Vector3 current, Vector3 next, float seaRadius, Vector3[] clipped, ref int count)
-        {
-            float currentDepth = seaRadius - current.magnitude;
-            float nextDepth = seaRadius - next.magnitude;
-            bool currentUnderwater = currentDepth > 0f;
-            bool nextUnderwater = nextDepth > 0f;
-
-            if (currentUnderwater)
-            {
-                clipped[count++] = ProjectToRadius(current, seaRadius);
-            }
-
-            if (currentUnderwater != nextUnderwater)
-            {
-                float denominator = currentDepth - nextDepth;
-                float t = Mathf.Abs(denominator) <= 0.000001f ? 0.5f : Mathf.Clamp01(currentDepth / denominator);
-                clipped[count++] = ProjectToRadius(Vector3.Lerp(current, next, t), seaRadius);
-            }
-        }
-
-        private void WriteWaterTriangle(
-            ref int vertexCursor,
-            Vector3 a,
-            Vector3 b,
-            Vector3 c,
-            Transform targetTransform,
-            in PlanetRecipe recipe,
-            in PlanetPlacement placement)
-        {
-            Vector3 center = (a + b + c) * 0.33333334f;
-            Vector3 normal = Vector3.Cross(b - a, c - a);
-            if (normal.sqrMagnitude <= 0.000001f)
-            {
-                normal = center.sqrMagnitude > 0.000001f ? center.normalized : Vector3.up;
-            }
-            else if (Vector3.Dot(normal, center) < 0f)
-            {
-                Vector3 swap = b;
-                b = c;
-                c = swap;
-                normal = -normal;
-            }
-
-            normal.Normalize();
-            WriteWaterVertex(vertexCursor, a, normal, targetTransform, in recipe, in placement);
-            vertexCursor++;
-            WriteWaterVertex(vertexCursor, b, normal, targetTransform, in recipe, in placement);
-            vertexCursor++;
-            WriteWaterVertex(vertexCursor, c, normal, targetTransform, in recipe, in placement);
-            vertexCursor++;
-        }
-
-        private void WriteWaterVertex(
-            int vertexIndex,
-            Vector3 gridPosition,
-            Vector3 gridNormal,
-            Transform targetTransform,
-            in PlanetRecipe recipe,
-            in PlanetPlacement placement)
-        {
-            Vector3 worldPosition = PlanetCoordinateConverter.GridToWorld(gridPosition, in recipe, in placement);
-            Vector3 worldNormal = placement.PlanetRotation * gridNormal;
-            meshUploadPositions.Add(targetTransform != null ? targetTransform.InverseTransformPoint(worldPosition) : worldPosition);
-            meshUploadNormals.Add(targetTransform != null ? targetTransform.InverseTransformDirection(worldNormal).normalized : worldNormal.normalized);
-            meshUploadUvs.Add(Vector2.zero);
-            meshUploadColors.Add(Color.white);
-            meshUploadIndices.Add(vertexIndex);
-        }
-
-        private void PrepareMeshUploadBuffers(int vertexCapacity)
-        {
-            int safeCapacity = Mathf.Max(0, vertexCapacity);
-            EnsureListCapacity(meshUploadPositions, safeCapacity);
-            EnsureListCapacity(meshUploadNormals, safeCapacity);
-            EnsureListCapacity(meshUploadUvs, safeCapacity);
-            EnsureListCapacity(meshUploadColors, safeCapacity);
-            EnsureListCapacity(meshUploadIndices, safeCapacity);
-            meshUploadPositions.Clear();
-            meshUploadNormals.Clear();
-            meshUploadUvs.Clear();
-            meshUploadColors.Clear();
-            meshUploadIndices.Clear();
-        }
-
-        private void UploadMeshBuffers(Mesh mesh)
-        {
-            mesh.Clear();
-            mesh.SetVertices(meshUploadPositions);
-            mesh.SetNormals(meshUploadNormals);
-            mesh.SetUVs(0, meshUploadUvs);
-            mesh.SetColors(meshUploadColors);
-            mesh.SetTriangles(meshUploadIndices, 0, true);
-            mesh.RecalculateBounds();
-        }
-
-        private static void EnsureListCapacity<T>(List<T> list, int capacity)
-        {
-            if (list.Capacity < capacity)
-            {
-                list.Capacity = capacity;
-            }
-        }
-
-        private static int[] EnsureIntBuffer(ref int[] buffer, int capacity)
-        {
-            if (buffer == null || buffer.Length < capacity)
-            {
-                buffer = new int[Mathf.Max(0, capacity)];
-            }
-
-            return buffer;
-        }
-
-        private static bool IsUnderSea(Vector3 gridPosition, float seaRadius)
-        {
-            return gridPosition.magnitude < seaRadius;
-        }
-
-        private static Vector3 ProjectToRadius(Vector3 gridPosition, float radius)
-        {
-            if (gridPosition.sqrMagnitude <= 0.000001f)
-            {
-                return Vector3.up * radius;
-            }
-
-            return gridPosition.normalized * radius;
-        }
-
-        private MeshFilter EnsureWaterRenderer(MeshFilter surfaceMeshFilter, MeshRenderer surfaceMeshRenderer, out MeshRenderer waterMeshRenderer)
-        {
-            if (runtimeWaterObject == null)
-            {
-                runtimeWaterObject = new GameObject("PlanetMarchingCubesPaint_Water_Runtime");
-                if (surfaceMeshFilter != null)
-                {
-                    runtimeWaterObject.layer = surfaceMeshFilter.gameObject.layer;
-                    runtimeWaterObject.transform.SetParent(surfaceMeshFilter.transform, false);
-                }
-            }
-
-            Transform waterTransform = runtimeWaterObject.transform;
-            waterTransform.localPosition = Vector3.zero;
-            waterTransform.localRotation = Quaternion.identity;
-            waterTransform.localScale = Vector3.one;
-
-            MeshFilter waterMeshFilter = runtimeWaterObject.GetComponent<MeshFilter>();
-            if (waterMeshFilter == null)
-            {
-                waterMeshFilter = runtimeWaterObject.AddComponent<MeshFilter>();
-            }
-
-            waterMeshRenderer = runtimeWaterObject.GetComponent<MeshRenderer>();
-            if (waterMeshRenderer == null)
-            {
-                waterMeshRenderer = runtimeWaterObject.AddComponent<MeshRenderer>();
-            }
-
-            if (surfaceMeshRenderer != null)
-            {
-                waterMeshRenderer.shadowCastingMode = ShadowCastingMode.Off;
-                waterMeshRenderer.receiveShadows = surfaceMeshRenderer.receiveShadows;
-            }
-
-            return waterMeshFilter;
-        }
-
-        private static GameObject CreateChunkObject(Transform parent, int layer, string objectName)
-        {
-            GameObject chunkObject = new GameObject(objectName)
-            {
-                layer = layer
-            };
-
-            if (parent != null)
-            {
-                chunkObject.transform.SetParent(parent, false);
-            }
-
-            Transform chunkTransform = chunkObject.transform;
-            chunkTransform.localPosition = Vector3.zero;
-            chunkTransform.localRotation = Quaternion.identity;
-            chunkTransform.localScale = Vector3.one;
-            return chunkObject;
-        }
-
-        private static void CopyRendererSettings(MeshRenderer source, MeshRenderer target)
-        {
-            if (source == null || target == null)
-            {
-                return;
-            }
-
-            target.shadowCastingMode = source.shadowCastingMode;
-            target.receiveShadows = source.receiveShadows;
-            target.motionVectorGenerationMode = source.motionVectorGenerationMode;
-            target.allowOcclusionWhenDynamic = source.allowOcclusionWhenDynamic;
+            runtimeChunks.Clear();
         }
 
         private Material ResolveMaterial(Material materialOverride, PlanetMarchingCubesPaintColorMode colorMode, PlanetGpuShapeCell[] cells)
@@ -2558,6 +1225,12 @@ namespace MarchingCubesPlanet.MarchingCubes
             {
                 ApplyMaterialProperties(materialOverride, colorMode, cells);
                 return materialOverride;
+            }
+
+            if (runtimeMaterial != null)
+            {
+                ApplyMaterialProperties(runtimeMaterial, colorMode, cells);
+                return runtimeMaterial;
             }
 
             Material defaultSurfaceMaterial = Resources.Load<Material>(DefaultSurfaceMaterialResourceName);
@@ -2668,39 +1341,6 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
         }
 
-        private static Color32 EvaluateColor(
-            PlanetMarchingCubesPaintSettings settings,
-            Vector3 position,
-            Vector3 normal,
-            int caseIndex,
-            int triangleIndex,
-            float minRadius,
-            float maxRadius,
-            float height01)
-        {
-            switch (settings.colorMode)
-            {
-                case PlanetMarchingCubesPaintColorMode.PlanetSurfaceAtlas:
-                    return Color.white;
-                case PlanetMarchingCubesPaintColorMode.FlatNormalColor:
-                    return new Color(
-                        normal.x * 0.5f + 0.5f,
-                        normal.y * 0.5f + 0.5f,
-                        normal.z * 0.5f + 0.5f,
-                        1f);
-                case PlanetMarchingCubesPaintColorMode.HeightColor:
-                    return Color.Lerp(new Color(0.1f, 0.35f, 1f, 1f), new Color(0.95f, 1f, 0.35f, 1f), height01);
-                case PlanetMarchingCubesPaintColorMode.CaseIndexPalette:
-                    return Palette(caseIndex);
-                case PlanetMarchingCubesPaintColorMode.TrianglePalette:
-                    return Palette(triangleIndex);
-                case PlanetMarchingCubesPaintColorMode.SolidColor:
-                    return settings.solidColor;
-                default:
-                    return Color.white;
-            }
-        }
-
         private void EnsureSurfaceAtlas(PlanetGpuShapeCell[] cells)
         {
             if (runtimeSurfaceAtlas != null)
@@ -2731,129 +1371,23 @@ namespace MarchingCubesPlanet.MarchingCubes
             runtimeSurfaceAtlas.Apply(false, false);
         }
 
+        private static void CopyRendererSettings(MeshRenderer source, MeshRenderer target)
+        {
+            if (source == null || target == null)
+            {
+                return;
+            }
+
+            target.shadowCastingMode = source.shadowCastingMode;
+            target.receiveShadows = source.receiveShadows;
+            target.motionVectorGenerationMode = source.motionVectorGenerationMode;
+            target.allowOcclusionWhenDynamic = source.allowOcclusionWhenDynamic;
+        }
+
         private static Vector3 ReadGridPosition(PlanetMarchingCubesVertex vertex)
         {
             Vector4 packedPosition = vertex.positionAndCase;
             return new Vector3(packedPosition.x, packedPosition.y, packedPosition.z);
-        }
-
-        private static int FindMaxSourceChunkIndex(PlanetMarchingCubesVertex[] sourceVertices, int sourceTriangleCount)
-        {
-            int maxChunkIndex = 0;
-            for (int sourceTriangleIndex = 0; sourceTriangleIndex < sourceTriangleCount; sourceTriangleIndex++)
-            {
-                int chunkIndex = ReadSourceChunkIndex(sourceVertices, sourceTriangleIndex);
-                if (chunkIndex > maxChunkIndex)
-                {
-                    maxChunkIndex = chunkIndex;
-                }
-            }
-
-            return maxChunkIndex;
-        }
-
-        private static int ReadSourceChunkIndex(PlanetMarchingCubesVertex[] sourceVertices, int sourceTriangleIndex)
-        {
-            int sourceVertexIndex = sourceTriangleIndex * 3;
-            if (sourceVertices == null || sourceVertexIndex < 0 || sourceVertexIndex >= sourceVertices.Length)
-            {
-                return 0;
-            }
-
-            float packedChunkIndex = sourceVertices[sourceVertexIndex].normalAndDiagnostic.w;
-            if (packedChunkIndex <= 0f)
-            {
-                return 0;
-            }
-
-            return Mathf.Max(0, Mathf.RoundToInt(packedChunkIndex));
-        }
-
-        private static uint MakeChunkSurfaceMeshId(int chunkIndex)
-        {
-            return PlanetChunkSurfaceMeshIdBase + (uint)Mathf.Max(0, chunkIndex);
-        }
-
-        private static float EvaluateTriangleScore(
-            PlanetMarchingCubesVertex[] sourceVertices,
-            int sourceTriangleIndex,
-            PlanetRecipe recipe,
-            PlanetPlacement placement,
-            Vector3 priorityOriginWorld)
-        {
-            int vertexIndex = sourceTriangleIndex * 3;
-            Vector3 a = ReadGridPosition(sourceVertices[vertexIndex]);
-            Vector3 b = ReadGridPosition(sourceVertices[vertexIndex + 1]);
-            Vector3 c = ReadGridPosition(sourceVertices[vertexIndex + 2]);
-            Vector3 centerGrid = (a + b + c) * 0.33333334f;
-            Vector3 centerWorld = PlanetCoordinateConverter.GridToWorld(centerGrid, in recipe, in placement);
-            return (centerWorld - priorityOriginWorld).sqrMagnitude;
-        }
-
-        private static int EvaluateOutputTriangleCost(
-            PlanetMarchingCubesVertex[] sourceVertices,
-            int sourceTriangleIndex,
-            float seaRadius)
-        {
-            int vertexIndex = sourceTriangleIndex * 3;
-            Vector3 a = ReadGridPosition(sourceVertices[vertexIndex]);
-            Vector3 b = ReadGridPosition(sourceVertices[vertexIndex + 1]);
-            Vector3 c = ReadGridPosition(sourceVertices[vertexIndex + 2]);
-            return 1 + CountWaterTrianglesForSourceTriangle(a, b, c, seaRadius);
-        }
-
-        private static int CountWaterTrianglesForSourceTriangle(Vector3 a, Vector3 b, Vector3 c, float seaRadius)
-        {
-            int underwaterCount = 0;
-            if (a.magnitude < seaRadius)
-            {
-                underwaterCount++;
-            }
-
-            if (b.magnitude < seaRadius)
-            {
-                underwaterCount++;
-            }
-
-            if (c.magnitude < seaRadius)
-            {
-                underwaterCount++;
-            }
-
-            if (underwaterCount == 3 || underwaterCount == 1)
-            {
-                return 1;
-            }
-
-            if (underwaterCount == 2)
-            {
-                return 2;
-            }
-
-            return 0;
-        }
-
-        private static int FindNearestCellIndex(Vector3 gridPosition, PlanetGpuShapeCell[] cells)
-        {
-            if (cells == null || cells.Length == 0)
-            {
-                return 0;
-            }
-
-            Vector3 direction = gridPosition.sqrMagnitude > 0.0001f ? gridPosition.normalized : Vector3.up;
-            int nearestIndex = 0;
-            float nearestDot = -2f;
-            for (int i = 0; i < cells.Length; i++)
-            {
-                float cellDot = Vector3.Dot(direction, cells[i].Direction);
-                if (cellDot > nearestDot)
-                {
-                    nearestDot = cellDot;
-                    nearestIndex = i;
-                }
-            }
-
-            return nearestIndex;
         }
 
         private static Vector2 EvaluateSurfaceAtlasUv(float radius, in PlanetRecipe recipe)
@@ -2891,72 +1425,58 @@ namespace MarchingCubesPlanet.MarchingCubes
             return Mathf.InverseLerp(minRadius, maxRadius, radius);
         }
 
-        private static Color32 EvaluateSurfaceGradient(float height01)
+        private static Color32 EvaluateColor(
+            PlanetMarchingCubesPaintSettings settings,
+            Vector3 position,
+            Vector3 normal,
+            int caseIndex,
+            int triangleIndex,
+            float minRadius,
+            float maxRadius,
+            float height01)
         {
-            height01 = Mathf.Clamp01(height01);
-
-            Color underwater = new Color(0.82f, 0.36f, 0.54f, 1f);
-            Color shallow = new Color(0.91f, 0.74f, 0.57f, 1f);
-            Color sand = new Color(0.76f, 0.66f, 0.43f, 1f);
-            Color darkGreen = new Color(0.13f, 0.31f, 0.18f, 1f);
-            Color green = new Color(0.25f, 0.48f, 0.24f, 1f);
-            Color brown = new Color(0.38f, 0.29f, 0.20f, 1f);
-            Color grey = new Color(0.50f, 0.50f, 0.47f, 1f);
-            Color snow = new Color(0.88f, 0.89f, 0.84f, 1f);
-
-            if (height01 < 0.12f)
+            _ = position;
+            _ = minRadius;
+            _ = maxRadius;
+            switch (settings.colorMode)
             {
-                return Color.Lerp(underwater, shallow, height01 / 0.12f);
+                case PlanetMarchingCubesPaintColorMode.PlanetSurfaceAtlas:
+                    return Color.white;
+                case PlanetMarchingCubesPaintColorMode.FlatNormalColor:
+                    return new Color(
+                        normal.x * 0.5f + 0.5f,
+                        normal.y * 0.5f + 0.5f,
+                        normal.z * 0.5f + 0.5f,
+                        1f);
+                case PlanetMarchingCubesPaintColorMode.HeightColor:
+                    return Color.Lerp(new Color(0.1f, 0.35f, 1f, 1f), new Color(0.95f, 1f, 0.35f, 1f), height01);
+                case PlanetMarchingCubesPaintColorMode.CaseIndexPalette:
+                    return Palette(caseIndex);
+                case PlanetMarchingCubesPaintColorMode.TrianglePalette:
+                    return Palette(triangleIndex);
+                case PlanetMarchingCubesPaintColorMode.SolidColor:
+                    return settings.solidColor;
+                default:
+                    return Color.white;
             }
-
-            if (height01 < 0.20f)
-            {
-                return Color.Lerp(shallow, sand, (height01 - 0.12f) / 0.08f);
-            }
-
-            if (height01 < 0.38f)
-            {
-                return Color.Lerp(sand, darkGreen, (height01 - 0.20f) / 0.18f);
-            }
-
-            if (height01 < 0.58f)
-            {
-                return Color.Lerp(darkGreen, green, (height01 - 0.38f) / 0.20f);
-            }
-
-            if (height01 < 0.76f)
-            {
-                return Color.Lerp(green, brown, (height01 - 0.58f) / 0.18f);
-            }
-
-            if (height01 < 0.90f)
-            {
-                return Color.Lerp(brown, grey, (height01 - 0.76f) / 0.14f);
-            }
-
-            return Color.Lerp(grey, snow, (height01 - 0.90f) / 0.10f);
         }
 
         private static Color32 EvaluateSurfaceCellGradient(float height01, int cellIndex)
         {
             Color baseColor = EvaluatePlanetSurfacePalette(height01);
-
             float valueNoise = Hash01((uint)cellIndex, 0x6ac690c5u);
             float warmthNoise = Hash01((uint)cellIndex, 0x9e3779b9u) - 0.5f;
             float value = Mathf.Lerp(0.94f, 1.06f, valueNoise);
-            Color cellColor = new Color(
+            return new Color(
                 Mathf.Clamp01(baseColor.r * value + warmthNoise * 0.025f),
                 Mathf.Clamp01(baseColor.g * value),
                 Mathf.Clamp01(baseColor.b * value - warmthNoise * 0.020f),
                 1f);
-
-            return cellColor;
         }
 
         private static Color EvaluatePlanetSurfacePalette(float height01)
         {
             height01 = Mathf.Clamp01(height01);
-
             Color deepPink = new Color(0.78f, 0.36f, 0.55f, 1f);
             Color salmon = new Color(0.72f, 0.42f, 0.45f, 1f);
             Color darkRedBrown = new Color(0.28f, 0.17f, 0.15f, 1f);
@@ -2971,61 +1491,17 @@ namespace MarchingCubesPlanet.MarchingCubes
             Color lightGrey = new Color(0.78f, 0.78f, 0.74f, 1f);
             Color snow = new Color(0.93f, 0.93f, 0.89f, 1f);
 
-            if (height01 < 0.12f)
-            {
-                return Color.Lerp(deepPink, salmon, height01 / 0.12f);
-            }
-
-            if (height01 < 0.24f)
-            {
-                return Color.Lerp(salmon, darkRedBrown, (height01 - 0.12f) / 0.12f);
-            }
-
-            if (height01 < 0.36f)
-            {
-                return Color.Lerp(darkRedBrown, roseRed, (height01 - 0.24f) / 0.12f);
-            }
-
-            if (height01 < 0.5f)
-            {
-                return Color.Lerp(roseRed, sand, (height01 - 0.36f) / 0.14f);
-            }
-
-            if (height01 < 0.58f)
-            {
-                return Color.Lerp(sand, paleYellow, (height01 - 0.5f) / 0.08f);
-            }
-
-            if (height01 < 0.68f)
-            {
-                return Color.Lerp(paleYellow, brightGreen, (height01 - 0.58f) / 0.10f);
-            }
-
-            if (height01 < 0.78f)
-            {
-                return Color.Lerp(brightGreen, darkGreen, (height01 - 0.68f) / 0.10f);
-            }
-
-            if (height01 < 0.86f)
-            {
-                return Color.Lerp(darkGreen, brown, (height01 - 0.78f) / 0.08f);
-            }
-
-            if (height01 < 0.93f)
-            {
-                return Color.Lerp(brown, darkGrey, (height01 - 0.86f) / 0.07f);
-            }
-
-            if (height01 < 0.97f)
-            {
-                return Color.Lerp(darkGrey, grey, (height01 - 0.93f) / 0.04f);
-            }
-
-            if (height01 < 0.99f)
-            {
-                return Color.Lerp(grey, lightGrey, (height01 - 0.97f) / 0.02f);
-            }
-
+            if (height01 < 0.12f) return Color.Lerp(deepPink, salmon, height01 / 0.12f);
+            if (height01 < 0.24f) return Color.Lerp(salmon, darkRedBrown, (height01 - 0.12f) / 0.12f);
+            if (height01 < 0.36f) return Color.Lerp(darkRedBrown, roseRed, (height01 - 0.24f) / 0.12f);
+            if (height01 < 0.5f) return Color.Lerp(roseRed, sand, (height01 - 0.36f) / 0.14f);
+            if (height01 < 0.58f) return Color.Lerp(sand, paleYellow, (height01 - 0.5f) / 0.08f);
+            if (height01 < 0.68f) return Color.Lerp(paleYellow, brightGreen, (height01 - 0.58f) / 0.10f);
+            if (height01 < 0.78f) return Color.Lerp(brightGreen, darkGreen, (height01 - 0.68f) / 0.10f);
+            if (height01 < 0.86f) return Color.Lerp(darkGreen, brown, (height01 - 0.78f) / 0.08f);
+            if (height01 < 0.93f) return Color.Lerp(brown, darkGrey, (height01 - 0.86f) / 0.07f);
+            if (height01 < 0.97f) return Color.Lerp(darkGrey, grey, (height01 - 0.93f) / 0.04f);
+            if (height01 < 0.99f) return Color.Lerp(grey, lightGrey, (height01 - 0.97f) / 0.02f);
             return Color.Lerp(lightGrey, snow, (height01 - 0.99f) / 0.01f);
         }
 
@@ -3048,10 +1524,47 @@ namespace MarchingCubesPlanet.MarchingCubes
             hash ^= hash >> 15;
             hash *= 0x846ca68bU;
             hash ^= hash >> 16;
-            byte r = (byte)(80 + (hash & 127U));
-            byte g = (byte)(80 + ((hash >> 8) & 127U));
-            byte b = (byte)(80 + ((hash >> 16) & 127U));
-            return new Color32(r, g, b, 255);
+            return new Color32(
+                (byte)(80 + (hash & 127U)),
+                (byte)(80 + ((hash >> 8) & 127U)),
+                (byte)(80 + ((hash >> 16) & 127U)),
+                255);
+        }
+
+        private static string SanitizeObjectName(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return "chunk";
+            }
+
+            char[] chars = value.ToCharArray();
+            for (int i = 0; i < chars.Length; i++)
+            {
+                char c = chars[i];
+                if (!char.IsLetterOrDigit(c) && c != '_' && c != '-')
+                {
+                    chars[i] = '_';
+                }
+            }
+
+            return new string(chars);
+        }
+
+        private static void DestroyIfNotOwned(Mesh mesh, Mesh ownedMesh)
+        {
+            if (mesh != null && mesh != ownedMesh)
+            {
+                DestroyRuntimeObject(mesh);
+            }
+        }
+
+        private static void EnsureListCapacity<T>(List<T> list, int capacity)
+        {
+            if (list.Capacity < capacity)
+            {
+                list.Capacity = capacity;
+            }
         }
 
         private static void DestroyRuntimeObject(UnityEngine.Object target)

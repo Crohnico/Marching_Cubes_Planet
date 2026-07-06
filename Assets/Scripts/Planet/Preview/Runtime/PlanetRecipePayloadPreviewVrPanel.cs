@@ -1,7 +1,5 @@
 using System;
-using System.Text;
 using MarchingCubesPlanet.Lab;
-using MarchingCubesPlanet.TrianglePools;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -9,29 +7,17 @@ namespace MarchingCubesPlanet.Preview
 {
     public sealed class PlanetRecipePayloadPreviewVrPanel : MonoBehaviour
     {
-        private const string RootName = "PlanetRecipePayloadPreviewDeadlineVR";
+        private const string RootName = "PlanetRecipePayloadPreviewControlsVR";
         private const string LegacyDebugCanvasName = "PlanetMinimalXrTestCanvas";
         private const float CanvasScale = 0.0025f;
-        private const float DiagnosticsRefreshIntervalSeconds = 0.25f;
 
         [SerializeField] private PlanetRecipePayloadPreview preview;
         [SerializeField] private PlanetRecipePayloadPreviewGenerationFlow generationFlow;
-        [SerializeField] private Button applyPayload126kButton;
-        [SerializeField] private Button applyPayload250kButton;
-        [SerializeField] private Button applyPayload500kButton;
-        [SerializeField] private Button applyPayload1MButton;
-        [SerializeField] private Button applyPayload2MButton;
-        [SerializeField] private Button applyPayload5MButton;
-        [SerializeField] private Button beforeSnapshotButton;
-        [SerializeField] private Button afterSnapshotButton;
         [SerializeField] private Button generateButton;
+        [SerializeField] private Button generateRandomSeedButton;
         [SerializeField] private Button releaseButton;
-        [SerializeField] private Text registryFoundText;
-        [SerializeField] private Text diagnosticsText;
 
-        private readonly StringBuilder builder = new StringBuilder(2048);
         private string lastPanelDiagnostic;
-        private float nextDiagnosticsRefreshTime;
 
         public PlanetRecipePayloadPreview Preview => preview;
 
@@ -53,9 +39,7 @@ namespace MarchingCubesPlanet.Preview
             PlanetRecipePayloadPreviewVrPanel panel = root.AddComponent<PlanetRecipePayloadPreviewVrPanel>();
             panel.preview = targetPreview;
             panel.BuildControlsCanvas(root.transform, new Vector3(-0.78f, 0f, 0f));
-            panel.BuildDiagnosticsCanvas(root.transform, new Vector3(0.78f, 0f, 0f));
             panel.Bind(targetPreview);
-            panel.Refresh();
             return panel;
         }
 
@@ -63,19 +47,18 @@ namespace MarchingCubesPlanet.Preview
         {
             preview = targetPreview;
             RegisterButtonCallbacks();
-            Refresh();
         }
 
         private void Awake()
         {
+            EnsureControlsCanvas();
             RegisterButtonCallbacks();
-            Refresh();
         }
 
         private void OnEnable()
         {
+            EnsureControlsCanvas();
             RegisterButtonCallbacks();
-            Refresh();
         }
 
         private void OnDisable()
@@ -83,161 +66,8 @@ namespace MarchingCubesPlanet.Preview
             RemoveButtonCallbacks();
         }
 
-        private void Update()
-        {
-            if (diagnosticsText == null || Time.unscaledTime < nextDiagnosticsRefreshTime)
-            {
-                return;
-            }
-
-            nextDiagnosticsRefreshTime = Time.unscaledTime + DiagnosticsRefreshIntervalSeconds;
-            Refresh();
-        }
-
         public void Refresh()
         {
-            if (preview == null || diagnosticsText == null)
-            {
-                return;
-            }
-
-            if (registryFoundText != null)
-            {
-                registryFoundText.text = preview.HasResourceRegistry ? "yes" : "no";
-            }
-
-            PlanetMemorySnapshot before = preview.BeforeSnapshot;
-            PlanetMemorySnapshot after = preview.AfterSnapshot;
-            PlanetMemorySnapshotComparison comparison = preview.SnapshotComparison;
-            PlanetMemoryBudget budget = preview.MemoryBudget;
-
-            builder.Clear();
-            AppendLine("Requested triangles", preview.RequestedTrianglePayload.ToString());
-            AppendLine("09 Environment budget", PlanetTrianglePoolRegistry.Environment.TotalTriangleBudget.ToString());
-            AppendLine("GridRadius", preview.Recipe.GridRadius.ToString());
-            AppendLine("WorldScale", preview.Recipe.WorldScale.ToString("0.###"));
-            AppendLine("WorldRadius", preview.DerivedWorldRadius.ToString("0.###"));
-            AppendLine("IsoLevel", preview.IsoLevel.ToString("0.###"));
-            AppendLine("Mesh live", preview.HasLiveMesh ? "yes" : "no");
-            builder.AppendLine();
-            AppendLine("Before owned GPU bytes", before.ownedGpuEstimatedBytes.ToString());
-            AppendLine("After owned GPU bytes", after.ownedGpuEstimatedBytes.ToString());
-            AppendLine("GPU delta bytes", comparison.ownedGpuDeltaBytes.ToString());
-            AppendLine("After GPU soft budget", FormatBudgetPercent(after.ownedGpuEstimatedBytes, budget.OwnedGpuSoftBytes));
-            AppendLine("After GPU hard budget", FormatBudgetPercent(after.ownedGpuEstimatedBytes, budget.OwnedGpuHardBytes));
-            AppendLine("After combined soft budget", FormatBudgetPercent(after.ownedCombinedEstimatedBytes, budget.OwnedCombinedSoftBytes));
-            AppendLine("After combined hard budget", FormatBudgetPercent(after.ownedCombinedEstimatedBytes, budget.OwnedCombinedHardBytes));
-            AppendLine("After runtime meshes", after.liveRuntimeMeshes.ToString());
-            AppendLine("After live resources", after.liveResourceCount.ToString());
-            AppendLine("Largest resource", string.IsNullOrEmpty(after.largestSingleResourceName) ? "-" : after.largestSingleResourceName);
-            AppendLine("Largest resource bytes", after.largestSingleResourceBytes.ToString());
-            builder.AppendLine();
-            builder.AppendLine("Last Diagnostic");
-            builder.AppendLine(string.IsNullOrWhiteSpace(preview.LastDiagnostic) ? "-" : preview.LastDiagnostic);
-            if (!string.IsNullOrWhiteSpace(lastPanelDiagnostic))
-            {
-                builder.AppendLine();
-                builder.AppendLine("Canvas Generate");
-                builder.AppendLine(lastPanelDiagnostic);
-            }
-
-            AppendMarchingCubesState();
-
-            diagnosticsText.text = builder.ToString();
-        }
-
-        public void ApplyPayload126k()
-        {
-            if (preview == null)
-            {
-                return;
-            }
-
-            preview.ApplyPayload126k();
-            ApplyEnvironmentTriangleBudget(126000);
-            Refresh();
-        }
-
-        public void ApplyPayload250k()
-        {
-            if (preview == null)
-            {
-                return;
-            }
-
-            preview.ApplyPayload250k();
-            ApplyEnvironmentTriangleBudget(250000);
-            Refresh();
-        }
-
-        public void ApplyPayload500k()
-        {
-            if (preview == null)
-            {
-                return;
-            }
-
-            preview.ApplyPayload500k();
-            ApplyEnvironmentTriangleBudget(500000);
-            Refresh();
-        }
-
-        public void ApplyPayload1M()
-        {
-            if (preview == null)
-            {
-                return;
-            }
-
-            preview.ApplyPayload1M();
-            ApplyEnvironmentTriangleBudget(1000000);
-            Refresh();
-        }
-
-        public void ApplyPayload2M()
-        {
-            if (preview == null)
-            {
-                return;
-            }
-
-            preview.ApplyPayload2M();
-            ApplyEnvironmentTriangleBudget(2000000);
-            Refresh();
-        }
-
-        public void ApplyPayload5M()
-        {
-            if (preview == null)
-            {
-                return;
-            }
-
-            preview.ApplyPayload5M();
-            ApplyEnvironmentTriangleBudget(5000000);
-            Refresh();
-        }
-
-        public void CaptureBeforeSnapshot()
-        {
-            if (preview == null)
-            {
-                return;
-            }
-
-            preview.CaptureBeforeSnapshot();
-            Refresh();
-        }
-
-        public void CaptureAfterSnapshot()
-        {
-            if (preview == null)
-            {
-                return;
-            }
-
-            preview.CaptureAfterSnapshot();
-            Refresh();
         }
 
         public void Generate()
@@ -262,8 +92,30 @@ namespace MarchingCubesPlanet.Preview
 
                 lastPanelDiagnostic = "Generate failed: " + exception.GetType().Name + ": " + exception.Message;
             }
+        }
 
-            Refresh();
+        public void GenerateRandomSeed()
+        {
+            if (preview == null)
+            {
+                return;
+            }
+
+            try
+            {
+                preview.GenerateRandomSeed();
+                PlanetRecipePayloadPreviewGenerationFlow flow = ResolveGenerationFlow();
+                lastPanelDiagnostic = flow.LastDiagnostic;
+            }
+            catch (Exception exception)
+            {
+                if (generationFlow != null)
+                {
+                    generationFlow.Release();
+                }
+
+                lastPanelDiagnostic = "Generate random seed failed: " + exception.GetType().Name + ": " + exception.Message;
+            }
         }
 
         public void Release()
@@ -274,16 +126,11 @@ namespace MarchingCubesPlanet.Preview
             }
 
             preview.Release();
-            Refresh();
+            lastPanelDiagnostic = preview.LastDiagnostic;
         }
 
         private Vector3 ResolvePriorityOriginWorld()
         {
-            if (PlanetTrianglePoolRegistry.HasPlayerViewData)
-            {
-                return PlanetTrianglePoolRegistry.PlayerPositionWorld;
-            }
-
             PlanetMinimalXrRig rig = FindFirstObjectByType<PlanetMinimalXrRig>();
             if (rig != null && rig.Head != null)
             {
@@ -319,85 +166,43 @@ namespace MarchingCubesPlanet.Preview
         private void RegisterButtonCallbacks()
         {
             RemoveButtonCallbacks();
-
-            AddListener(applyPayload126kButton, ApplyPayload126k);
-            AddListener(applyPayload250kButton, ApplyPayload250k);
-            AddListener(applyPayload500kButton, ApplyPayload500k);
-            AddListener(applyPayload1MButton, ApplyPayload1M);
-            AddListener(applyPayload2MButton, ApplyPayload2M);
-            AddListener(applyPayload5MButton, ApplyPayload5M);
-            AddListener(beforeSnapshotButton, CaptureBeforeSnapshot);
-            AddListener(afterSnapshotButton, CaptureAfterSnapshot);
             AddListener(generateButton, Generate);
+            AddListener(generateRandomSeedButton, GenerateRandomSeed);
             AddListener(releaseButton, Release);
         }
 
         private void RemoveButtonCallbacks()
         {
-            RemoveListener(applyPayload126kButton, ApplyPayload126k);
-            RemoveListener(applyPayload250kButton, ApplyPayload250k);
-            RemoveListener(applyPayload500kButton, ApplyPayload500k);
-            RemoveListener(applyPayload1MButton, ApplyPayload1M);
-            RemoveListener(applyPayload2MButton, ApplyPayload2M);
-            RemoveListener(applyPayload5MButton, ApplyPayload5M);
-            RemoveListener(beforeSnapshotButton, CaptureBeforeSnapshot);
-            RemoveListener(afterSnapshotButton, CaptureAfterSnapshot);
             RemoveListener(generateButton, Generate);
+            RemoveListener(generateRandomSeedButton, GenerateRandomSeed);
             RemoveListener(releaseButton, Release);
         }
 
         private void BuildControlsCanvas(Transform parent, Vector3 localPosition)
         {
-            Canvas canvas = CreateCanvas("PlanetPayloadControlsCanvas", parent, localPosition, new Vector2(560f, 430f));
+            Canvas canvas = CreateCanvas("PlanetPayloadControlsCanvas", parent, localPosition, new Vector2(360f, 190f));
             GameObject panel = CreatePanel("PayloadControlsPanel", canvas.transform, new Color(0.035f, 0.038f, 0.04f, 0.92f));
             VerticalLayoutGroup layout = panel.AddComponent<VerticalLayoutGroup>();
-            layout.padding = new RectOffset(12, 12, 10, 10);
-            layout.spacing = 7f;
+            layout.padding = new RectOffset(12, 12, 12, 12);
+            layout.spacing = 10f;
             layout.childForceExpandWidth = true;
             layout.childForceExpandHeight = false;
             layout.childControlWidth = true;
             layout.childControlHeight = true;
 
-            CreateSectionTitle(panel.transform, "Payload Presets");
-            CreateButtonRow(panel.transform,
-                out applyPayload126kButton, "Apply Payload 126k",
-                out applyPayload250kButton, "Apply Payload 250k");
-            CreateButtonRow(panel.transform,
-                out applyPayload500kButton, "Apply Payload 500k",
-                out applyPayload1MButton, "Apply Payload 1M");
-            CreateButtonRow(panel.transform,
-                out applyPayload2MButton, "Apply Payload 2M",
-                out applyPayload5MButton, "Apply Payload 5M");
-
-            CreateSpacer(panel.transform, 8f);
-            CreateSectionTitle(panel.transform, "Memory Snapshot");
-            CreateLabelRow(panel.transform, "Registry found", out registryFoundText);
-            CreateButtonRow(panel.transform,
-                out beforeSnapshotButton, "Before Snapshot",
-                out afterSnapshotButton, "After Snapshot");
-
-            CreateSpacer(panel.transform, 8f);
-            CreateSectionTitle(panel.transform, "Commands");
-            generateButton = CreateButton(panel.transform, "Generate", 34f);
-            releaseButton = CreateButton(panel.transform, "Release", 34f);
+            generateButton = CreateButton(panel.transform, "Generate", 42f);
+            generateRandomSeedButton = CreateButton(panel.transform, "Generate Random Seed", 42f);
+            releaseButton = CreateButton(panel.transform, "Realese", 42f);
         }
 
-        private void BuildDiagnosticsCanvas(Transform parent, Vector3 localPosition)
+        private void EnsureControlsCanvas()
         {
-            Canvas canvas = CreateCanvas("PlanetPayloadDiagnosticsCanvas", parent, localPosition, new Vector2(680f, 520f));
-            GameObject panel = CreatePanel("PayloadDiagnosticsPanel", canvas.transform, new Color(0.035f, 0.038f, 0.04f, 0.92f));
-            VerticalLayoutGroup layout = panel.AddComponent<VerticalLayoutGroup>();
-            layout.padding = new RectOffset(12, 12, 10, 10);
-            layout.spacing = 6f;
-            layout.childForceExpandWidth = true;
-            layout.childForceExpandHeight = true;
-            layout.childControlWidth = true;
-            layout.childControlHeight = true;
+            if (generateButton != null && generateRandomSeedButton != null && releaseButton != null)
+            {
+                return;
+            }
 
-            CreateSectionTitle(panel.transform, "Payload Diagnostics");
-            diagnosticsText = CreateText(panel.transform, "DiagnosticsText", string.Empty, 16, TextAnchor.UpperLeft, Color.white);
-            LayoutElement layoutElement = diagnosticsText.gameObject.AddComponent<LayoutElement>();
-            layoutElement.flexibleHeight = 1f;
+            BuildControlsCanvas(transform, new Vector3(-0.78f, 0f, 0f));
         }
 
         private static Transform ResolveAnchor()
@@ -414,7 +219,7 @@ namespace MarchingCubesPlanet.Preview
                 return mainCamera.transform;
             }
 
-            GameObject fallback = new GameObject("PlanetPayloadDeadlineVRFallbackAnchor");
+            GameObject fallback = new GameObject("PlanetPayloadControlsFallbackAnchor");
             fallback.transform.SetPositionAndRotation(new Vector3(0f, 1.65f, 0f), Quaternion.identity);
             return fallback.transform;
         }
@@ -450,49 +255,6 @@ namespace MarchingCubesPlanet.Preview
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
             return panel;
-        }
-
-        private static void CreateSectionTitle(Transform parent, string text)
-        {
-            Text title = CreateText(parent, text + "Title", text, 18, TextAnchor.MiddleLeft, new Color(0.82f, 0.84f, 0.86f, 1f));
-            title.fontStyle = FontStyle.Bold;
-            LayoutElement layoutElement = title.gameObject.AddComponent<LayoutElement>();
-            layoutElement.preferredHeight = 24f;
-        }
-
-        private static void CreateButtonRow(
-            Transform parent,
-            out Button leftButton,
-            string leftText,
-            out Button rightButton,
-            string rightText)
-        {
-            GameObject row = CreateRow(parent, "ButtonRow", 34f);
-            leftButton = CreateButton(row.transform, leftText, 30f);
-            rightButton = CreateButton(row.transform, rightText, 30f);
-        }
-
-        private static void CreateLabelRow(Transform parent, string label, out Text valueText)
-        {
-            GameObject row = CreateRow(parent, label + "Row", 28f);
-            CreateText(row.transform, label, label, 16, TextAnchor.MiddleLeft, new Color(0.72f, 0.74f, 0.76f, 1f));
-            valueText = CreateText(row.transform, label + "Value", "-", 16, TextAnchor.MiddleLeft, Color.white);
-        }
-
-        private static GameObject CreateRow(Transform parent, string name, float height)
-        {
-            GameObject row = new GameObject(name);
-            row.transform.SetParent(parent, false);
-            HorizontalLayoutGroup layout = row.AddComponent<HorizontalLayoutGroup>();
-            layout.spacing = 8f;
-            layout.childForceExpandWidth = true;
-            layout.childForceExpandHeight = true;
-            layout.childControlWidth = true;
-            layout.childControlHeight = true;
-
-            LayoutElement layoutElement = row.AddComponent<LayoutElement>();
-            layoutElement.preferredHeight = height;
-            return row;
         }
 
         private static Button CreateButton(Transform parent, string text, float height)
@@ -536,103 +298,6 @@ namespace MarchingCubesPlanet.Preview
             return label;
         }
 
-        private static void CreateSpacer(Transform parent, float height)
-        {
-            GameObject spacer = new GameObject("Spacer");
-            spacer.transform.SetParent(parent, false);
-            LayoutElement layoutElement = spacer.AddComponent<LayoutElement>();
-            layoutElement.preferredHeight = height;
-        }
-
-        private void AppendLine(string label, string value)
-        {
-            builder.Append(label);
-            builder.Append(": ");
-            builder.AppendLine(value);
-        }
-
-        private void AppendMarchingCubesState()
-        {
-            PlanetMarchingCubesLab marchingCubesLab = FindFirstObjectByType<PlanetMarchingCubesLab>();
-            PlanetMarchingCubesPaintLab paintLab = FindFirstObjectByType<PlanetMarchingCubesPaintLab>();
-            PlanetRecipePayloadPreviewGenerationFlow flow = generationFlow != null
-                ? generationFlow
-                : FindFirstObjectByType<PlanetRecipePayloadPreviewGenerationFlow>();
-            if (flow != null)
-            {
-                generationFlow = flow;
-            }
-
-            if (marchingCubesLab == null && paintLab == null && flow == null)
-            {
-                return;
-            }
-
-            builder.AppendLine();
-            builder.AppendLine("Marching Cubes 06-08");
-            if (marchingCubesLab != null)
-            {
-                AppendLine("MC candidate chunks", marchingCubesLab.LastCandidateChunkCount.ToString());
-                AppendLine("MC processed chunks", marchingCubesLab.LastProcessedChunkCount.ToString());
-                AppendLine("MC processed cells", marchingCubesLab.LastProcessedCellCount.ToString());
-                AppendLine("MC tris attempted", marchingCubesLab.LastTriangleCountAttempted.ToString());
-                AppendLine("MC tris written", marchingCubesLab.LastTriangleCountWritten.ToString());
-                AppendLine("MC overflow", marchingCubesLab.LastOverflow ? "yes" : "no");
-                AppendLine("MC extracted chunk", marchingCubesLab.LastExtractedCandidateChunkIndex.ToString());
-            }
-
-            if (paintLab != null)
-            {
-                AppendLine("Painted chunks", paintLab.LastPaintedChunkCount.ToString());
-                AppendLine("Cache payload mode", paintLab.LastChunkCachePayloadMode.ToString());
-                AppendLine("Cache loaded chunks", paintLab.LastChunkCacheLoadedChunkCount.ToString());
-                AppendLine("Cache mesh-only loads", paintLab.LastChunkCacheMeshOnlyLoadCount.ToString());
-                AppendLine("Cache chunk-data loads", paintLab.LastChunkCacheChunkDataLoadCount.ToString());
-                AppendLine("Chunk work mode", paintLab.LastChunkWorkPackageMode.ToString());
-                AppendLine("Chunk work packages", paintLab.LastChunkWorkPackageCount.ToString());
-                AppendLine("Chunk package size", paintLab.LastChunkWorkPackageSize.ToString());
-                AppendLine("Painted tris", paintLab.LastPaintedTriangleCount.ToString());
-                AppendLine("Painted vertices", paintLab.LastPaintedVertexCount.ToString());
-                AppendLine("Painted water tris", paintLab.LastWaterTriangleCount.ToString());
-                AppendLine("Painted water vertices", paintLab.LastWaterVertexCount.ToString());
-                AppendLine("Paint mesh live", paintLab.HasLiveMesh ? "yes" : "no");
-            }
-
-            if (flow != null)
-            {
-                AppendLine("Desired LOD0 chunks", flow.LastDesiredLod0ChunkCount.ToString());
-                AppendLine("Desired LOD1 chunks", flow.LastDesiredLod1ChunkCount.ToString());
-                AppendLine("Desired LOD2 chunks", flow.LastDesiredLod2ChunkCount.ToString());
-                AppendLine("Runtime LOD chunks", flow.RuntimeChunkLodCount.ToString());
-                AppendLine("Runtime LOD updates", flow.LastRuntimeLodUpdateCount.ToString());
-                AppendLine("Runtime LOD changed", flow.LastRuntimeLodChangedChunkCount.ToString());
-                AppendLine("Runtime LOD view version", flow.LastRuntimeLodViewVersion.ToString());
-                AppendLine("Runtime LOD queued", flow.LastRuntimeLodQueuedRequestCount.ToString());
-                AppendLine("Runtime LOD cancelled", flow.LastRuntimeLodCancelledRequestCount.ToString());
-                AppendLine("Runtime LOD processed", flow.LastRuntimeLodProcessedRequestCount.ToString());
-                AppendLine("Runtime LOD pending", flow.RuntimeLodPendingRequestCount.ToString());
-            }
-
-            PlanetTrianglePoolMetrics environmentMetrics = PlanetTrianglePoolRegistry.Environment.Metrics;
-            builder.AppendLine();
-            builder.AppendLine("Triangle Pool 09 Environment");
-            AppendLine("09 budget", environmentMetrics.totalTriangleBudget.ToString());
-            AppendLine("09 used", environmentMetrics.usedTriangleSlots.ToString());
-            AppendLine("09 free", environmentMetrics.freeTriangleSlots.ToString());
-            AppendLine("09 requested", environmentMetrics.requestedTriangleCount.ToString());
-            AppendLine("09 granted", environmentMetrics.grantedTriangleCount.ToString());
-            AppendLine("09 denied", environmentMetrics.deniedTriangleCount.ToString());
-            AppendLine("09 reclaimed", environmentMetrics.reclaimedTriangleCount.ToString());
-            AppendLine("09 worst bucket", environmentMetrics.worstResidentBucket.ToString());
-            AppendLine("09 player view", PlanetTrianglePoolRegistry.HasPlayerViewData ? "player/camera data" : "fallback world position");
-            AppendLine("09 diagnostic", string.IsNullOrWhiteSpace(environmentMetrics.lastDiagnostic) ? "-" : environmentMetrics.lastDiagnostic);
-        }
-
-        private static void ApplyEnvironmentTriangleBudget(int triangleBudget)
-        {
-            PlanetTrianglePoolRegistry.SetEnvironmentTriangleBudget(Mathf.Max(1, triangleBudget));
-        }
-
         private static void AddListener(Button button, UnityEngine.Events.UnityAction action)
         {
             if (button != null)
@@ -647,19 +312,6 @@ namespace MarchingCubesPlanet.Preview
             {
                 button.onClick.RemoveListener(action);
             }
-        }
-
-        private static string FormatBudgetPercent(long bytes, long budgetBytes)
-        {
-            if (budgetBytes <= 0)
-            {
-                return "unavailable";
-            }
-
-            double percent = bytes * 100.0 / budgetBytes;
-            double mib = bytes / (1024.0 * 1024.0);
-            double budgetMib = budgetBytes / (1024.0 * 1024.0);
-            return percent.ToString("0.0") + "% (" + mib.ToString("0.00") + " / " + budgetMib.ToString("0.00") + " MiB)";
         }
     }
 }
