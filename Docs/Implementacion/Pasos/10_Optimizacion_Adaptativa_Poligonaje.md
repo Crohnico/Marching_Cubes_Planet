@@ -383,7 +383,7 @@ Tiene referencia al player.
 Evalua un activationRange simple.
 Carga Shell LOD2 al arrancar, despues de `WaitForEndOfFrame` para que la escena,
 componentes Unity y primer ciclo de render esten asentados.
-Al entrar en rango, carga Base LOD2 usando la cola de chunks.
+Al entrar en rango, carga Base LOD0 usando la cola de chunks confirmados.
 Mientras Base carga, la Shell permanece visible.
 Al completar Base, libera la Shell y marca el planeta como setup.
 Al salir de rango, vuelve a cargar Shell LOD2 y libera Base.
@@ -398,157 +398,43 @@ recalcula el planeta: `PlanetDirector` sincroniza el placement y
 `PlanetGpuMarchingCubesSurface` actualiza solo matriz de material y bounds.
 
 `CalculateLODFromPlayerPosition` existe como punto de entrada futuro, pero queda
-TBD hasta cerrar la politica de LOD dinamico.
+TBD hasta cerrar una politica de LOD dinamico que sustituya memoria visible de
+verdad en vez de acumular buffers.
 
-## ChunkLODGestor y LODGestor inicial
+## LOD dinamico visual aparcado
 
-Durante `LoadBase`, `PlanetDirector` prepara una representacion fisica ligera de
-los chunks confirmados por `PlanetGrid`.
+La ruta `ChunkLODGestor` + `LODGestor` queda retirada de runtime.
 
-Contrato inicial:
-
-```text
-PlanetGrid sigue siendo un mapa PlanetGridCoordinates -> uint.
-Al empezar Base, PlanetDirector saca una snapshot de celdas con informacion.
-Al empezar Base, despues de la snapshot, PlanetDirector crea de golpe todos los
-GameObject ligeros de esos chunks.
-Cada GameObject lleva ChunkLODGestor.
-ChunkLODGestor guarda UID, coordenadas de chunk, currentLOD, desireLOD y currentQueuedLOD.
-Todos arrancan con hasMesh = 1 y current/desire LOD2 como estado objetivo de Base.
-PlanetDirector no entrega la lista a LODGestor hasta que Base ha terminado.
-Al salir del area activa, PlanetDirector destruye esos GameObjects y limpia la lista.
-Los GameObjects ligeros de chunk se ocultan del Hierarchy del editor para evitar
-coste y errores de repaint durante pruebas con cientos de chunks. `LODGestor`
-sigue siendo el manager visible de escena.
-```
-
-`LODGestor` vive como manager de escena. Recibe la lista activa desde
-`PlanetDirector` y consulta cada `checkIntervalSeconds` el LOD deseado usando las
-distancias de `DefaultChunkLodActivationProfile`.
-
-Primera implementacion barata:
+Estado vigente:
 
 ```text
-No hay mapa espacial todavia.
-La consulta recorre la lista activa en intervalos configurables.
-Usa distancia cuadrada contra transform.position de cada chunk.
-No usa sqrt en el tick normal.
-Aplica hysteresis usando el tamano de chunk base.
+No se instancian GameObjects fisicos por chunk para decidir LOD.
+No existe manager LODGestor en escena.
+No existe cola EnqueueLODChunk/CancelQueuedLODChunk por UID.
+Shell sigue siendo el fallback LOD2.
+Base carga todos los chunks confirmados por PlanetGrid en LOD0.
+Base usa una concatenacion simple de chunks y deja un frame entre chunks.
 ```
 
-La cola de cambios de LOD vive en `PlanetDirector`:
+Motivo:
 
 ```text
-EnqueueLODChunk(uid, lod, onComplete)
-CancelQueuedLODChunk(uid)
+El LOD dinamico anterior no reducia memoria visible de forma clara: acumulaba
+estado y mezclaba escalas dentro del slot GPU agregado.
+La siguiente direccion valida debe trabajar con visibilidad, oclusion o ventanas
+activas de LOD0 que sustituyan contenido, no con LODs acumulativos.
 ```
 
-La cola resuelve primero los LOD mas bajos:
-
-```text
-Prioridad 1 -> LOD0.
-Prioridad 2 -> LOD1.
-Prioridad 3 -> LOD2.
-```
-
-Si un chunk pide otro LOD mientras ya tiene una peticion pendiente, cancela la
-peticion anterior por UID antes de encolar la nueva.
-
-TBD:
-
-```text
-La ruta visual GPU actual sigue usando slot agregado.
-La sustitucion real por UID dentro del buffer visible queda pendiente.
-Esta fase crea la identidad fisica/logica y la cola priorizada.
-```
-
-Con esa puntuacion, cada chunk recibira un LOD deseado:
-
-```text
-LOD0 -> chunk de maxima prioridad.
-LOD1 -> chunk de prioridad media.
-LOD2 -> chunk de baja prioridad o fallback lejano.
-```
-
-Decision de resolucion:
-
-```text
-LOD1 es la resolucion base de autoria.
-LOD0 duplica la resolucion de LOD1.
-LOD2 usa la mitad de resolucion de LOD1.
-```
-
-Thresholds iniciales por distancia:
-
-```text
-LOD0 -> hasta 3 chunks de distancia.
-LOD1 -> hasta 6 chunks de distancia.
-LOD2 -> el resto del planeta.
-```
-
-Hysteresis inicial:
-
-```text
-LOD0 entra hasta 3 chunks de distancia y sale al pasar de 4.
-LOD1 entra hasta 6 chunks de distancia y sale al pasar de 7.
-LOD2 cubre el resto.
-```
-
-Lectura:
-
-```text
-Entrar y salir de un LOD no usa exactamente la misma frontera.
-Esto evita que un chunk cambie constantemente de LOD cuando el jugador esta justo en el limite.
-```
-
-Lectura:
-
-```text
-La puntuacion sigue ordenando prioridad dentro de cada zona.
-La distancia define el LOD base.
-La mirada puede subir prioridad de carga/publicacion, pero no abre mas LODs en esta primera regla.
-```
-
-Lectura inicial:
-
-```text
-Los chunks cercanos al jugador tienden a LOD0.
-Los chunks que estan en la direccion de mirada suben prioridad.
-Los chunks cercanos pero fuera de camara pueden bajar a LOD1 si hace falta.
-Los chunks lejanos o poco relevantes tienden a LOD2.
-```
-
-Regla:
-
-```text
-10 decide el LOD deseado por chunk antes de cargar o generar su mesh.
-```
-
-### Desired LOD runtime burro
-
-Primera fase runtime sin paquetes ni Transvoxel:
-
-```text
-1. Generate inicializa la tabla de chunks antes de pintar.
-2. Cada chunk arranca con currentLOD = -1.
-3. Cada chunk arranca con desiredLOD = LOD2.
-4. Como currentLOD != desiredLOD, 10 resuelve cada chunk inicial como cambio a LOD2.
-5. 10 registra los chunks visibles actuales y su centro en mundo.
-6. En runtime, 10 recalcula desiredLOD cuando cambia la posicion/mirada del jugador.
-7. 10 mantiene la tabla chunkId -> currentLOD + desiredLOD.
-8. 10 mantiene esa tabla como estado logico propio.
-9. 10 solo publica, sustituye o libera meshes concretas cuando hay un cambio de chunk/LOD.
-```
-
-Esta fase permite validar que 10 decide LOD en movimiento y que el primer pintado
-del planeta usa el mismo camino que un cambio posterior de LOD.
+La puntuacion por cercania/mirada y los thresholds de LOD quedan como material de
+diseno pendiente, no como contrato implementado.
 
 ### Cambio de LOD deseado
 
-Si un chunk ya estaba visible con un LOD y mas tarde pasa a necesitar otro LOD,
-10 no recalcula el planeta completo.
+Estado: aparcado.
 
-Solo resuelve ese chunk con el nuevo LOD deseado.
+Si un chunk ya estaba visible con un LOD y mas tarde pasa a necesitar otro LOD,
+la solucion futura debe sustituir ese contenido sin acumular memoria visible
+equivalente al planeta completo en varios LODs.
 
 Regla critica:
 
@@ -970,16 +856,10 @@ El agua runtime vigente es un unico batch GPU/procedural global a nivel del mar.
 10 tendra cache en disco.
 El ID de cache depende de seed + recipe.
 Si el ID de cache no coincide, se invalida la cache anterior.
-10 puntua chunks segun cercania al jugador y direccion de mirada de la camara.
-La formula inicial de puntuacion sera 70% cercania y 30% mirada.
-Los thresholds iniciales seran LOD0 hasta 3 chunks, LOD1 hasta 6 chunks y LOD2 para el resto del planeta.
-La hysteresis inicial sera LOD0 sale al pasar de 4 chunks y LOD1 sale al pasar de 7 chunks.
-10 asigna LOD0, LOD1 o LOD2 a cada chunk en funcion de esa puntuacion.
-10 recalcula desiredLOD en runtime para los chunks visibles actuales.
-10 mantiene currentLOD y desiredLOD dentro de 10.
-Cuando currentLOD != desiredLOD, 10 resuelve ese chunk y sustituye la mesh por meshId.
-LOD2 se usa como fallback barato inicial.
-LOD2 fallback se prioriza como primer desiredLOD de todos los chunks, con currentLOD inicial -1.
+Shell LOD2 se usa como fallback barato inicial y exterior.
+Base runtime vigente carga los chunks confirmados por PlanetGrid en LOD0.
+El LOD dinamico visual por UID esta aparcado hasta definir una solucion que reduzca memoria real.
+La puntuacion por cercania/mirada queda pendiente de redefinir para visibilidad, oclusion o ventana activa.
 Generar o cambiar un chunk solo calcula ese chunk y su halo minimo, nunca el planeta entero.
 La primera ruta guarda mesh y chunk_data por chunkId/LOD.
 10 solo trabaja sobre chunks visibles o candidatos visibles.

@@ -13,8 +13,8 @@ procedural indirecto.
 07 calcula/extraccion GPU -> 10 publica/dibuja buffer GPU-resident
 ```
 
-10 sigue decidiendo `desiredLOD`, `requestedLOD`, prioridad, cancelacion y
-publicacion visible.
+La ruta vigente no usa `desiredLOD` runtime ni cola por UID. Shell se mantiene
+en LOD2 y Base carga el conjunto confirmado por `PlanetGrid` en LOD0.
 
 La ruta `Mesh` runtime queda como legacy/diagnostico y como posible base futura
 para colision/physics si se necesita una representacion CPU separada. No es la
@@ -197,7 +197,7 @@ Shell -> un slot GPU visible.
 Chunk -> un slot GPU agregado para todos los chunks generados en la secuencia.
 Base  -> una cola que carga todos los chunks confirmados en el slot agregado.
 Runtime LOD inicial -> cola por UID que pide chunks por prioridad, todavia sobre
-el slot agregado.
+el slot agregado. Esta ruta queda aparcada y no forma parte del runtime vigente.
 ```
 
 Motivo:
@@ -222,7 +222,8 @@ No usar readback de vertices, state o counts en la ruta visual caliente.
 Si se necesita saber si un chunk esta vacio en CPU, eso pertenece a diagnostico,
 streaming o fisica, no al render visual GPU-only.
 La sustitucion fina por UID dentro del buffer GPU visible queda como paso
-pendiente; la primera cola runtime valida identidad, prioridad y cancelacion.
+pendiente. No hay cola runtime LOD vigente hasta definir una solucion que
+reduzca memoria real en vez de acumular contenido.
 ```
 
 ## Estrategias aceptadas
