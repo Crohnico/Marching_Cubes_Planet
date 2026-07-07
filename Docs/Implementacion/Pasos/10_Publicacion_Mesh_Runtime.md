@@ -261,6 +261,14 @@ Transvoxel queda como la capa posterior si esta ruta demuestra reduccion real
 de buffer y coste de carga.
 ```
 
+Referencia Transvoxel:
+
+```text
+Las tablas oficiales de Eric Lengyel se guardan en ThirdParty/Transvoxel.
+Quedan como referencia MIT para implementar transition cells mas adelante.
+No forman parte todavia del runtime ni del build caliente.
+```
+
 Agua visual temporal:
 
 ```text
