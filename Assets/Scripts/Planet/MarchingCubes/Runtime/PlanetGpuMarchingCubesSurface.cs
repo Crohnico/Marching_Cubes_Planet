@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using MarchingCubesPlanet.Compute;
 using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.Shape;
@@ -77,10 +78,19 @@ namespace MarchingCubesPlanet.MarchingCubes
         private PlanetGridCoordinates[] candidateCoordinates = Array.Empty<PlanetGridCoordinates>();
         private readonly PlanetMarchingCubesChunkOrigin[] singleChunkOrigins = new PlanetMarchingCubesChunkOrigin[1];
         private readonly GpuSurfaceSlot shellSlot = new GpuSurfaceSlot("Shell");
-        private readonly GpuSurfaceSlot chunkAggregateSlot = new GpuSurfaceSlot("Chunks");
+        private readonly GpuSurfaceSlot[] chunkAggregateSlots =
+        {
+            new GpuSurfaceSlot("Chunks A"),
+            new GpuSurfaceSlot("Chunks B")
+        };
+        private int visibleChunkAggregateSlotIndex;
+        private int buildChunkAggregateSlotIndex;
         private bool chunkAggregateOpen;
 
         public int CandidateChunkCount => candidateCoordinates.Length;
+
+        private GpuSurfaceSlot VisibleChunkAggregateSlot => chunkAggregateSlots[visibleChunkAggregateSlotIndex];
+        private GpuSurfaceSlot BuildChunkAggregateSlot => chunkAggregateSlots[buildChunkAggregateSlotIndex];
 
         private void Update()
         {
@@ -121,18 +131,49 @@ namespace MarchingCubesPlanet.MarchingCubes
         {
             bool materialUpdated = false;
             ApplySlotPlacement(shellSlot, in placement, ref materialUpdated);
-            ApplySlotPlacement(chunkAggregateSlot, in placement, ref materialUpdated);
+            for (int i = 0; i < chunkAggregateSlots.Length; i++)
+            {
+                ApplySlotPlacement(chunkAggregateSlots[i], in placement, ref materialUpdated);
+            }
         }
 
-        public void BeginChunkSequence(bool keepShellVisible = false)
+        public void BeginChunkSequence(bool keepShellVisible = false, bool keepCurrentChunksVisible = false)
         {
             if (!keepShellVisible)
             {
                 shellSlot.Release();
             }
 
-            chunkAggregateSlot.Release();
+            if (keepCurrentChunksVisible && VisibleChunkAggregateSlot.hasDrawable)
+            {
+                buildChunkAggregateSlotIndex = 1 - visibleChunkAggregateSlotIndex;
+                BuildChunkAggregateSlot.Release();
+            }
+            else
+            {
+                visibleChunkAggregateSlotIndex = 0;
+                buildChunkAggregateSlotIndex = 0;
+                ReleaseChunkAggregateSlots();
+            }
+
             chunkAggregateOpen = true;
+        }
+
+        public void CompleteChunkSequence()
+        {
+            if (!chunkAggregateOpen)
+            {
+                return;
+            }
+
+            if (buildChunkAggregateSlotIndex != visibleChunkAggregateSlotIndex)
+            {
+                int oldVisibleSlotIndex = visibleChunkAggregateSlotIndex;
+                visibleChunkAggregateSlotIndex = buildChunkAggregateSlotIndex;
+                StartCoroutine(ReleaseChunkAggregateSlotAfterFrame(oldVisibleSlotIndex));
+            }
+
+            chunkAggregateOpen = false;
         }
 
         public void GenerateShell(
@@ -145,7 +186,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             PlanetMarchingCubesSettings settings = PlanetMarchingCubesSettings.Default();
             settings.chunkRange.chunkSize = PlanetChunkLodUtility.GetChunkSizeForLod(lod);
             PrepareCandidateChunks(recipe, lod);
-            chunkAggregateSlot.Release();
+            ReleaseChunkAggregateSlots();
             chunkAggregateOpen = false;
             Generate(
                 in lodRecipe,
@@ -175,7 +216,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             PrepareCandidateChunks(recipe, lod);
             if (!keepChunkAggregateVisible)
             {
-                chunkAggregateSlot.Release();
+                ReleaseChunkAggregateSlots();
             }
 
             chunkAggregateOpen = false;
@@ -217,8 +258,8 @@ namespace MarchingCubesPlanet.MarchingCubes
                 PlanetChunkLodUtility.GetChunkSizeForLod(lod),
                 PlanetMarchingCubesSettings.DefaultOutputVertexCapacity,
                 0,
-                chunkAggregateSlot,
-                !chunkAggregateSlot.hasDrawable,
+                BuildChunkAggregateSlot,
+                !BuildChunkAggregateSlot.hasDrawable,
                 in lodRecipe,
                 1f);
         }
@@ -248,8 +289,8 @@ namespace MarchingCubesPlanet.MarchingCubes
                 PlanetChunkLodUtility.GetChunkSizeForLod(lod),
                 Mathf.Max(1, outputVertexCapacity),
                 0,
-                chunkAggregateSlot,
-                !chunkAggregateSlot.hasDrawable,
+                BuildChunkAggregateSlot,
+                !BuildChunkAggregateSlot.hasDrawable,
                 in recipe,
                 outputGridScale);
         }
@@ -267,7 +308,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
 
             RenderSlot(shellSlot);
-            RenderSlot(chunkAggregateSlot);
+            RenderSlot(VisibleChunkAggregateSlot);
         }
 
         public void ReleaseShell()
@@ -277,8 +318,25 @@ namespace MarchingCubesPlanet.MarchingCubes
 
         public void ReleaseChunkAggregate()
         {
-            chunkAggregateSlot.Release();
+            ReleaseChunkAggregateSlots();
             chunkAggregateOpen = false;
+        }
+
+        private void ReleaseChunkAggregateSlots()
+        {
+            for (int i = 0; i < chunkAggregateSlots.Length; i++)
+            {
+                chunkAggregateSlots[i].Release();
+            }
+        }
+
+        private IEnumerator ReleaseChunkAggregateSlotAfterFrame(int slotIndex)
+        {
+            yield return new WaitForEndOfFrame();
+            if (slotIndex != visibleChunkAggregateSlotIndex)
+            {
+                chunkAggregateSlots[slotIndex].Release();
+            }
         }
 
         public void Release()
@@ -289,7 +347,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             ReleaseBuffer(ref stateBuffer);
             ReleaseBuffer(ref chunkOriginBuffer);
             shellSlot.Release();
-            chunkAggregateSlot.Release();
+            ReleaseChunkAggregateSlots();
             chunkAggregateOpen = false;
             DestroyUnityObject(runtimeMaterial);
             DestroyUnityObject(runtimeSurfaceAtlas);

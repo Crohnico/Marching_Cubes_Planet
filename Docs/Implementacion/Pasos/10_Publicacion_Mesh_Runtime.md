@@ -15,7 +15,8 @@ procedural indirecto.
 
 La ruta vigente no usa `desiredLOD` runtime ni cola por UID. Shell se mantiene
 en LOD2. Base usa una ventana octree inicial: ordena chunks confirmados por
-distancia al foco del player y mezcla LOD0/LOD1/LOD2 dentro del mismo slot GPU.
+distancia al foco del player y mezcla LOD0/LOD1/LOD2 dentro de una unica Base
+visible.
 
 La ruta `Mesh` runtime queda como legacy/diagnostico y como posible base futura
 para colision/physics si se necesita una representacion CPU separada. No es la
@@ -165,13 +166,13 @@ chunk origins, vertices, state, indirect args, edge table, tri table y shape
 evaluator. Se machacan los datos sobre los mismos recursos y solo se recrean si
 la nueva capacidad no cabe.
 En modo Chunk del panel, las coordenadas confirmadas por `PlanetGrid` se agregan
-en un unico slot visible GPU de chunks. No se reserva un buffer LOD0 por chunk:
+en una unica Base visible GPU de chunks. No se reserva un buffer LOD0 por chunk:
 el buffer agregado usa la misma escala de capacidad que la shell para que el modo
 chunks no consuma mas memoria que generar la shell equivalente.
 En modo Base del panel, las coordenadas confirmadas por `PlanetGrid` se agregan
-en el mismo slot visible GPU agregado de chunks, pero recorriendo todos los
+en la misma Base visible GPU agregada de chunks, pero recorriendo todos los
 chunks confirmados. No crea un buffer por chunk.
-En modo Base runtime, el slot agregado puede usar un presupuesto menor que la
+En modo Base runtime, la Base agregada puede usar un presupuesto menor que la
 shell y aceptar solo una ventana de chunks ordenada por foco. Los chunks cercanos
 se generan en LOD0, el anillo medio en LOD1 y los extremos en LOD2.
 GenerateShell conserva temporalmente la capacidad global por defecto de 3M como
@@ -199,11 +200,11 @@ En el panel de preview:
 
 ```text
 Shell -> un slot GPU visible.
-Chunk -> un slot GPU agregado para todos los chunks generados en la secuencia.
-Base  -> una cola que carga todos los chunks confirmados en el slot agregado.
-Base runtime -> ventana octree mixta LOD0/LOD1/LOD2 en el slot agregado.
+Chunk -> una Base GPU agregada para todos los chunks generados en la secuencia.
+Base  -> una cola que carga todos los chunks confirmados en la Base agregada.
+Base runtime -> ventana octree mixta LOD0/LOD1/LOD2 en la Base agregada.
 Runtime LOD inicial -> cola por UID que pide chunks por prioridad, todavia sobre
-el slot agregado. Esta ruta queda aparcada y no forma parte del runtime vigente.
+la Base agregada. Esta ruta queda aparcada y no forma parte del runtime vigente.
 ```
 
 Motivo:
@@ -231,11 +232,22 @@ La ventana activa se recorta por `baseOctreeMaxChunks`.
 LOD0 cubre el radio cercano.
 LOD1 cubre el anillo medio.
 LOD2 cubre los extremos.
+Cuando la Base termina de cargar, el director guarda el foco de esa ventana. Si
+el foco del player se desplaza `baseRebuildDistanceChunks` chunks canonicos
+respecto a ese foco cargado, la Base se recalcula completa para recentrar la
+ventana activa.
+
+La recarga de Base no limpia la Base visible. Se genera en un slot trasero GPU,
+se mantiene la Base anterior dibujandose y, al terminar la cola, se publica el
+nuevo slot y se libera el anterior. El coste de memoria doble solo debe vivir
+durante la recarga.
+La liberacion del slot anterior se retrasa al menos hasta final de frame para no
+invalidar recursos que el render thread pueda seguir consumiendo.
 ```
 
-Para que varios LODs convivan en el mismo slot, `PlanetMarchingCubes.compute`
+Para que varios LODs convivan en la misma Base visible, `PlanetMarchingCubes.compute`
 convierte la posicion generada por cada LOD al grid canonico de la receta base
-antes de escribir el vertice. El draw del slot Base usa la matriz grid->world de
+antes de escribir el vertice. El draw de Base usa la matriz grid->world de
 la receta base, no la del ultimo LOD generado.
 
 Limitacion aceptada:
@@ -251,6 +263,8 @@ Agua visual temporal:
 ```text
 PlanetDirector crea una esfera hija `Ocean` al cargar Shell.
 La esfera usa el material `Resources/PlanetOcean`.
+La esfera no usa la primitive de Unity: se genera una UV sphere runtime con
+96 segmentos horizontales y 48 verticales para evitar faceteado visible.
 El radio visual es recipe.GridRadius * recipe.WorldScale.
 No participa en Marching Cubes, cache, colision ni datos de agua finales.
 Se mantiene como representacion barata para poder visualizar el planeta mientras

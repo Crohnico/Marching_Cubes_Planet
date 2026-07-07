@@ -11,6 +11,8 @@ namespace MarchingCubesPlanet.MarchingCubes
     public sealed class PlanetDirector : MonoBehaviour
     {
         private const string DefaultOceanMaterialResourceName = "PlanetOcean";
+        private const int OceanLongitudeSegments = 96;
+        private const int OceanLatitudeSegments = 48;
 
         [SerializeField] private PlanetRecipe recipe = PlanetRecipe.Default();
         [SerializeField] private PlanetPlacement placement = PlanetPlacement.Default();
@@ -24,12 +26,15 @@ namespace MarchingCubesPlanet.MarchingCubes
         [SerializeField] private int baseOctreeLod1RadiusChunks = 8;
         [SerializeField] private int baseOctreeMaxChunks = 256;
         [SerializeField] private int baseOctreeOutputVertexCapacity = 1500000;
+        [SerializeField] private int baseRebuildDistanceChunks = 2;
 
         [SerializeField] private MeshFilter meshFilter;
         [SerializeField] private MeshRenderer meshRenderer;
         [SerializeField] private PlanetGpuMarchingCubesSurface gpuSurface;
         private GameObject oceanSphere;
+        private MeshFilter oceanFilter;
         private MeshRenderer oceanRenderer;
+        private Mesh oceanMesh;
         private PlanetGrid grid;
         private readonly List<PlanetGridCoordinates> baseChunkCoordinates = new List<PlanetGridCoordinates>(256);
         private int chunkLoadIndex = -1;
@@ -38,6 +43,8 @@ namespace MarchingCubesPlanet.MarchingCubes
         private bool isSetUp;
         private bool isBaseLoading;
         private Vector3 baseFocusGrid;
+        private Vector3 loadedBaseFocusGrid;
+        private bool hasLoadedBaseFocus;
 
         public PlanetGrid Grid => grid;
         public bool IsAlive => isAlive;
@@ -84,40 +91,62 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
 
             bool nextAlive = Vector3.Distance(player.position, transform.position) <= activationRange;
-            if (nextAlive == isAlive)
+            if (nextAlive != isAlive)
             {
-                return;
-            }
-
-            isAlive = nextAlive;
-            if (isAlive && !isSetUp)
-            {
-                LoadBase(baseLod, () =>
+                isAlive = nextAlive;
+                if (isAlive && !isSetUp)
                 {
-                    ReleaseShell();
-                    isSetUp = true;
-                    Debug.Log("BaseLoaded", this);
-                });
-                return;
-            }
-
-            if (!isAlive)
-            {
-                if (isBaseLoading)
-                {
-                    CancelBaseLoad();
-                    ReleaseBase();
+                    LoadBase(baseLod, () =>
+                    {
+                        ReleaseShell();
+                        isSetUp = true;
+                        Debug.Log("BaseLoaded", this);
+                    });
                     return;
                 }
 
-                if (isSetUp)
+                if (!isAlive)
                 {
-                    LoadShell(shellLod, () =>
+                    if (isBaseLoading)
                     {
-                        ReleaseBase();
-                        isSetUp = false;
-                    }, true);
+                        bool wasSetUp = isSetUp;
+                        CancelBaseLoad();
+                        if (wasSetUp)
+                        {
+                            LoadShell(shellLod, () =>
+                            {
+                                ReleaseBase();
+                                isSetUp = false;
+                            }, true);
+                        }
+                        else
+                        {
+                            ReleaseBase();
+                        }
+
+                        return;
+                    }
+
+                    if (isSetUp)
+                    {
+                        LoadShell(shellLod, () =>
+                        {
+                            ReleaseBase();
+                            isSetUp = false;
+                        }, true);
+                    }
                 }
+
+                return;
+            }
+
+            if (isAlive && isSetUp && !isBaseLoading && ShouldRebuildBaseForPlayerMovement())
+            {
+                LoadBase(baseLod, () =>
+                {
+                    isSetUp = true;
+                    Debug.Log("BaseReloaded", this);
+                }, true);
             }
         }
 
@@ -138,7 +167,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             onComplete?.Invoke();
         }
 
-        public void LoadBase(PlanetChunkLod lod, Action onComplete = null)
+        public void LoadBase(PlanetChunkLod lod, Action onComplete = null, bool keepCurrentBaseVisibleUntilComplete = false)
         {
             if (grid == null)
             {
@@ -150,7 +179,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             int sequence = ++loadVersion;
             chunkLoadIndex = -1;
             isBaseLoading = true;
-            GetGpuSurface().BeginChunkSequence(true);
+            GetGpuSurface().BeginChunkSequence(true, keepCurrentBaseVisibleUntilComplete);
             QueueChunkLoad(lod, sequence, onComplete);
         }
 
@@ -191,6 +220,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             isBaseLoading = false;
             chunkLoadIndex = -1;
             baseChunkCoordinates.Clear();
+            hasLoadedBaseFocus = false;
         }
 
         public PlanetChunkLod CalculateLODFromPlayerPosition()
@@ -209,6 +239,9 @@ namespace MarchingCubesPlanet.MarchingCubes
             if (chunkLoadIndex >= baseChunkCoordinates.Count)
             {
                 isBaseLoading = false;
+                loadedBaseFocusGrid = baseFocusGrid;
+                hasLoadedBaseFocus = true;
+                GetGpuSurface().CompleteChunkSequence();
                 onComplete?.Invoke();
                 return;
             }
@@ -233,6 +266,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             isBaseLoading = false;
             chunkLoadIndex = -1;
             baseChunkCoordinates.Clear();
+            hasLoadedBaseFocus = false;
         }
 
         private void GenerateGrid()
@@ -256,6 +290,19 @@ namespace MarchingCubesPlanet.MarchingCubes
             {
                 baseChunkCoordinates.RemoveRange(maxChunks, baseChunkCoordinates.Count - maxChunks);
             }
+        }
+
+        private bool ShouldRebuildBaseForPlayerMovement()
+        {
+            if (!useBaseOctree || !hasLoadedBaseFocus)
+            {
+                return false;
+            }
+
+            Vector3 currentFocusGrid = CalculateBaseFocusGrid();
+            float rebuildDistanceGrid = Mathf.Max(1, baseRebuildDistanceChunks) *
+                                        PlanetMarchingCubesChunkRange.CanonicalChunkSize;
+            return (currentFocusGrid - loadedBaseFocusGrid).sqrMagnitude >= rebuildDistanceGrid * rebuildDistanceGrid;
         }
 
         private Vector3 CalculateBaseFocusGrid()
@@ -343,20 +390,37 @@ namespace MarchingCubesPlanet.MarchingCubes
         {
             if (oceanSphere == null)
             {
-                oceanSphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                oceanSphere = new GameObject("Ocean");
                 oceanSphere.name = "Ocean";
                 oceanSphere.layer = gameObject.layer;
                 oceanSphere.transform.SetParent(transform, false);
-                Collider oceanCollider = oceanSphere.GetComponent<Collider>();
-                if (oceanCollider != null)
+                oceanFilter = oceanSphere.AddComponent<MeshFilter>();
+                oceanRenderer = oceanSphere.AddComponent<MeshRenderer>();
+            }
+
+            if (oceanFilter == null)
+            {
+                oceanFilter = oceanSphere.GetComponent<MeshFilter>();
+                if (oceanFilter == null)
                 {
-                    Destroy(oceanCollider);
+                    oceanFilter = oceanSphere.AddComponent<MeshFilter>();
                 }
             }
+
+            if (oceanMesh == null)
+            {
+                oceanMesh = CreateOceanSphereMesh(OceanLongitudeSegments, OceanLatitudeSegments);
+            }
+
+            oceanFilter.sharedMesh = oceanMesh;
 
             if (oceanRenderer == null)
             {
                 oceanRenderer = oceanSphere.GetComponent<MeshRenderer>();
+                if (oceanRenderer == null)
+                {
+                    oceanRenderer = oceanSphere.AddComponent<MeshRenderer>();
+                }
             }
 
             if (oceanRenderer != null)
@@ -392,6 +456,124 @@ namespace MarchingCubesPlanet.MarchingCubes
             return oceanMaterial;
         }
 
+        private static Mesh CreateOceanSphereMesh(int longitudeSegments, int latitudeSegments)
+        {
+            int lon = Mathf.Max(8, longitudeSegments);
+            int lat = Mathf.Max(4, latitudeSegments);
+            int ringCount = lat - 1;
+            int vertexCount = 2 + ringCount * lon;
+            int triangleIndexCount = lon * 6 + Mathf.Max(0, ringCount - 1) * lon * 6;
+            Vector3[] vertices = new Vector3[vertexCount];
+            Vector3[] normals = new Vector3[vertexCount];
+            Vector2[] uvs = new Vector2[vertexCount];
+            int[] triangles = new int[triangleIndexCount];
+
+            vertices[0] = Vector3.up * 0.5f;
+            normals[0] = Vector3.up;
+            uvs[0] = new Vector2(0.5f, 1f);
+
+            for (int ring = 1; ring <= ringCount; ring++)
+            {
+                float v = ring / (float)lat;
+                float theta = v * Mathf.PI;
+                float y = Mathf.Cos(theta) * 0.5f;
+                float ringRadius = Mathf.Sin(theta) * 0.5f;
+                int ringStart = 1 + (ring - 1) * lon;
+                for (int segment = 0; segment < lon; segment++)
+                {
+                    float u = segment / (float)lon;
+                    float phi = u * Mathf.PI * 2f;
+                    Vector3 normal = new Vector3(
+                        Mathf.Cos(phi) * ringRadius,
+                        y,
+                        Mathf.Sin(phi) * ringRadius).normalized;
+                    int index = ringStart + segment;
+                    vertices[index] = normal * 0.5f;
+                    normals[index] = normal;
+                    uvs[index] = new Vector2(u, 1f - v);
+                }
+            }
+
+            int bottomIndex = vertexCount - 1;
+            vertices[bottomIndex] = Vector3.down * 0.5f;
+            normals[bottomIndex] = Vector3.down;
+            uvs[bottomIndex] = new Vector2(0.5f, 0f);
+
+            int triangle = 0;
+            int firstRingStart = 1;
+            for (int segment = 0; segment < lon; segment++)
+            {
+                int next = (segment + 1) % lon;
+                triangles[triangle++] = 0;
+                triangles[triangle++] = firstRingStart + segment;
+                triangles[triangle++] = firstRingStart + next;
+            }
+
+            for (int ring = 1; ring < ringCount; ring++)
+            {
+                int currentRingStart = 1 + (ring - 1) * lon;
+                int nextRingStart = currentRingStart + lon;
+                for (int segment = 0; segment < lon; segment++)
+                {
+                    int next = (segment + 1) % lon;
+                    int a = currentRingStart + segment;
+                    int b = currentRingStart + next;
+                    int c = nextRingStart + segment;
+                    int d = nextRingStart + next;
+                    triangles[triangle++] = a;
+                    triangles[triangle++] = c;
+                    triangles[triangle++] = b;
+                    triangles[triangle++] = b;
+                    triangles[triangle++] = c;
+                    triangles[triangle++] = d;
+                }
+            }
+
+            int lastRingStart = 1 + (ringCount - 1) * lon;
+            for (int segment = 0; segment < lon; segment++)
+            {
+                int next = (segment + 1) % lon;
+                triangles[triangle++] = bottomIndex;
+                triangles[triangle++] = lastRingStart + next;
+                triangles[triangle++] = lastRingStart + segment;
+            }
+
+            EnsureOutwardTriangleWinding(vertices, triangles);
+
+            Mesh mesh = new Mesh
+            {
+                name = "PlanetDirector_OceanSphere_Runtime"
+            };
+            mesh.SetVertices(vertices);
+            mesh.SetNormals(normals);
+            mesh.SetUVs(0, uvs);
+            mesh.SetTriangles(triangles, 0, true);
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        private static void EnsureOutwardTriangleWinding(Vector3[] vertices, int[] triangles)
+        {
+            for (int i = 0; i < triangles.Length; i += 3)
+            {
+                int aIndex = triangles[i];
+                int bIndex = triangles[i + 1];
+                int cIndex = triangles[i + 2];
+                Vector3 a = vertices[aIndex];
+                Vector3 b = vertices[bIndex];
+                Vector3 c = vertices[cIndex];
+                Vector3 normal = Vector3.Cross(b - a, c - a);
+                Vector3 center = (a + b + c) / 3f;
+                if (Vector3.Dot(normal, center) >= 0f)
+                {
+                    continue;
+                }
+
+                triangles[i + 1] = cIndex;
+                triangles[i + 2] = bIndex;
+            }
+        }
+
         private void ClearLegacyMesh()
         {
             MeshFilter target = GetMeshFilter();
@@ -405,6 +587,15 @@ namespace MarchingCubesPlanet.MarchingCubes
         {
             Gizmos.color = new Color(0.1f, 0.7f, 1f, 0.35f);
             Gizmos.DrawWireSphere(transform.position, Mathf.Max(0f, activationRange));
+        }
+
+        private void OnDestroy()
+        {
+            if (oceanMesh != null)
+            {
+                Destroy(oceanMesh);
+                oceanMesh = null;
+            }
         }
     }
 }
