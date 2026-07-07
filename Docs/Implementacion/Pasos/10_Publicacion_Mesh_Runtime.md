@@ -196,6 +196,8 @@ En el panel de preview:
 Shell -> un slot GPU visible.
 Chunk -> un slot GPU agregado para todos los chunks generados en la secuencia.
 Base  -> una cola que carga todos los chunks confirmados en el slot agregado.
+Runtime LOD inicial -> cola por UID que pide chunks por prioridad, todavia sobre
+el slot agregado.
 ```
 
 Motivo:
@@ -219,6 +221,8 @@ Regla:
 No usar readback de vertices, state o counts en la ruta visual caliente.
 Si se necesita saber si un chunk esta vacio en CPU, eso pertenece a diagnostico,
 streaming o fisica, no al render visual GPU-only.
+La sustitucion fina por UID dentro del buffer GPU visible queda como paso
+pendiente; la primera cola runtime valida identidad, prioridad y cancelacion.
 ```
 
 ## Estrategias aceptadas

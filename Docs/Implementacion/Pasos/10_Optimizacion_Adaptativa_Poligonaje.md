@@ -400,6 +400,68 @@ recalcula el planeta: `PlanetDirector` sincroniza el placement y
 `CalculateLODFromPlayerPosition` existe como punto de entrada futuro, pero queda
 TBD hasta cerrar la politica de LOD dinamico.
 
+## ChunkLODGestor y LODGestor inicial
+
+Durante `LoadBase`, `PlanetDirector` prepara una representacion fisica ligera de
+los chunks confirmados por `PlanetGrid`.
+
+Contrato inicial:
+
+```text
+PlanetGrid sigue siendo un mapa PlanetGridCoordinates -> uint.
+Al empezar Base, PlanetDirector saca una snapshot de celdas con informacion.
+Al empezar Base, despues de la snapshot, PlanetDirector crea de golpe todos los
+GameObject ligeros de esos chunks.
+Cada GameObject lleva ChunkLODGestor.
+ChunkLODGestor guarda UID, coordenadas de chunk, currentLOD, desireLOD y currentQueuedLOD.
+Todos arrancan con hasMesh = 1 y current/desire LOD2 como estado objetivo de Base.
+PlanetDirector no entrega la lista a LODGestor hasta que Base ha terminado.
+Al salir del area activa, PlanetDirector destruye esos GameObjects y limpia la lista.
+Los GameObjects ligeros de chunk se ocultan del Hierarchy del editor para evitar
+coste y errores de repaint durante pruebas con cientos de chunks. `LODGestor`
+sigue siendo el manager visible de escena.
+```
+
+`LODGestor` vive como manager de escena. Recibe la lista activa desde
+`PlanetDirector` y consulta cada `checkIntervalSeconds` el LOD deseado usando las
+distancias de `DefaultChunkLodActivationProfile`.
+
+Primera implementacion barata:
+
+```text
+No hay mapa espacial todavia.
+La consulta recorre la lista activa en intervalos configurables.
+Usa distancia cuadrada contra transform.position de cada chunk.
+No usa sqrt en el tick normal.
+Aplica hysteresis usando el tamano de chunk base.
+```
+
+La cola de cambios de LOD vive en `PlanetDirector`:
+
+```text
+EnqueueLODChunk(uid, lod, onComplete)
+CancelQueuedLODChunk(uid)
+```
+
+La cola resuelve primero los LOD mas bajos:
+
+```text
+Prioridad 1 -> LOD0.
+Prioridad 2 -> LOD1.
+Prioridad 3 -> LOD2.
+```
+
+Si un chunk pide otro LOD mientras ya tiene una peticion pendiente, cancela la
+peticion anterior por UID antes de encolar la nueva.
+
+TBD:
+
+```text
+La ruta visual GPU actual sigue usando slot agregado.
+La sustitucion real por UID dentro del buffer visible queda pendiente.
+Esta fase crea la identidad fisica/logica y la cola priorizada.
+```
+
 Con esa puntuacion, cada chunk recibira un LOD deseado:
 
 ```text

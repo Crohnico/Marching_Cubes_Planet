@@ -69,6 +69,23 @@ namespace MarchingCubesPlanet.MarchingCubes
             return false;
         }
 
+        public void CopyInformationCells(List<PlanetGridCoordinates> results)
+        {
+            if (results == null)
+            {
+                throw new System.ArgumentNullException(nameof(results));
+            }
+
+            results.Clear();
+            foreach (KeyValuePair<PlanetGridCoordinates, uint> cell in cells)
+            {
+                if (cell.Value != 0u)
+                {
+                    results.Add(cell.Key);
+                }
+            }
+        }
+
         public PlanetGridCoordinates GetInfoCell(int index)
         {
             if (index < 0)
