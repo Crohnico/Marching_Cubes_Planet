@@ -1324,7 +1324,7 @@ MonoBehaviour:
   recipe:
     gridRadius: 130
     worldScale: 54
-    seed: 18751
+    seed: 19258
     isoLevel: 0
     voronoiDivision: 80
     continentCells: 51
@@ -1368,6 +1368,12 @@ MonoBehaviour:
   activationRange: 10000
   shellLod: 2
   baseLod: 0
+  oceanMaterial: {fileID: 0}
+  useBaseOctree: 1
+  baseOctreeLod0RadiusChunks: 3
+  baseOctreeLod1RadiusChunks: 8
+  baseOctreeMaxChunks: 256
+  baseOctreeOutputVertexCapacity: 1500000
   meshFilter: {fileID: 2000400004}
   meshRenderer: {fileID: 2000400003}
   gpuSurface: {fileID: 2000400005}

@@ -14,7 +14,8 @@ procedural indirecto.
 ```
 
 La ruta vigente no usa `desiredLOD` runtime ni cola por UID. Shell se mantiene
-en LOD2 y Base carga el conjunto confirmado por `PlanetGrid` en LOD0.
+en LOD2. Base usa una ventana octree inicial: ordena chunks confirmados por
+distancia al foco del player y mezcla LOD0/LOD1/LOD2 dentro del mismo slot GPU.
 
 La ruta `Mesh` runtime queda como legacy/diagnostico y como posible base futura
 para colision/physics si se necesita una representacion CPU separada. No es la
@@ -144,9 +145,10 @@ de `Chunk + Generate`.
 En el panel de preview, `Generate` con modo Chunk recorre candidatos uno a uno
 dejando un frame entre chunks para pruebas manuales de FPS.
 Generate Base visual usa `PlanetGrid` siempre. Si no existe grid, el panel lo
-crea antes de generar. Base no es Shell ni Chunk: usa la misma cola de chunks
-para cargar, uno a uno, todos los chunks confirmados con informacion para el LOD
-pedido. Al terminar la cola emite el callback de completado.
+crea antes de generar. Base no es Shell ni Chunk: usa una cola de chunks
+confirmados con informacion. En runtime puede aplicar seleccion octree para
+recortar la ventana activa y asignar LOD0/LOD1/LOD2 por distancia al foco del
+player. Al terminar la cola emite el callback de completado.
 ```
 
 Regla de memoria:
@@ -169,6 +171,9 @@ chunks no consuma mas memoria que generar la shell equivalente.
 En modo Base del panel, las coordenadas confirmadas por `PlanetGrid` se agregan
 en el mismo slot visible GPU agregado de chunks, pero recorriendo todos los
 chunks confirmados. No crea un buffer por chunk.
+En modo Base runtime, el slot agregado puede usar un presupuesto menor que la
+shell y aceptar solo una ventana de chunks ordenada por foco. Los chunks cercanos
+se generan en LOD0, el anillo medio en LOD1 y los extremos en LOD2.
 GenerateShell conserva temporalmente la capacidad global por defecto de 3M como
 deuda explicita hasta medir y cerrar la reduccion de shell LOD2.
 La ruta legacy de Mesh puede mantener sus scratch buffers reutilizables mientras
@@ -196,6 +201,7 @@ En el panel de preview:
 Shell -> un slot GPU visible.
 Chunk -> un slot GPU agregado para todos los chunks generados en la secuencia.
 Base  -> una cola que carga todos los chunks confirmados en el slot agregado.
+Base runtime -> ventana octree mixta LOD0/LOD1/LOD2 en el slot agregado.
 Runtime LOD inicial -> cola por UID que pide chunks por prioridad, todavia sobre
 el slot agregado. Esta ruta queda aparcada y no forma parte del runtime vigente.
 ```
@@ -214,6 +220,54 @@ vertex shader y calcula la UV de atlas por altura igual que la ruta CPU previa.
 Los vertices generados permanecen en coordenadas de grid. Mover o rotar el
 GameObject del planeta solo actualiza la matriz grid->world del material y los
 bounds del draw indirect; no dispara Marching Cubes ni reescribe buffers.
+
+Base octree mixto:
+
+```text
+PlanetDirector calcula un foco en grid desde la posicion del player.
+Si el player esta fuera del radio base, el foco se proyecta sobre la superficie.
+Los chunks confirmados por PlanetGrid se ordenan por distancia a ese foco.
+La ventana activa se recorta por `baseOctreeMaxChunks`.
+LOD0 cubre el radio cercano.
+LOD1 cubre el anillo medio.
+LOD2 cubre los extremos.
+```
+
+Para que varios LODs convivan en el mismo slot, `PlanetMarchingCubes.compute`
+convierte la posicion generada por cada LOD al grid canonico de la receta base
+antes de escribir el vertice. El draw del slot Base usa la matriz grid->world de
+la receta base, no la del ultimo LOD generado.
+
+Limitacion aceptada:
+
+```text
+La frontera LOD0/LOD1/LOD2 puede tener grietas.
+Transvoxel queda como la capa posterior si esta ruta demuestra reduccion real
+de buffer y coste de carga.
+```
+
+Agua visual temporal:
+
+```text
+PlanetDirector crea una esfera hija `Ocean` al cargar Shell.
+La esfera usa el material `Resources/PlanetOcean`.
+El radio visual es recipe.GridRadius * recipe.WorldScale.
+No participa en Marching Cubes, cache, colision ni datos de agua finales.
+Se mantiene como representacion barata para poder visualizar el planeta mientras
+se define la ruta de agua definitiva.
+```
+
+Regla de assets runtime GPU:
+
+```text
+Los compute shaders usados por PlanetGpuMarchingCubesSurface viven en
+Assets/Shaders/Resources/Compute.
+No pueden depender solo de AssetDatabase: en Quest/Android se cargan mediante
+Resources.Load("Compute/...").
+El shader `MarchingCubesPlanet/Planet/SurfaceGpu` debe estar en Always Included
+Shaders o referenciado por un asset runtime incluido en build; no se puede asumir
+que `Shader.Find` encuentre un shader strippeado.
+```
 
 Regla:
 

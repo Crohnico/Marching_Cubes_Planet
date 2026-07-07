@@ -939,13 +939,13 @@ Si se usa include HLSL, 07 debe incluir el mismo archivo.
 Archivo HLSL compartido previsto:
 
 ```text
-Assets/Shaders/Compute/PlanetShapeDensity.hlsl
+Assets/Shaders/Resources/Compute/PlanetShapeDensity.hlsl
 ```
 
 Archivo compute previsto:
 
 ```text
-Assets/Shaders/Compute/PlanetShapeDensity.compute
+Assets/Shaders/Resources/Compute/PlanetShapeDensity.compute
 ```
 
 ## Flujo funcional

@@ -9,9 +9,9 @@ namespace MarchingCubesPlanet.MarchingCubes
     public static class PlanetGenerator
     {
         private const string ShapeShaderResource = "Compute/PlanetShapeDensity";
-        private const string ShapeShaderAsset = "Assets/Shaders/Compute/PlanetShapeDensity.compute";
+        private const string ShapeShaderAsset = "Assets/Shaders/Resources/Compute/PlanetShapeDensity.compute";
         private const string MarchingShaderResource = "Compute/PlanetMarchingCubes";
-        private const string MarchingShaderAsset = "Assets/Shaders/Compute/PlanetMarchingCubes.compute";
+        private const string MarchingShaderAsset = "Assets/Shaders/Resources/Compute/PlanetMarchingCubes.compute";
 
         private const int ChunkExtractorLodCount = 3;
 

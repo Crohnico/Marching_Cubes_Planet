@@ -1,6 +1,6 @@
 #pragma kernel CS_EvaluateDensitySamples
 
-#include "Assets/Shaders/Compute/PlanetShapeDensity.hlsl"
+#include "PlanetShapeDensity.hlsl"
 
 StructuredBuffer<float4> _ShapeSamplePositions;
 RWStructuredBuffer<float4> _DensitySamples;

@@ -10,16 +10,26 @@ namespace MarchingCubesPlanet.MarchingCubes
     [DisallowMultipleComponent]
     public sealed class PlanetDirector : MonoBehaviour
     {
+        private const string DefaultOceanMaterialResourceName = "PlanetOcean";
+
         [SerializeField] private PlanetRecipe recipe = PlanetRecipe.Default();
         [SerializeField] private PlanetPlacement placement = PlanetPlacement.Default();
         [SerializeField] private Transform player;
         [SerializeField] private float activationRange = 10000f;
         [SerializeField] private PlanetChunkLod shellLod = PlanetChunkLod.LOD2;
         [SerializeField] private PlanetChunkLod baseLod = PlanetChunkLod.LOD0;
+        [SerializeField] private Material oceanMaterial;
+        [SerializeField] private bool useBaseOctree = true;
+        [SerializeField] private int baseOctreeLod0RadiusChunks = 3;
+        [SerializeField] private int baseOctreeLod1RadiusChunks = 8;
+        [SerializeField] private int baseOctreeMaxChunks = 256;
+        [SerializeField] private int baseOctreeOutputVertexCapacity = 1500000;
 
         [SerializeField] private MeshFilter meshFilter;
         [SerializeField] private MeshRenderer meshRenderer;
         [SerializeField] private PlanetGpuMarchingCubesSurface gpuSurface;
+        private GameObject oceanSphere;
+        private MeshRenderer oceanRenderer;
         private PlanetGrid grid;
         private readonly List<PlanetGridCoordinates> baseChunkCoordinates = new List<PlanetGridCoordinates>(256);
         private int chunkLoadIndex = -1;
@@ -27,6 +37,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private bool isAlive;
         private bool isSetUp;
         private bool isBaseLoading;
+        private Vector3 baseFocusGrid;
 
         public PlanetGrid Grid => grid;
         public bool IsAlive => isAlive;
@@ -40,6 +51,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             {
                 recipe = value;
                 grid = null;
+                UpdateOceanSphere();
             }
         }
 
@@ -122,6 +134,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                 lod,
                 meshRenderer,
                 keepBaseVisibleUntilComplete);
+            EnsureOceanSphere();
             onComplete?.Invoke();
         }
 
@@ -133,6 +146,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
 
             grid.CopyInformationCells(baseChunkCoordinates);
+            PrepareBaseOctree();
             int sequence = ++loadVersion;
             chunkLoadIndex = -1;
             isBaseLoading = true;
@@ -200,13 +214,15 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
 
             PlanetGridCoordinates chunkID = baseChunkCoordinates[chunkLoadIndex];
+            PlanetChunkLod chunkLod = SelectBaseChunkLod(lod, chunkID);
             ClearLegacyMesh();
-            GetGpuSurface().GenerateChunk(
+            GetGpuSurface().GenerateChunkIntoBase(
                 recipe,
                 placement,
-                lod,
+                chunkLod,
                 chunkID,
-                meshRenderer);
+                meshRenderer,
+                useBaseOctree ? baseOctreeOutputVertexCapacity : PlanetMarchingCubesSettings.DefaultOutputVertexCapacity);
             await Task.Yield();
             QueueChunkLoad(lod, sequence, onComplete);
         }
@@ -223,6 +239,85 @@ namespace MarchingCubesPlanet.MarchingCubes
         {
             grid = PlanetGenerator.GenerateGrid(recipe);
             chunkLoadIndex = -1;
+        }
+
+        private void PrepareBaseOctree()
+        {
+            if (!useBaseOctree)
+            {
+                return;
+            }
+
+            baseFocusGrid = CalculateBaseFocusGrid();
+            baseChunkCoordinates.Sort(CompareBaseChunkDistance);
+
+            int maxChunks = Mathf.Max(0, baseOctreeMaxChunks);
+            if (maxChunks > 0 && baseChunkCoordinates.Count > maxChunks)
+            {
+                baseChunkCoordinates.RemoveRange(maxChunks, baseChunkCoordinates.Count - maxChunks);
+            }
+        }
+
+        private Vector3 CalculateBaseFocusGrid()
+        {
+            if (player == null)
+            {
+                return Vector3.zero;
+            }
+
+            Vector3 gridPosition = PlanetCoordinateConverter.WorldToGrid(player.position, in recipe, in placement);
+            float gridRadius = Mathf.Max(1f, recipe.GridRadius);
+            return gridPosition.sqrMagnitude > gridRadius * gridRadius
+                ? gridPosition.normalized * gridRadius
+                : gridPosition;
+        }
+
+        private int CompareBaseChunkDistance(PlanetGridCoordinates a, PlanetGridCoordinates b)
+        {
+            float distanceA = CalculateBaseChunkDistanceSquared(a);
+            float distanceB = CalculateBaseChunkDistanceSquared(b);
+            return distanceA.CompareTo(distanceB);
+        }
+
+        private float CalculateBaseChunkDistanceSquared(PlanetGridCoordinates coordinates)
+        {
+            Vector3 chunkCenter = CalculateBaseChunkCenterGrid(coordinates);
+            return (chunkCenter - baseFocusGrid).sqrMagnitude;
+        }
+
+        private PlanetChunkLod SelectBaseChunkLod(PlanetChunkLod requestedLod, PlanetGridCoordinates coordinates)
+        {
+            if (!useBaseOctree)
+            {
+                return requestedLod;
+            }
+
+            float chunkDistance = Mathf.Sqrt(CalculateBaseChunkDistanceSquared(coordinates)) /
+                                  Mathf.Max(1f, PlanetMarchingCubesChunkRange.CanonicalChunkSize);
+            PlanetChunkLod octreeLod;
+            if (chunkDistance <= Mathf.Max(0, baseOctreeLod0RadiusChunks))
+            {
+                octreeLod = PlanetChunkLod.LOD0;
+            }
+            else if (chunkDistance <= Mathf.Max(baseOctreeLod0RadiusChunks, baseOctreeLod1RadiusChunks))
+            {
+                octreeLod = PlanetChunkLod.LOD1;
+            }
+            else
+            {
+                octreeLod = PlanetChunkLod.LOD2;
+            }
+
+            return (PlanetChunkLod)Mathf.Max((int)requestedLod, (int)octreeLod);
+        }
+
+        private static Vector3 CalculateBaseChunkCenterGrid(PlanetGridCoordinates coordinates)
+        {
+            float chunkSize = PlanetMarchingCubesChunkRange.CanonicalChunkSize;
+            return new Vector3(
+                (coordinates.x + 0.5f) * chunkSize,
+                (coordinates.y + 0.5f) * chunkSize,
+                (coordinates.z + 0.5f) * chunkSize);
         }
 
         private void SyncPlacementFromTransform()
@@ -242,6 +337,59 @@ namespace MarchingCubesPlanet.MarchingCubes
             if (gpuSurface == null) gpuSurface = GetComponent<PlanetGpuMarchingCubesSurface>();
             if (gpuSurface == null) gpuSurface = gameObject.AddComponent<PlanetGpuMarchingCubesSurface>();
             return gpuSurface;
+        }
+
+        private void EnsureOceanSphere()
+        {
+            if (oceanSphere == null)
+            {
+                oceanSphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                oceanSphere.name = "Ocean";
+                oceanSphere.layer = gameObject.layer;
+                oceanSphere.transform.SetParent(transform, false);
+                Collider oceanCollider = oceanSphere.GetComponent<Collider>();
+                if (oceanCollider != null)
+                {
+                    Destroy(oceanCollider);
+                }
+            }
+
+            if (oceanRenderer == null)
+            {
+                oceanRenderer = oceanSphere.GetComponent<MeshRenderer>();
+            }
+
+            if (oceanRenderer != null)
+            {
+                oceanRenderer.sharedMaterial = ResolveOceanMaterial();
+            }
+
+            UpdateOceanSphere();
+        }
+
+        private void UpdateOceanSphere()
+        {
+            if (oceanSphere == null)
+            {
+                return;
+            }
+
+            float oceanRadius = Mathf.Max(0.0001f, recipe.GridRadius * recipe.WorldScale);
+            Transform oceanTransform = oceanSphere.transform;
+            oceanTransform.localPosition = Vector3.zero;
+            oceanTransform.localRotation = Quaternion.identity;
+            oceanTransform.localScale = Vector3.one * (oceanRadius * 2f);
+        }
+
+        private Material ResolveOceanMaterial()
+        {
+            if (oceanMaterial != null)
+            {
+                return oceanMaterial;
+            }
+
+            oceanMaterial = Resources.Load<Material>(DefaultOceanMaterialResourceName);
+            return oceanMaterial;
         }
 
         private void ClearLegacyMesh()

@@ -11,9 +11,9 @@ namespace MarchingCubesPlanet.MarchingCubes
     public sealed class PlanetGpuMarchingCubesSurface : MonoBehaviour
     {
         private const string ShapeShaderResource = "Compute/PlanetShapeDensity";
-        private const string ShapeShaderAsset = "Assets/Shaders/Compute/PlanetShapeDensity.compute";
+        private const string ShapeShaderAsset = "Assets/Shaders/Resources/Compute/PlanetShapeDensity.compute";
         private const string MarchingShaderResource = "Compute/PlanetMarchingCubes";
-        private const string MarchingShaderAsset = "Assets/Shaders/Compute/PlanetMarchingCubes.compute";
+        private const string MarchingShaderAsset = "Assets/Shaders/Resources/Compute/PlanetMarchingCubes.compute";
         private const string SurfaceGpuShaderName = "MarchingCubesPlanet/Planet/SurfaceGpu";
         private const string DefaultSurfaceMaterialResourceName = "PlanetWorld_Surface";
         private const int SurfaceAtlasResolution = 256;
@@ -37,6 +37,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private static readonly int OutputVertexLimitId = Shader.PropertyToID("_MarchingCubesOutputVertexLimit");
         private static readonly int WriteEnabledId = Shader.PropertyToID("_MarchingCubesWriteEnabled");
         private static readonly int DrawArgsEnabledId = Shader.PropertyToID("_MarchingCubesDrawArgsEnabled");
+        private static readonly int OutputGridScaleId = Shader.PropertyToID("_MarchingCubesOutputGridScale");
         private static readonly int PlanetMarchingVerticesId = Shader.PropertyToID("_PlanetMarchingCubesVertices");
         private static readonly int PlanetTriangleVerticesId = Shader.PropertyToID("_PlanetTriangleVertices");
         private static readonly int PlanetGpuVertexLayoutId = Shader.PropertyToID("_PlanetGpuVertexLayout");
@@ -156,7 +157,9 @@ namespace MarchingCubesPlanet.MarchingCubes
                 settings.outputVertexCapacity,
                 0,
                 shellSlot,
-                true);
+                true,
+                in lodRecipe,
+                1f);
         }
 
         public void GenerateShell(
@@ -186,7 +189,9 @@ namespace MarchingCubesPlanet.MarchingCubes
                 settings.outputVertexCapacity,
                 0,
                 shellSlot,
-                true);
+                true,
+                in lodRecipe,
+                1f);
         }
 
         public void GenerateChunk(
@@ -213,7 +218,40 @@ namespace MarchingCubesPlanet.MarchingCubes
                 PlanetMarchingCubesSettings.DefaultOutputVertexCapacity,
                 0,
                 chunkAggregateSlot,
-                !chunkAggregateSlot.hasDrawable);
+                !chunkAggregateSlot.hasDrawable,
+                in lodRecipe,
+                1f);
+        }
+
+        public void GenerateChunkIntoBase(
+            PlanetRecipe recipe,
+            PlanetPlacement placement,
+            PlanetChunkLod lod,
+            PlanetGridCoordinates chunkId,
+            MeshRenderer materialSource,
+            int outputVertexCapacity)
+        {
+            PlanetRecipe lodRecipe = PlanetChunkLodUtility.BuildRecipeForLod(in recipe, lod);
+            singleChunkOrigins[0] = chunkId.ToChunkOrigin(lod);
+            if (!chunkAggregateOpen)
+            {
+                BeginChunkSequence();
+            }
+
+            float outputGridScale = Mathf.Max(0.000001f, lodRecipe.WorldScale / Mathf.Max(0.000001f, recipe.WorldScale));
+            Generate(
+                in lodRecipe,
+                in placement,
+                materialSource,
+                singleChunkOrigins,
+                1,
+                PlanetChunkLodUtility.GetChunkSizeForLod(lod),
+                Mathf.Max(1, outputVertexCapacity),
+                0,
+                chunkAggregateSlot,
+                !chunkAggregateSlot.hasDrawable,
+                in recipe,
+                outputGridScale);
         }
 
         public void Render()
@@ -279,7 +317,9 @@ namespace MarchingCubesPlanet.MarchingCubes
             int outputVertexCapacity,
             int chunkIndexBase,
             GpuSurfaceSlot slot,
-            bool resetDrawArgs)
+            bool resetDrawArgs,
+            in PlanetRecipe renderRecipe,
+            float outputGridScale)
         {
             if (origins == null || originCount <= 0)
             {
@@ -324,10 +364,11 @@ namespace MarchingCubesPlanet.MarchingCubes
             marchingShader.SetInt(OutputVertexLimitId, Mathf.Max(1, outputVertexCapacity));
             marchingShader.SetInt(WriteEnabledId, 1);
             marchingShader.SetInt(DrawArgsEnabledId, 1);
+            marchingShader.SetFloat(OutputGridScaleId, Mathf.Max(0.000001f, outputGridScale));
             Dispatch(activeCellCount);
 
             ResolveMaterial(materialSource, shapeCells);
-            slot.renderRecipe = lodRecipe;
+            slot.renderRecipe = renderRecipe;
             slot.hasRenderRecipe = true;
             slot.hasDrawable = true;
             SetPlacement(placement);

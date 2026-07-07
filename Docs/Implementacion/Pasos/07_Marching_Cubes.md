@@ -506,9 +506,9 @@ La conversion a WorldSpace se hace al construir/mostrar la Mesh visual.
 Archivos previstos:
 
 ```text
-Assets/Shaders/Compute/PlanetMarchingCubesTables.hlsl
+Assets/Shaders/Resources/Compute/PlanetMarchingCubesTables.hlsl
 PlanetMarchingCubesLookupTables en C#
-Assets/Shaders/Compute/PlanetMarchingCubes.compute
+Assets/Shaders/Resources/Compute/PlanetMarchingCubes.compute
 ```
 
 Tablas:
@@ -687,14 +687,14 @@ Todos los recursos se registran con owner y estimatedBytes.
 Archivo:
 
 ```text
-Assets/Shaders/Compute/PlanetMarchingCubes.compute
+Assets/Shaders/Resources/Compute/PlanetMarchingCubes.compute
 ```
 
 Include obligatorio:
 
 ```text
-Assets/Shaders/Compute/PlanetShapeDensity.hlsl
-Assets/Shaders/Compute/PlanetMarchingCubesTables.hlsl
+Assets/Shaders/Resources/Compute/PlanetShapeDensity.hlsl
+Assets/Shaders/Resources/Compute/PlanetMarchingCubesTables.hlsl
 ```
 
 Kernel canonico de 07:

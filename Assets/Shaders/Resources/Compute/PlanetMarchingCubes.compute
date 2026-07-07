@@ -37,6 +37,7 @@ uint _MarchingCubesOutputPrimitiveLimit;
 uint _MarchingCubesOutputVertexLimit;
 uint _MarchingCubesWriteEnabled;
 uint _MarchingCubesDrawArgsEnabled;
+float _MarchingCubesOutputGridScale;
 
 float3 PlanetMcInterpolate(float3 a, float3 b, float densityA, float densityB)
 {
@@ -67,7 +68,7 @@ uint PlanetMcTriangleCount(uint caseIndex)
 void PlanetMcWriteVertex(uint vertexIndex, float3 position, float3 normal, uint caseIndex, uint chunkIndex)
 {
     PlanetMarchingCubesVertex vertex;
-    vertex.positionAndCase = float4(position, (float)caseIndex);
+    vertex.positionAndCase = float4(position * _MarchingCubesOutputGridScale, (float)caseIndex);
     vertex.normalAndDiagnostic = float4(normal, (float)chunkIndex);
     _MarchingCubesVertices[vertexIndex] = vertex;
 }
