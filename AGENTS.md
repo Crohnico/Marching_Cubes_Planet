@@ -28,6 +28,32 @@ No se debe modificar salvo que la persona lo pida explicitamente o que haya que 
 - Si un cambio contradice una documentacion existente, no hacer workaround silencioso: actualizar la documentacion en el mismo cambio o pedir confirmacion.
 - Cada sistema importante debe tener su documento propio antes de bajar a codigo.
 
+## Criterio tecnico antes de ejecutar
+
+El agente no debe limitarse a "hacer lo que se le pide" si la peticion puede
+empujar el proyecto en una direccion peor.
+
+Antes de tocar arquitectura, render, memoria, runtime caliente, streaming,
+persistencia o sistemas centrales, hay que hacer una parada de decision breve:
+
+```text
+Objetivo real:
+Restriccion dura:
+Solucion candidata:
+Coste esperado:
+Riesgo:
+Por que esta solucion y no otra:
+Que se medira para validarla:
+```
+
+Si la solucion candidata contradice el objetivo tecnico, aumenta memoria/VRAM sin
+justificacion, introduce estados invisibles dificiles de medir, empeora el camino
+caliente o convierte una deuda en arquitectura, el agente debe decirlo y frenar
+antes de implementar.
+
+La friccion tecnica razonada es parte del trabajo. La obediencia inmediata no
+debe sustituir el criterio de ingenieria.
+
 ## Enfoque del proyecto
 
 El target principal es Meta Quest 3. Cualquier decision tecnica debe considerar rendimiento, RAM, VRAM, Garbage Collector, streaming, uso de disco, CPU y GPU desde el principio.
