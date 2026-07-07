@@ -86,6 +86,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private int visibleChunkAggregateSlotIndex;
         private int buildChunkAggregateSlotIndex;
         private bool chunkAggregateOpen;
+        private bool chunkAggregatePublished;
 
         public int CandidateChunkCount => candidateCoordinates.Length;
 
@@ -154,6 +155,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                 visibleChunkAggregateSlotIndex = 0;
                 buildChunkAggregateSlotIndex = 0;
                 ReleaseChunkAggregateSlots();
+                chunkAggregatePublished = false;
             }
 
             chunkAggregateOpen = true;
@@ -173,6 +175,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                 StartCoroutine(ReleaseChunkAggregateSlotAfterFrame(oldVisibleSlotIndex));
             }
 
+            chunkAggregatePublished = BuildChunkAggregateSlot.hasDrawable;
             chunkAggregateOpen = false;
         }
 
@@ -187,6 +190,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             settings.chunkRange.chunkSize = PlanetChunkLodUtility.GetChunkSizeForLod(lod);
             PrepareCandidateChunks(recipe, lod);
             ReleaseChunkAggregateSlots();
+            chunkAggregatePublished = false;
             chunkAggregateOpen = false;
             Generate(
                 in lodRecipe,
@@ -217,6 +221,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             if (!keepChunkAggregateVisible)
             {
                 ReleaseChunkAggregateSlots();
+                chunkAggregatePublished = false;
             }
 
             chunkAggregateOpen = false;
@@ -262,6 +267,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                 !BuildChunkAggregateSlot.hasDrawable,
                 in lodRecipe,
                 1f);
+            chunkAggregatePublished = BuildChunkAggregateSlot.hasDrawable;
         }
 
         public void GenerateChunkIntoBase(
@@ -308,7 +314,10 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
 
             RenderSlot(shellSlot);
-            RenderSlot(VisibleChunkAggregateSlot);
+            if (chunkAggregatePublished)
+            {
+                RenderSlot(VisibleChunkAggregateSlot);
+            }
         }
 
         public void ReleaseShell()
@@ -320,6 +329,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         {
             ReleaseChunkAggregateSlots();
             chunkAggregateOpen = false;
+            chunkAggregatePublished = false;
         }
 
         private void ReleaseChunkAggregateSlots()
@@ -349,6 +359,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             shellSlot.Release();
             ReleaseChunkAggregateSlots();
             chunkAggregateOpen = false;
+            chunkAggregatePublished = false;
             DestroyUnityObject(runtimeMaterial);
             DestroyUnityObject(runtimeSurfaceAtlas);
             runtimeMaterial = null;

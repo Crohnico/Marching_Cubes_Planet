@@ -243,6 +243,9 @@ nuevo slot y se libera el anterior. El coste de memoria doble solo debe vivir
 durante la recarga.
 La liberacion del slot anterior se retrasa al menos hasta final de frame para no
 invalidar recursos que el render thread pueda seguir consumiendo.
+La primera carga de Base tambien se cocina oculta mientras la Shell sigue
+visible. Aunque el slot de build tenga vertices parciales, Base no se renderiza
+hasta que `CompleteChunkSequence` publica la cola completa.
 ```
 
 Para que varios LODs convivan en la misma Base visible, `PlanetMarchingCubes.compute`
