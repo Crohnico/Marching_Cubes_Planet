@@ -65,13 +65,20 @@ namespace MarchingCubesPlanet.Preview
                 return;
             }
 
-            if (type == GenerationType.Chunk)
+            if (type == GenerationType.Base)
             {
                 if (planetGrid == null) GenerateGrid();
                 index = -1;
                 isConcatenatingChunks = true;
                 GetGpuSurface().BeginChunkSequence();
-                ConcatenateChunk(lod);
+                ConcatenateChunk(lod, () => Debug.Log("BaseLoaded"));
+                return;
+            }
+
+            if (type == GenerationType.Chunk)
+            {
+                GetGpuSurface().BeginChunkSequence();
+                GenerateChunk(lod, null, () => Debug.Log("ChunkLoaded"));
             }
         }
 
@@ -89,14 +96,26 @@ namespace MarchingCubesPlanet.Preview
             index = -1;
         }
 
-        public async void GenerateChunk(PlanetChunkLod lod, PlanetGridCoordinates chunkID, System.Action onComplete = null)
+        public async void GenerateChunk(PlanetChunkLod lod, PlanetGridCoordinates? chunkID = null, System.Action onComplete = null)
         {
+            if (planetGrid == null) GenerateGrid();
+            if (!chunkID.HasValue)
+            {
+                if (planetGrid.InformationCount <= 0)
+                {
+                    onComplete?.Invoke();
+                    return;
+                }
+
+                chunkID = planetGrid.GetInfoCell(Random.Range(0, planetGrid.InformationCount));
+            }
+
             ClearLegacyMesh();
             GetGpuSurface().GenerateChunk(
                 recipe,
                 placement,
                 lod,
-                chunkID,
+                chunkID.Value,
                 GetMeshRenderer());
             await Task.Yield();
             onComplete?.Invoke();
@@ -128,10 +147,11 @@ namespace MarchingCubesPlanet.Preview
                 GetMeshRenderer());
         }
 
-        private void ConcatenateChunk(PlanetChunkLod lod)
+        private void ConcatenateChunk(PlanetChunkLod lod, System.Action onComplete = null)
         {
             if (!isConcatenatingChunks || planetGrid == null)
             {
+                onComplete?.Invoke();
                 return;
             }
 
@@ -139,11 +159,12 @@ namespace MarchingCubesPlanet.Preview
             if (index >= planetGrid.InformationCount)
             {
                 isConcatenatingChunks = false;
+                onComplete?.Invoke();
                 return;
             }
 
             PlanetGridCoordinates chunkID = planetGrid.GetInfoCell(index);
-            GenerateChunk(lod, chunkID, () => ConcatenateChunk(lod));
+            GenerateChunk(lod, chunkID, () => ConcatenateChunk(lod, onComplete));
         }
 
         private void ClearLegacyMesh()

@@ -74,6 +74,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private PlanetGpuShapeCell[] shapeCells = Array.Empty<PlanetGpuShapeCell>();
         private PlanetMarchingCubesChunkOrigin[] candidateOrigins = Array.Empty<PlanetMarchingCubesChunkOrigin>();
         private PlanetGridCoordinates[] candidateCoordinates = Array.Empty<PlanetGridCoordinates>();
+        private readonly PlanetMarchingCubesChunkOrigin[] singleChunkOrigins = new PlanetMarchingCubesChunkOrigin[1];
         private readonly GpuSurfaceSlot shellSlot = new GpuSurfaceSlot("Shell");
         private readonly GpuSurfaceSlot chunkAggregateSlot = new GpuSurfaceSlot("Chunks");
         private bool chunkAggregateOpen;
@@ -115,9 +116,20 @@ namespace MarchingCubesPlanet.MarchingCubes
             return false;
         }
 
-        public void BeginChunkSequence()
+        public void SetPlacement(PlanetPlacement placement)
         {
-            shellSlot.Release();
+            bool materialUpdated = false;
+            ApplySlotPlacement(shellSlot, in placement, ref materialUpdated);
+            ApplySlotPlacement(chunkAggregateSlot, in placement, ref materialUpdated);
+        }
+
+        public void BeginChunkSequence(bool keepShellVisible = false)
+        {
+            if (!keepShellVisible)
+            {
+                shellSlot.Release();
+            }
+
             chunkAggregateSlot.Release();
             chunkAggregateOpen = true;
         }
@@ -139,6 +151,37 @@ namespace MarchingCubesPlanet.MarchingCubes
                 in placement,
                 materialSource,
                 candidateOrigins,
+                candidateOrigins.Length,
+                settings.chunkRange.chunkSize,
+                settings.outputVertexCapacity,
+                0,
+                shellSlot,
+                true);
+        }
+
+        public void GenerateShell(
+            PlanetRecipe recipe,
+            PlanetPlacement placement,
+            PlanetChunkLod lod,
+            MeshRenderer materialSource,
+            bool keepChunkAggregateVisible)
+        {
+            PlanetRecipe lodRecipe = PlanetChunkLodUtility.BuildRecipeForLod(in recipe, lod);
+            PlanetMarchingCubesSettings settings = PlanetMarchingCubesSettings.Default();
+            settings.chunkRange.chunkSize = PlanetChunkLodUtility.GetChunkSizeForLod(lod);
+            PrepareCandidateChunks(recipe, lod);
+            if (!keepChunkAggregateVisible)
+            {
+                chunkAggregateSlot.Release();
+            }
+
+            chunkAggregateOpen = false;
+            Generate(
+                in lodRecipe,
+                in placement,
+                materialSource,
+                candidateOrigins,
+                candidateOrigins.Length,
                 settings.chunkRange.chunkSize,
                 settings.outputVertexCapacity,
                 0,
@@ -154,7 +197,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             MeshRenderer materialSource)
         {
             PlanetRecipe lodRecipe = PlanetChunkLodUtility.BuildRecipeForLod(in recipe, lod);
-            PlanetMarchingCubesChunkOrigin[] origins = { chunkId.ToChunkOrigin(lod) };
+            singleChunkOrigins[0] = chunkId.ToChunkOrigin(lod);
             if (!chunkAggregateOpen)
             {
                 BeginChunkSequence();
@@ -164,7 +207,8 @@ namespace MarchingCubesPlanet.MarchingCubes
                 in lodRecipe,
                 in placement,
                 materialSource,
-                origins,
+                singleChunkOrigins,
+                1,
                 PlanetChunkLodUtility.GetChunkSizeForLod(lod),
                 PlanetMarchingCubesSettings.DefaultOutputVertexCapacity,
                 0,
@@ -186,6 +230,17 @@ namespace MarchingCubesPlanet.MarchingCubes
 
             RenderSlot(shellSlot);
             RenderSlot(chunkAggregateSlot);
+        }
+
+        public void ReleaseShell()
+        {
+            shellSlot.Release();
+        }
+
+        public void ReleaseChunkAggregate()
+        {
+            chunkAggregateSlot.Release();
+            chunkAggregateOpen = false;
         }
 
         public void Release()
@@ -219,13 +274,14 @@ namespace MarchingCubesPlanet.MarchingCubes
             in PlanetPlacement placement,
             MeshRenderer materialSource,
             PlanetMarchingCubesChunkOrigin[] origins,
+            int originCount,
             int chunkSize,
             int outputVertexCapacity,
             int chunkIndexBase,
             GpuSurfaceSlot slot,
             bool resetDrawArgs)
         {
-            if (origins == null || origins.Length == 0)
+            if (origins == null || originCount <= 0)
             {
                 slot.hasDrawable = false;
                 return;
@@ -245,17 +301,17 @@ namespace MarchingCubesPlanet.MarchingCubes
             marchingShader.GetKernelThreadGroupSizes(extractKernel, out threadGroupSizeX, out _, out _);
 
             long cellsPerChunk = (long)Mathf.Max(1, chunkSize) * chunkSize * chunkSize;
-            long activeCellCount = origins.Length * cellsPerChunk;
+            long activeCellCount = originCount * cellsPerChunk;
             if (activeCellCount > uint.MaxValue)
             {
                 throw new InvalidOperationException("GPU visual Marching Cubes cell count exceeds the current 32-bit dispatch contract.");
             }
 
-            EnsureBuffers(origins.Length, Mathf.Max(1, outputVertexCapacity), slot);
-            chunkOriginBuffer.SetData(origins, 0, 0, origins.Length);
+            EnsureBuffers(originCount, Mathf.Max(1, outputVertexCapacity), slot);
+            chunkOriginBuffer.SetData(origins, 0, 0, originCount);
             edgeTableBuffer.SetData(PlanetMarchingCubesLookupTables.EdgeTable);
             triTableBuffer.SetData(PlanetMarchingCubesLookupTables.TriTable);
-            ResetState(origins.Length);
+            ResetState(originCount);
             if (resetDrawArgs)
             {
                 ResetDrawArgs(slot);
@@ -271,9 +327,10 @@ namespace MarchingCubesPlanet.MarchingCubes
             Dispatch(activeCellCount);
 
             ResolveMaterial(materialSource, shapeCells);
-            ApplyMaterialProperties(in lodRecipe, in placement);
-            slot.drawBounds = CalculateDrawBounds(in lodRecipe, in placement);
+            slot.renderRecipe = lodRecipe;
+            slot.hasRenderRecipe = true;
             slot.hasDrawable = true;
+            SetPlacement(placement);
         }
 
         private void EnsureBuffers(int chunkOriginCount, int vertexCapacity, GpuSurfaceSlot slot)
@@ -490,6 +547,22 @@ namespace MarchingCubesPlanet.MarchingCubes
                 gameObject.layer);
         }
 
+        private void ApplySlotPlacement(GpuSurfaceSlot slot, in PlanetPlacement placement, ref bool materialUpdated)
+        {
+            if (slot == null || !slot.hasDrawable || !slot.hasRenderRecipe)
+            {
+                return;
+            }
+
+            if (!materialUpdated && runtimeMaterial != null)
+            {
+                ApplyMaterialProperties(in slot.renderRecipe, in placement);
+                materialUpdated = true;
+            }
+
+            slot.drawBounds = CalculateDrawBounds(in slot.renderRecipe, in placement);
+        }
+
         private static Bounds CalculateDrawBounds(in PlanetRecipe recipe, in PlanetPlacement placement)
         {
             PlanetMarchingCubesChunkRange.CalculateSurfaceShell(
@@ -632,6 +705,8 @@ namespace MarchingCubesPlanet.MarchingCubes
             public ComputeBuffer vertexBuffer;
             public ComputeBuffer drawArgsBuffer;
             public Bounds drawBounds;
+            public PlanetRecipe renderRecipe;
+            public bool hasRenderRecipe;
             public bool hasDrawable;
 
             public GpuSurfaceSlot(string name)
@@ -642,6 +717,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             public void Release()
             {
                 hasDrawable = false;
+                hasRenderRecipe = false;
                 ReleaseBuffer(ref vertexBuffer);
                 ReleaseBuffer(ref drawArgsBuffer);
             }

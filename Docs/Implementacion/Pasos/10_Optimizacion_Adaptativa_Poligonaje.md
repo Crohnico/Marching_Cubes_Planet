@@ -331,7 +331,9 @@ Fuente de player/camara:
 La posicion del jugador y la direccion de mirada vienen de un LODAgent.
 El LODAgent empuja un snapshot plano: playerPositionWorld, cameraForwardWorld y version.
 10 consume directamente la posicion del rig/camara disponible para el Lab, sin registry de 09.
-PlanetMinimalXrRig puede mover camara y manos, pero no es la autoridad de LOD.
+PlanetMinimalXrRig actualiza camara, manos y rayos.
+DebugMinimalLocomotion mueve el Player de Lab para la demo.
+Ninguno de esos componentes es la autoridad final de LOD.
 ```
 
 Formula inicial:
@@ -363,6 +365,40 @@ Regla:
 No se anaden mas senales a la formula inicial.
 Primero se valida cercania + mirada.
 ```
+
+## PlanetDirector inicial
+
+`PlanetDirector` es el primer orquestador runtime del planeta activo.
+
+Contrato inicial:
+
+```text
+Mantiene la receta del planeta.
+Mantiene el placement del planeta sincronizado desde su propio transform.
+Mantiene PlanetGpuMarchingCubesSurface del planeta.
+Puede usar MeshRenderer como fuente opcional de material si esta asignado.
+MeshFilter queda como referencia legacy/debug opcional y no se crea para la ruta GPU.
+Mantiene el PlanetGrid confirmado.
+Tiene referencia al player.
+Evalua un activationRange simple.
+Carga Shell LOD2 al arrancar, despues de `WaitForEndOfFrame` para que la escena,
+componentes Unity y primer ciclo de render esten asentados.
+Al entrar en rango, carga Base LOD2 usando la cola de chunks.
+Mientras Base carga, la Shell permanece visible.
+Al completar Base, libera la Shell y marca el planeta como setup.
+Al salir de rango, vuelve a cargar Shell LOD2 y libera Base.
+Si el player sale mientras Base carga, cancela la cola, libera Base parcial y conserva Shell.
+```
+
+`PlanetDirector` vive en el mismo GameObject visual del planeta. Igual que el
+preview, la posicion/rotacion de ese transform son el placement usado para
+generar y renderizar.
+En la ruta GPU-resident, mover o rotar ese transform despues de generar no
+recalcula el planeta: `PlanetDirector` sincroniza el placement y
+`PlanetGpuMarchingCubesSurface` actualiza solo matriz de material y bounds.
+
+`CalculateLODFromPlayerPosition` existe como punto de entrada futuro, pero queda
+TBD hasta cerrar la politica de LOD dinamico.
 
 Con esa puntuacion, cada chunk recibira un LOD deseado:
 

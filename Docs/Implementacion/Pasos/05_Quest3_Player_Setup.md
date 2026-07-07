@@ -174,6 +174,32 @@ Mostrar un rayo por mano.
 Permitir hover y click sobre UI de Unity con el gatillo.
 No ser controlador final de gameplay.
 No contener logica de planeta.
+No contener locomocion de demo; esa responsabilidad vive en `DebugMinimalLocomotion`.
+```
+
+### DebugMinimalLocomotion
+
+Componente temporal de vuelo libre para inspeccionar el planeta generado en
+VR/Quest Link.
+
+Responsabilidad:
+
+```text
+Permitir locomocion basica de Lab con sticks XR.
+No ser controlador final de gameplay.
+No contener logica de planeta.
+Vivir junto al Player de Lab mientras haga falta para la demo.
+```
+
+Controles vigentes de Lab:
+
+```text
+Stick izquierdo X -> yaw del player.
+Stick izquierdo Y -> pitch del player.
+Stick derecho X/Y -> movimiento lateral/frontal en ejes locales del player.
+Boton primario derecho -> alterna velocidad Approach/Interior.
+Approach speed -> 900.
+Interior speed -> 30.
 ```
 
 Regla:

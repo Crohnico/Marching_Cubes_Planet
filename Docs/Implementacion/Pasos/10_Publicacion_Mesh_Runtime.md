@@ -143,6 +143,10 @@ crea antes de recorrer chunks. No usa candidatos conservadores en el flujo norma
 de `Chunk + Generate`.
 En el panel de preview, `Generate` con modo Chunk recorre candidatos uno a uno
 dejando un frame entre chunks para pruebas manuales de FPS.
+Generate Base visual usa `PlanetGrid` siempre. Si no existe grid, el panel lo
+crea antes de generar. Base no es Shell ni Chunk: usa la misma cola de chunks
+para cargar, uno a uno, todos los chunks confirmados con informacion para el LOD
+pedido. Al terminar la cola emite el callback de completado.
 ```
 
 Regla de memoria:
@@ -162,6 +166,9 @@ En modo Chunk del panel, las coordenadas confirmadas por `PlanetGrid` se agregan
 en un unico slot visible GPU de chunks. No se reserva un buffer LOD0 por chunk:
 el buffer agregado usa la misma escala de capacidad que la shell para que el modo
 chunks no consuma mas memoria que generar la shell equivalente.
+En modo Base del panel, las coordenadas confirmadas por `PlanetGrid` se agregan
+en el mismo slot visible GPU agregado de chunks, pero recorriendo todos los
+chunks confirmados. No crea un buffer por chunk.
 GenerateShell conserva temporalmente la capacidad global por defecto de 3M como
 deuda explicita hasta medir y cerrar la reduccion de shell LOD2.
 La ruta legacy de Mesh puede mantener sus scratch buffers reutilizables mientras
@@ -188,6 +195,7 @@ En el panel de preview:
 ```text
 Shell -> un slot GPU visible.
 Chunk -> un slot GPU agregado para todos los chunks generados en la secuencia.
+Base  -> una cola que carga todos los chunks confirmados en el slot agregado.
 ```
 
 Motivo:
@@ -201,6 +209,9 @@ Si cada chunk mantiene su propio buffer LOD0, 7 chunks ya superan la shell.
 El material visible usa shader URP de superficie compatible con el atlas actual.
 El shader recibe el buffer `PlanetMarchingCubesVertex`, transforma grid->world en
 vertex shader y calcula la UV de atlas por altura igual que la ruta CPU previa.
+Los vertices generados permanecen en coordenadas de grid. Mover o rotar el
+GameObject del planeta solo actualiza la matriz grid->world del material y los
+bounds del draw indirect; no dispara Marching Cubes ni reescribe buffers.
 
 Regla:
 
