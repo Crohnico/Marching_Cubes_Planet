@@ -107,6 +107,28 @@ Ruido Perlin/fBm de detalle.
 La receta conserva parametros de radio, escala, seed, isoLevel, Voronoi, ruido,
 oceano, continente y montanas.
 
+## Laminas de composicion
+
+La siguiente evolucion del calculo del terreno se documenta en:
+
+```text
+Docs/Implementacion/04_Laminas_Composicion_Terreno.md
+```
+
+La idea vigente es no crear caminos de render especiales para cuevas, minerales o
+modificadores. En su lugar, el terreno local se calculara como composicion de
+laminas:
+
+```text
+Lamina Superficie
+Lamina Cavidades
+Laminas de minerales / sustancias / modificaciones futuras
+```
+
+El render GPU-resident actual debe seguir consumiendo chunks renderizables como
+hasta ahora. Las laminas modifican el campo compuesto que se entrega a Marching
+Cubes, no el contrato de render.
+
 ## Marching Cubes
 
 La ruta canonica es cartesiana:
