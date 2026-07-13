@@ -19,10 +19,13 @@ namespace MarchingCubesPlanet.MarchingCubes
         private const string SurfaceGpuShaderName = "MarchingCubesPlanet/Planet/SurfaceGpu";
         private const string DefaultSurfaceMaterialResourceName = "PlanetWorld_Surface";
         private const int SurfaceAtlasResolution = 256;
+        private const int SurfaceLayerAtlasWidth = 1;
+        private const int MaxMaterialLayers = PlanetRecipe.MaxMaterialLayers;
         private const int IndirectArgsCount = 4;
         private const int MaxThreadGroupsPerDispatchAxis = 65535;
         private const int ShellCacheMagic = 0x4d435053;
         private const int ShellCacheVersion = 1;
+        private static readonly Color32 SurfaceLayerBasicTerrainColor = new Color32(199, 92, 140, 255);
 
         private static readonly int ShapeParametersId = Shader.PropertyToID("_PlanetShapeParameters");
         private static readonly int ShapeCellsId = Shader.PropertyToID("_PlanetShapeCells");
@@ -56,12 +59,14 @@ namespace MarchingCubesPlanet.MarchingCubes
         private static readonly int PlanetGpuVertexLayoutId = Shader.PropertyToID("_PlanetGpuVertexLayout");
         private static readonly int PlanetGridToWorldMatrixId = Shader.PropertyToID("_PlanetGridToWorldMatrix");
         private static readonly int PlanetGridRadiusId = Shader.PropertyToID("_PlanetGridRadius");
-        private static readonly int PlanetOceanDepthId = Shader.PropertyToID("_PlanetOceanDepth");
-        private static readonly int PlanetMinimumOceanDepthId = Shader.PropertyToID("_PlanetMinimumOceanDepth");
-        private static readonly int PlanetSurfaceNoiseAmplitudeId = Shader.PropertyToID("_PlanetSurfaceNoiseAmplitude");
-        private static readonly int PlanetMaxLandElevationId = Shader.PropertyToID("_PlanetMaxLandElevation");
-        private static readonly int PlanetMaxHeightModifierId = Shader.PropertyToID("_PlanetMaxHeightModifier");
-        private static readonly int PlanetMountainBiomeHeightId = Shader.PropertyToID("_PlanetMountainBiomeHeight");
+        private static readonly int PlanetWorldScaleId = Shader.PropertyToID("_PlanetWorldScale");
+        private static readonly int PlanetSeedId = Shader.PropertyToID("_PlanetSeed");
+        private static readonly int PlanetLayerCountId = Shader.PropertyToID("_PlanetLayerCount");
+        private static readonly int PlanetLayerColorsId = Shader.PropertyToID("_PlanetLayerColors");
+        private static readonly int PlanetLayerHeightsId = Shader.PropertyToID("_PlanetLayerHeights");
+        private static readonly int PlanetLayerNoiseId = Shader.PropertyToID("_PlanetLayerNoise");
+        private static readonly int PlanetLayerFlagsId = Shader.PropertyToID("_PlanetLayerFlags");
+        private static readonly int PlanetLayerSeedsId = Shader.PropertyToID("_PlanetLayerSeeds");
         private static readonly int SurfaceAtlasTextureId = Shader.PropertyToID("_PlanetSurfaceAtlas");
         private static readonly int UseSurfaceAtlasId = Shader.PropertyToID("_UsePlanetSurfaceAtlas");
         private static readonly int BaseMapId = Shader.PropertyToID("_BaseMap");
@@ -72,6 +77,11 @@ namespace MarchingCubesPlanet.MarchingCubes
         private readonly PlanetGpuShapeEvaluator shapeEvaluator = new PlanetGpuShapeEvaluator();
         private readonly PlanetMarchingCubesState[] stateUpload = new PlanetMarchingCubesState[1];
         private readonly uint[] drawArgsUpload = { 0u, 1u, 0u, 0u };
+        private readonly Vector4[] layerColorUpload = new Vector4[MaxMaterialLayers];
+        private readonly Vector4[] layerHeightUpload = new Vector4[MaxMaterialLayers];
+        private readonly Vector4[] layerNoiseUpload = new Vector4[MaxMaterialLayers];
+        private readonly Vector4[] layerFlagUpload = new Vector4[MaxMaterialLayers];
+        private readonly Vector4[] layerSeedUpload = new Vector4[MaxMaterialLayers];
 
         private ComputeShader marchingShader;
         private int extractKernel;
@@ -407,7 +417,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                     shellSlot.drawArgsBuffer.SetData(drawArgs, 0, 0, IndirectArgsCount);
 
                     EnsureShapeCells(in lodRecipe);
-                    ResolveMaterial(materialSource, shapeCells);
+                    ResolveMaterial(materialSource);
                     shellSlot.renderRecipe = lodRecipe;
                     shellSlot.hasRenderRecipe = true;
                     shellSlot.hasDrawable = true;
@@ -596,7 +606,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             Dispatch(activeCellCount);
             DispatchTransitions(slot, safeTransitionFaceCount, chunkSize, Mathf.Max(1, outputVertexCapacity));
 
-            ResolveMaterial(materialSource, shapeCells);
+            ResolveMaterial(materialSource);
             slot.renderRecipe = renderRecipe;
             slot.hasRenderRecipe = true;
             slot.hasDrawable = true;
@@ -788,7 +798,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             slot.drawArgsBuffer.SetData(drawArgsUpload, 0, 0, IndirectArgsCount);
         }
 
-        private void ResolveMaterial(MeshRenderer materialSource, PlanetGpuShapeCell[] cells)
+        private void ResolveMaterial(MeshRenderer materialSource)
         {
             Material nextSource = materialSource != null && materialSource.sharedMaterial != null
                 ? materialSource.sharedMaterial
@@ -812,22 +822,16 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
 
             CopyTextureProperty(nextSource, runtimeMaterial, BaseMapId);
-            CopyColorProperty(nextSource, runtimeMaterial, BaseColorId);
             CopyFloatProperty(nextSource, runtimeMaterial, SmoothnessId);
             CopyFloatProperty(nextSource, runtimeMaterial, MetallicId);
-            bool hasSourceBaseMap = nextSource != null &&
-                                    nextSource.HasProperty(BaseMapId) &&
-                                    nextSource.GetTexture(BaseMapId) != null;
-            if (hasSourceBaseMap)
+            if (runtimeMaterial.HasProperty(BaseColorId))
             {
-                runtimeMaterial.SetFloat(UseSurfaceAtlasId, 0f);
+                runtimeMaterial.SetColor(BaseColorId, Color.white);
             }
-            else
-            {
-                EnsureSurfaceAtlas(cells);
-                runtimeMaterial.SetFloat(UseSurfaceAtlasId, 1f);
-                runtimeMaterial.SetTexture(SurfaceAtlasTextureId, runtimeSurfaceAtlas);
-            }
+
+            EnsureSurfaceAtlas();
+            runtimeMaterial.SetFloat(UseSurfaceAtlasId, 1f);
+            runtimeMaterial.SetTexture(SurfaceAtlasTextureId, runtimeSurfaceAtlas);
         }
 
         private void ApplyMaterialProperties(in PlanetRecipe recipe, in PlanetPlacement placement)
@@ -839,12 +843,50 @@ namespace MarchingCubesPlanet.MarchingCubes
             runtimeMaterial.SetFloat(PlanetGpuVertexLayoutId, 1f);
             runtimeMaterial.SetMatrix(PlanetGridToWorldMatrixId, gridToWorld);
             runtimeMaterial.SetFloat(PlanetGridRadiusId, recipe.GridRadius);
-            runtimeMaterial.SetFloat(PlanetOceanDepthId, recipe.OceanDepth);
-            runtimeMaterial.SetFloat(PlanetMinimumOceanDepthId, recipe.MinimumOceanDepth);
-            runtimeMaterial.SetFloat(PlanetSurfaceNoiseAmplitudeId, recipe.SurfaceNoiseAmplitude);
-            runtimeMaterial.SetFloat(PlanetMaxLandElevationId, recipe.MaxLandElevation);
-            runtimeMaterial.SetFloat(PlanetMaxHeightModifierId, recipe.MaxHeightModifier);
-            runtimeMaterial.SetFloat(PlanetMountainBiomeHeightId, recipe.MountainBiomeHeight);
+            runtimeMaterial.SetFloat(PlanetWorldScaleId, recipe.WorldScale);
+            runtimeMaterial.SetFloat(PlanetSeedId, recipe.Seed);
+            UploadMaterialLayers(in recipe);
+        }
+
+        private void UploadMaterialLayers(in PlanetRecipe recipe)
+        {
+            PlanetMaterialLayer[] layers = recipe.MaterialLayers;
+            int layerCount = Mathf.Clamp(layers == null ? 0 : layers.Length, 1, MaxMaterialLayers);
+            for (int i = 0; i < MaxMaterialLayers; i++)
+            {
+                PlanetMaterialLayer layer = i < layerCount
+                    ? layers[i]
+                    : PlanetMaterialLayer.Base("Unused", Color.magenta);
+                Color color = layer.AtlasColor;
+                layerColorUpload[i] = new Vector4(color.r, color.g, color.b, color.a);
+                layerHeightUpload[i] = new Vector4(
+                    layer.HeightMin01,
+                    layer.HeightMax01,
+                    layer.FalloffMin01,
+                    layer.FalloffMax01);
+                layerNoiseUpload[i] = new Vector4(
+                    layer.Coverage01,
+                    layer.MassScaleMinMeters,
+                    layer.MassScaleMaxMeters,
+                    layer.MassCoherence01);
+                layerFlagUpload[i] = new Vector4(
+                    layer.Enabled ? 1f : 0f,
+                    (float)layer.Operation,
+                    layer.Strength01,
+                    layer.AltitudeBias);
+                layerSeedUpload[i] = new Vector4(
+                    layer.SeedOffset,
+                    (float)layer.Material,
+                    0f,
+                    0f);
+            }
+
+            runtimeMaterial.SetInt(PlanetLayerCountId, layerCount);
+            runtimeMaterial.SetVectorArray(PlanetLayerColorsId, layerColorUpload);
+            runtimeMaterial.SetVectorArray(PlanetLayerHeightsId, layerHeightUpload);
+            runtimeMaterial.SetVectorArray(PlanetLayerNoiseId, layerNoiseUpload);
+            runtimeMaterial.SetVectorArray(PlanetLayerFlagsId, layerFlagUpload);
+            runtimeMaterial.SetVectorArray(PlanetLayerSeedsId, layerSeedUpload);
         }
 
         private void EnsureShapeCells(in PlanetRecipe recipe)
@@ -857,35 +899,32 @@ namespace MarchingCubesPlanet.MarchingCubes
             PlanetGpuShapeCellBuilder.Build(in recipe, shapeCells);
         }
 
-        private void EnsureSurfaceAtlas(PlanetGpuShapeCell[] cells)
+        private void EnsureSurfaceAtlas()
         {
-            int atlasWidth = Mathf.Max(1, cells == null ? 0 : cells.Length);
-            if (runtimeSurfaceAtlas != null && runtimeSurfaceAtlas.width == atlasWidth)
+            if (runtimeSurfaceAtlas != null &&
+                runtimeSurfaceAtlas.width == SurfaceLayerAtlasWidth &&
+                runtimeSurfaceAtlas.height == SurfaceAtlasResolution)
             {
                 return;
             }
 
             DestroyUnityObject(runtimeSurfaceAtlas);
-            runtimeSurfaceAtlas = new Texture2D(atlasWidth, SurfaceAtlasResolution, TextureFormat.RGBA32, false, true)
+            runtimeSurfaceAtlas = new Texture2D(SurfaceLayerAtlasWidth, SurfaceAtlasResolution, TextureFormat.RGBA32, false, true)
             {
-                name = "PlanetGpuMarchingCubesSurface_SurfaceAtlas_Runtime",
+                name = "PlanetGpuMarchingCubesSurface_SurfaceLayerAtlas_Runtime",
                 wrapMode = TextureWrapMode.Clamp,
-                filterMode = FilterMode.Bilinear
+                filterMode = FilterMode.Point
             };
 
-            int pixelCount = atlasWidth * SurfaceAtlasResolution;
+            int pixelCount = SurfaceLayerAtlasWidth * SurfaceAtlasResolution;
             if (surfaceAtlasPixels.Length != pixelCount)
             {
                 surfaceAtlasPixels = new Color32[pixelCount];
             }
 
-            for (int x = 0; x < atlasWidth; x++)
+            for (int i = 0; i < surfaceAtlasPixels.Length; i++)
             {
-                for (int y = 0; y < SurfaceAtlasResolution; y++)
-                {
-                    float t = y / (float)(SurfaceAtlasResolution - 1);
-                    surfaceAtlasPixels[y * atlasWidth + x] = EvaluateSurfaceCellGradient(t, x);
-                }
+                surfaceAtlasPixels[i] = SurfaceLayerBasicTerrainColor;
             }
 
             runtimeSurfaceAtlas.SetPixels32(surfaceAtlasPixels);
@@ -962,16 +1001,6 @@ namespace MarchingCubesPlanet.MarchingCubes
             target.SetTexture(propertyId, source.GetTexture(propertyId));
         }
 
-        private static void CopyColorProperty(Material source, Material target, int propertyId)
-        {
-            if (source == null || target == null || !source.HasProperty(propertyId) || !target.HasProperty(propertyId))
-            {
-                return;
-            }
-
-            target.SetColor(propertyId, source.GetColor(propertyId));
-        }
-
         private static void CopyFloatProperty(Material source, Material target, int propertyId)
         {
             if (source == null || target == null || !source.HasProperty(propertyId) || !target.HasProperty(propertyId))
@@ -980,61 +1009,6 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
 
             target.SetFloat(propertyId, source.GetFloat(propertyId));
-        }
-
-        private static Color32 EvaluateSurfaceCellGradient(float height01, int cellIndex)
-        {
-            Color baseColor = EvaluatePlanetSurfacePalette(height01);
-            float valueNoise = Hash01((uint)cellIndex, 0x6ac690c5u);
-            float warmthNoise = Hash01((uint)cellIndex, 0x9e3779b9u) - 0.5f;
-            float value = Mathf.Lerp(0.94f, 1.06f, valueNoise);
-            return new Color(
-                Mathf.Clamp01(baseColor.r * value + warmthNoise * 0.025f),
-                Mathf.Clamp01(baseColor.g * value),
-                Mathf.Clamp01(baseColor.b * value - warmthNoise * 0.020f),
-                1f);
-        }
-
-        private static Color EvaluatePlanetSurfacePalette(float height01)
-        {
-            height01 = Mathf.Clamp01(height01);
-            Color deepPink = new Color(0.78f, 0.36f, 0.55f, 1f);
-            Color salmon = new Color(0.72f, 0.42f, 0.45f, 1f);
-            Color darkRedBrown = new Color(0.28f, 0.17f, 0.15f, 1f);
-            Color roseRed = new Color(0.62f, 0.32f, 0.38f, 1f);
-            Color sand = new Color(0.78f, 0.68f, 0.44f, 1f);
-            Color paleYellow = new Color(0.88f, 0.80f, 0.56f, 1f);
-            Color brightGreen = new Color(0.42f, 0.62f, 0.29f, 1f);
-            Color darkGreen = new Color(0.17f, 0.40f, 0.19f, 1f);
-            Color brown = new Color(0.43f, 0.31f, 0.20f, 1f);
-            Color darkGrey = new Color(0.32f, 0.32f, 0.30f, 1f);
-            Color grey = new Color(0.55f, 0.55f, 0.51f, 1f);
-            Color lightGrey = new Color(0.78f, 0.78f, 0.74f, 1f);
-            Color snow = new Color(0.93f, 0.93f, 0.89f, 1f);
-
-            if (height01 < 0.12f) return Color.Lerp(deepPink, salmon, height01 / 0.12f);
-            if (height01 < 0.24f) return Color.Lerp(salmon, darkRedBrown, (height01 - 0.12f) / 0.12f);
-            if (height01 < 0.34f) return Color.Lerp(darkRedBrown, roseRed, (height01 - 0.24f) / 0.10f);
-            if (height01 < 0.46f) return Color.Lerp(roseRed, sand, (height01 - 0.34f) / 0.12f);
-            if (height01 < 0.54f) return Color.Lerp(sand, paleYellow, (height01 - 0.46f) / 0.08f);
-            if (height01 < 0.66f) return Color.Lerp(paleYellow, brightGreen, (height01 - 0.54f) / 0.12f);
-            if (height01 < 0.76f) return Color.Lerp(brightGreen, darkGreen, (height01 - 0.66f) / 0.10f);
-            if (height01 < 0.84f) return Color.Lerp(darkGreen, brown, (height01 - 0.76f) / 0.08f);
-            if (height01 < 0.91f) return Color.Lerp(brown, darkGrey, (height01 - 0.84f) / 0.07f);
-            if (height01 < 0.96f) return Color.Lerp(darkGrey, grey, (height01 - 0.91f) / 0.05f);
-            if (height01 < 0.985f) return Color.Lerp(grey, lightGrey, (height01 - 0.96f) / 0.025f);
-            return Color.Lerp(lightGrey, snow, (height01 - 0.985f) / 0.015f);
-        }
-
-        private static float Hash01(uint value, uint salt)
-        {
-            uint x = value ^ salt;
-            x ^= x >> 16;
-            x *= 0x7feb352du;
-            x ^= x >> 15;
-            x *= 0x846ca68bu;
-            x ^= x >> 16;
-            return (x & 0x00ffffffu) / 16777215f;
         }
 
         private static PlanetMarchingCubesVertex ReadVertex(BinaryReader reader)

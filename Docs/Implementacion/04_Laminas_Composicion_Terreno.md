@@ -128,7 +128,58 @@ Conceptualmente:
 
 ```text
 density = radius + surfaceOffset(point) - distance(point, center)
-material = material superficial segun altura/bioma
+material = tierra basica
+```
+
+Decision inicial:
+
+```text
+Toda geometria creada por Lamina 0 tiene material asignado por capa 0.
+La capa 0 es obligatoria y cubre todo solido de la forma base.
+La capa 0 puede ser tierra, roca, oro, hielo u otro material base de receta.
+Ahora se usa tierra basica rosa como placeholder.
+El material final ya no se asigna por altura de forma implicita.
+La altura sigue afectando a la forma, no al material.
+```
+
+Las laminas de material viven en `PlanetRecipe`.
+
+Primera estructura funcional:
+
+```text
+enabled
+operation
+material
+atlasColor
+heightMin01 / heightMax01
+falloffMin01 / falloffMax01
+coverage01
+massScaleMinMeters / massScaleMaxMeters
+massCoherence01
+strength01
+altitudeBias
+seedOffset
+```
+
+`heightMin01` y `heightMax01` usan radio normalizado:
+
+```text
+0 = centro del planeta
+1 = radio de grid de la receta
+```
+
+Las laminas 1+ no crean mesh propia y no crean solido nuevo.
+
+En esta fase inicial solo tintan el material visual final sobre la superficie
+generada por Marching Cubes.
+
+Ejemplos iniciales en escena:
+
+```text
+Lamina 0: tierra basica rosa, cobertura total.
+Lamina 1: cesped verde, manto general de superficie.
+Lamina 2: arena, orillas y zonas bajo/cerca del agua, masas grandes conectadas.
+Lamina 3: roca gris, aparece por masas y aumenta con altura.
 ```
 
 ## Lamina Cavidades

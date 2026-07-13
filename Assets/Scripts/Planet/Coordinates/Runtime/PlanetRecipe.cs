@@ -21,6 +21,7 @@ namespace MarchingCubesPlanet.Coordinates
         public const float DefaultContinentEdgeWidthMin = 0.65f;
         public const float DefaultContinentEdgeWidthMax = 1.75f;
         public const float DefaultContinentEdgeShiftStrength = 0.75f;
+        public const int MaxMaterialLayers = 16;
 
         [SerializeField] private int gridRadius;
         [SerializeField] private float worldScale;
@@ -54,6 +55,7 @@ namespace MarchingCubesPlanet.Coordinates
         [SerializeField] private float mountainBiomePeakFalloff;
         [SerializeField] private float minRoughness;
         [SerializeField] private float maxRoughness;
+        [SerializeField] private PlanetMaterialLayer[] materialLayers;
 
         public int GridRadius
         {
@@ -247,6 +249,20 @@ namespace MarchingCubesPlanet.Coordinates
             set => maxRoughness = value;
         }
 
+        public PlanetMaterialLayer[] MaterialLayers
+        {
+            get
+            {
+                EnsureMaterialLayers();
+                return materialLayers;
+            }
+            set
+            {
+                materialLayers = value;
+                EnsureMaterialLayers();
+            }
+        }
+
         public int GridDiameter => gridRadius * 2;
         public float WorldRadius => gridRadius * worldScale;
         public float WorldDiameter => GridDiameter * worldScale;
@@ -258,6 +274,7 @@ namespace MarchingCubesPlanet.Coordinates
 
         public void OnBeforeSerialize()
         {
+            EnsureMaterialLayers();
         }
 
         public void OnAfterDeserialize()
@@ -331,6 +348,8 @@ namespace MarchingCubesPlanet.Coordinates
             {
                 mountainBiomeHeight = DefaultMountainBiomeHeight;
             }
+
+            EnsureMaterialLayers();
         }
 
         public static PlanetRecipe Default()
@@ -368,8 +387,242 @@ namespace MarchingCubesPlanet.Coordinates
                 mountainBiomeEdgeBlend = DefaultMountainBiomeEdgeBlend,
                 mountainBiomePeakFalloff = DefaultMountainBiomePeakFalloff,
                 minRoughness = 0.6f,
-                maxRoughness = 0.8f
+                maxRoughness = 0.8f,
+                materialLayers = CreateDefaultMaterialLayers()
             };
+        }
+
+        private void EnsureMaterialLayers()
+        {
+            if (materialLayers == null || materialLayers.Length == 0)
+            {
+                materialLayers = CreateDefaultMaterialLayers();
+                return;
+            }
+
+            if (materialLayers.Length > MaxMaterialLayers)
+            {
+                Array.Resize(ref materialLayers, MaxMaterialLayers);
+            }
+
+            materialLayers[0] = materialLayers[0].AsRequiredBaseLayer();
+            for (int i = 1; i < materialLayers.Length; i++)
+            {
+                materialLayers[i].EnsureValid();
+            }
+        }
+
+        private static PlanetMaterialLayer[] CreateDefaultMaterialLayers()
+        {
+            return new[]
+            {
+                PlanetMaterialLayer.Base("Tierra basica", new Color(0.78f, 0.36f, 0.55f, 1f)),
+                PlanetMaterialLayer.Paint(
+                    "Cesped",
+                    PlanetLayerMaterial.Grass,
+                    new Color(0.24f, 0.58f, 0.20f, 1f),
+                    0.78f,
+                    1.5f,
+                    0.08f,
+                    0.22f,
+                    0.92f,
+                    18f,
+                    260f,
+                    0.72f,
+                    1f,
+                    0.05f,
+                    23),
+                PlanetMaterialLayer.Paint(
+                    "Arena",
+                    PlanetLayerMaterial.Sand,
+                    new Color(0.78f, 0.68f, 0.42f, 1f),
+                    0.70f,
+                    1.01f,
+                    0.12f,
+                    0.06f,
+                    0.72f,
+                    160f,
+                    1400f,
+                    0.9f,
+                    0.95f,
+                    -0.65f,
+                    37),
+                PlanetMaterialLayer.Paint(
+                    "Roca",
+                    PlanetLayerMaterial.Rock,
+                    new Color(0.46f, 0.46f, 0.43f, 1f),
+                    0f,
+                    1.5f,
+                    0.08f,
+                    0.08f,
+                    0.34f,
+                    1f,
+                    1000f,
+                    0.52f,
+                    0.82f,
+                    0.85f,
+                    11)
+            };
+        }
+    }
+
+    public enum PlanetLayerOperation
+    {
+        BaseSurface = 0,
+        PaintMaterial = 1,
+        SubtractDensity = 2
+    }
+
+    public enum PlanetLayerMaterial
+    {
+        BasicTerrain = 0,
+        Rock = 1,
+        Grass = 2,
+        Sand = 3,
+        Marble = 4,
+        Iron = 5,
+        Copper = 6,
+        Air = 100
+    }
+
+    [Serializable]
+    public struct PlanetMaterialLayer
+    {
+        [SerializeField] private string name;
+        [SerializeField] private bool enabled;
+        [SerializeField] private PlanetLayerOperation operation;
+        [SerializeField] private PlanetLayerMaterial material;
+        [SerializeField] private Color atlasColor;
+        [SerializeField] private float heightMin01;
+        [SerializeField] private float heightMax01;
+        [SerializeField] private float falloffMin01;
+        [SerializeField] private float falloffMax01;
+        [SerializeField] private float coverage01;
+        [SerializeField] private float massScaleMinMeters;
+        [SerializeField] private float massScaleMaxMeters;
+        [SerializeField] private float massCoherence01;
+        [SerializeField] private float strength01;
+        [SerializeField] private float altitudeBias;
+        [SerializeField] private int seedOffset;
+
+        public string Name => name;
+        public bool Enabled => enabled;
+        public PlanetLayerOperation Operation => operation;
+        public PlanetLayerMaterial Material => material;
+        public Color AtlasColor => atlasColor;
+        public float HeightMin01 => heightMin01;
+        public float HeightMax01 => heightMax01;
+        public float FalloffMin01 => falloffMin01;
+        public float FalloffMax01 => falloffMax01;
+        public float Coverage01 => coverage01;
+        public float MassScaleMinMeters => massScaleMinMeters;
+        public float MassScaleMaxMeters => massScaleMaxMeters;
+        public float MassCoherence01 => massCoherence01;
+        public float Strength01 => strength01;
+        public float AltitudeBias => altitudeBias;
+        public int SeedOffset => seedOffset;
+
+        public static PlanetMaterialLayer Base(string name, Color color)
+        {
+            return Paint(
+                name,
+                PlanetLayerMaterial.BasicTerrain,
+                color,
+                0f,
+                1.5f,
+                0f,
+                0f,
+                1f,
+                1f,
+                1f,
+                1f,
+                1f,
+                0f,
+                0).AsRequiredBaseLayer();
+        }
+
+        public static PlanetMaterialLayer Paint(
+            string name,
+            PlanetLayerMaterial material,
+            Color color,
+            float heightMin01,
+            float heightMax01,
+            float falloffMin01,
+            float falloffMax01,
+            float coverage01,
+            float massScaleMinMeters,
+            float massScaleMaxMeters,
+            float massCoherence01,
+            float strength01,
+            float altitudeBias,
+            int seedOffset)
+        {
+            PlanetMaterialLayer layer = new PlanetMaterialLayer
+            {
+                name = name,
+                enabled = true,
+                operation = PlanetLayerOperation.PaintMaterial,
+                material = material,
+                atlasColor = color,
+                heightMin01 = heightMin01,
+                heightMax01 = heightMax01,
+                falloffMin01 = falloffMin01,
+                falloffMax01 = falloffMax01,
+                coverage01 = coverage01,
+                massScaleMinMeters = massScaleMinMeters,
+                massScaleMaxMeters = massScaleMaxMeters,
+                massCoherence01 = massCoherence01,
+                strength01 = strength01,
+                altitudeBias = altitudeBias,
+                seedOffset = seedOffset
+            };
+            layer.EnsureValid();
+            return layer;
+        }
+
+        public PlanetMaterialLayer AsRequiredBaseLayer()
+        {
+            enabled = true;
+            operation = PlanetLayerOperation.BaseSurface;
+            if (atlasColor.a <= 0f)
+            {
+                atlasColor = new Color(0.78f, 0.36f, 0.55f, 1f);
+            }
+
+            heightMin01 = 0f;
+            heightMax01 = 1.5f;
+            falloffMin01 = 0f;
+            falloffMax01 = 0f;
+            coverage01 = 1f;
+            massScaleMinMeters = 1f;
+            massScaleMaxMeters = 1f;
+            massCoherence01 = 1f;
+            strength01 = 1f;
+            altitudeBias = 0f;
+            return this;
+        }
+
+        public void EnsureValid()
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                name = material.ToString();
+            }
+
+            heightMin01 = Mathf.Clamp(heightMin01, 0f, 1.5f);
+            heightMax01 = Mathf.Clamp(heightMax01, heightMin01, 1.5f);
+            falloffMin01 = Mathf.Clamp01(falloffMin01);
+            falloffMax01 = Mathf.Clamp01(falloffMax01);
+            coverage01 = Mathf.Clamp01(coverage01);
+            massScaleMinMeters = Mathf.Max(0.01f, massScaleMinMeters);
+            massScaleMaxMeters = Mathf.Max(massScaleMinMeters, massScaleMaxMeters);
+            massCoherence01 = Mathf.Clamp01(massCoherence01);
+            strength01 = Mathf.Clamp01(strength01);
+            altitudeBias = Mathf.Clamp(altitudeBias, -1f, 1f);
+            if (atlasColor.a <= 0f)
+            {
+                atlasColor.a = 1f;
+            }
         }
     }
 }

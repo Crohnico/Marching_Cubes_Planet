@@ -48,12 +48,14 @@ Shader "MarchingCubesPlanet/Planet/SurfaceGpu"
             float _PlanetGpuVertexLayout;
             float4x4 _PlanetGridToWorldMatrix;
             float _PlanetGridRadius;
-            float _PlanetOceanDepth;
-            float _PlanetMinimumOceanDepth;
-            float _PlanetSurfaceNoiseAmplitude;
-            float _PlanetMaxLandElevation;
-            float _PlanetMaxHeightModifier;
-            float _PlanetMountainBiomeHeight;
+            float _PlanetWorldScale;
+            float _PlanetSeed;
+            int _PlanetLayerCount;
+            float4 _PlanetLayerColors[16];
+            float4 _PlanetLayerHeights[16];
+            float4 _PlanetLayerNoise[16];
+            float4 _PlanetLayerFlags[16];
+            float4 _PlanetLayerSeeds[16];
 
             TEXTURE2D(_PlanetSurfaceAtlas);
             SAMPLER(sampler_PlanetSurfaceAtlas);
@@ -86,33 +88,97 @@ Shader "MarchingCubesPlanet/Planet/SurfaceGpu"
                 half4 color : COLOR;
                 half fogFactor : TEXCOORD3;
                 float active : TEXCOORD4;
+                float3 gridPosition : TEXCOORD5;
             };
 
-            float2 EvaluateSurfaceAtlasUv(float radius)
+            float Hash13(float3 p)
             {
-                const float surfaceAtlasSeaLevelV = 0.5;
-                const float surfaceAtlasLandRangeScale = 0.6;
-                float safeRadius = max(_PlanetGridRadius, 0.0001);
-                float surfaceOffset = radius - _PlanetGridRadius;
-                float minHeightAtlasOffset =
-                    -safeRadius * max(_PlanetOceanDepth, _PlanetMinimumOceanDepth) -
-                    safeRadius * max(0.0, _PlanetSurfaceNoiseAmplitude);
-                float maxHeightAtlasOffset =
-                    safeRadius * _PlanetMaxLandElevation * _PlanetMaxHeightModifier +
-                    safeRadius * max(0.0, _PlanetMountainBiomeHeight) +
-                    safeRadius * max(0.0, _PlanetSurfaceNoiseAmplitude);
-                maxHeightAtlasOffset *= surfaceAtlasLandRangeScale;
+                p = frac(p * 0.1031);
+                p += dot(p, p.yzx + 33.33);
+                return frac((p.x + p.y) * p.z);
+            }
 
-                if (surfaceOffset <= 0.0)
+            float ValueNoise3D(float3 p)
+            {
+                float3 cell = floor(p);
+                float3 local = frac(p);
+                float3 u = local * local * (3.0 - 2.0 * local);
+
+                float n000 = Hash13(cell + float3(0.0, 0.0, 0.0));
+                float n100 = Hash13(cell + float3(1.0, 0.0, 0.0));
+                float n010 = Hash13(cell + float3(0.0, 1.0, 0.0));
+                float n110 = Hash13(cell + float3(1.0, 1.0, 0.0));
+                float n001 = Hash13(cell + float3(0.0, 0.0, 1.0));
+                float n101 = Hash13(cell + float3(1.0, 0.0, 1.0));
+                float n011 = Hash13(cell + float3(0.0, 1.0, 1.0));
+                float n111 = Hash13(cell + float3(1.0, 1.0, 1.0));
+
+                float n00 = lerp(n000, n100, u.x);
+                float n10 = lerp(n010, n110, u.x);
+                float n01 = lerp(n001, n101, u.x);
+                float n11 = lerp(n011, n111, u.x);
+                float n0 = lerp(n00, n10, u.y);
+                float n1 = lerp(n01, n11, u.y);
+                return lerp(n0, n1, u.z);
+            }
+
+            float HeightMask(float height01, float4 heightParams)
+            {
+                float minHeight = heightParams.x;
+                float maxHeight = max(heightParams.y, minHeight);
+                float minFalloff = max(0.00001, heightParams.z);
+                float maxFalloff = max(0.00001, heightParams.w);
+                float lower = smoothstep(minHeight, minHeight + minFalloff, height01);
+                float upper = 1.0 - smoothstep(maxHeight - maxFalloff, maxHeight, height01);
+                return saturate(lower * upper);
+            }
+
+            float AltitudeCoverage(float height01, float altitudeBias)
+            {
+                if (altitudeBias > 0.0)
                 {
-                    float depthRange = max(0.0001, -minHeightAtlasOffset);
-                    float underwaterHeight = saturate((surfaceOffset - minHeightAtlasOffset) / depthRange);
-                    return float2(0.5, lerp(0.0, surfaceAtlasSeaLevelV, underwaterHeight));
+                    return lerp(1.0, saturate(height01), saturate(altitudeBias));
                 }
 
-                float landRange = max(0.0001, maxHeightAtlasOffset);
-                float landHeight = saturate(surfaceOffset / landRange);
-                return float2(0.5, lerp(surfaceAtlasSeaLevelV, 1.0, landHeight));
+                return lerp(1.0, 1.0 - saturate(height01), saturate(-altitudeBias));
+            }
+
+            float LayerMassMask(float3 gridPosition, float height01, int layerIndex)
+            {
+                float4 noiseParams = _PlanetLayerNoise[layerIndex];
+                float4 heightParams = _PlanetLayerHeights[layerIndex];
+                float4 flags = _PlanetLayerFlags[layerIndex];
+                float coverage = saturate(noiseParams.x * AltitudeCoverage(height01, flags.w));
+                float minScale = max(0.01, noiseParams.y);
+                float maxScale = max(minScale, noiseParams.z);
+                float coherence = saturate(noiseParams.w);
+                float seedOffset = _PlanetLayerSeeds[layerIndex].x + _PlanetSeed;
+                float3 worldMeters = gridPosition * max(0.0001, _PlanetWorldScale);
+                float smallMass = ValueNoise3D(worldMeters / minScale + seedOffset);
+                float largeMass = ValueNoise3D(worldMeters / maxScale + seedOffset * 1.37);
+                float mass = lerp(smallMass, largeMass, coherence);
+                float threshold = 1.0 - coverage;
+                float materialMask = smoothstep(threshold, 1.0, mass);
+                return materialMask * HeightMask(height01, heightParams) * saturate(flags.z);
+            }
+
+            float3 EvaluateLayerColor(float3 gridPosition)
+            {
+                float height01 = length(gridPosition) / max(0.0001, _PlanetGridRadius);
+                float3 color = _PlanetLayerColors[0].rgb;
+                int layerCount = clamp(_PlanetLayerCount, 1, 16);
+                [loop]
+                for (int i = 1; i < layerCount; i++)
+                {
+                    float4 flags = _PlanetLayerFlags[i];
+                    if (flags.x > 0.5 && abs(flags.y - 1.0) < 0.5)
+                    {
+                        float mask = LayerMassMask(gridPosition, height01, i);
+                        color = lerp(color, _PlanetLayerColors[i].rgb, mask);
+                    }
+                }
+
+                return color;
             }
 
             Varyings vert(uint vertexID : SV_VertexID)
@@ -123,14 +189,15 @@ Shader "MarchingCubesPlanet/Planet/SurfaceGpu"
                 float2 uv;
                 half4 color;
                 float active;
+                float3 gridPosition;
 
                 if (_PlanetGpuVertexLayout > 0.5)
                 {
                     PlanetMarchingCubesVertex input = _PlanetMarchingCubesVertices[vertexID];
-                    float3 gridPosition = input.positionAndCase.xyz;
+                    gridPosition = input.positionAndCase.xyz;
                     positionWS = mul(_PlanetGridToWorldMatrix, float4(gridPosition, 1.0)).xyz;
                     normalWS = normalize(mul((float3x3)_PlanetGridToWorldMatrix, input.normalAndDiagnostic.xyz));
-                    uv = EvaluateSurfaceAtlasUv(length(gridPosition));
+                    uv = float2(0.5, 0.5);
                     color = half4(1.0h, 1.0h, 1.0h, 1.0h);
                     active = 1.0;
                 }
@@ -142,6 +209,7 @@ Shader "MarchingCubesPlanet/Planet/SurfaceGpu"
                     uv = input.uvAndMaterial.xy;
                     color = half4(input.color);
                     active = input.positionAndActive.w;
+                    gridPosition = input.positionAndActive.xyz;
                 }
 
                 output.positionHCS = TransformWorldToHClip(positionWS);
@@ -151,6 +219,7 @@ Shader "MarchingCubesPlanet/Planet/SurfaceGpu"
                 output.color = color;
                 output.fogFactor = ComputeFogFactor(output.positionHCS.z);
                 output.active = active;
+                output.gridPosition = gridPosition;
                 return output;
             }
 
@@ -160,10 +229,7 @@ Shader "MarchingCubesPlanet/Planet/SurfaceGpu"
                 half4 albedoAlpha;
                 if (_UsePlanetSurfaceAtlas > 0.5)
                 {
-                    float2 atlasUv = input.uv;
-                    float atlasWidth = max(_PlanetSurfaceAtlas_TexelSize.z, 1.0);
-                    atlasUv.x = (floor(saturate(atlasUv.x) * atlasWidth) + 0.5) / atlasWidth;
-                    albedoAlpha = SAMPLE_TEXTURE2D(_PlanetSurfaceAtlas, sampler_PlanetSurfaceAtlas, atlasUv) * _BaseColor;
+                    albedoAlpha = half4(EvaluateLayerColor(input.gridPosition), 1.0h) * _BaseColor;
                 }
                 else
                 {

@@ -107,12 +107,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                 isAlive = nextAlive;
                 if (isAlive && !isSetUp)
                 {
-                    LoadBase(baseLod, () =>
-                    {
-                        ReleaseShell();
-                        isSetUp = true;
-                        Debug.Log("BaseLoaded", this);
-                    });
+                    LoadBaseFromShell();
                     return;
                 }
 
@@ -253,6 +248,27 @@ namespace MarchingCubesPlanet.MarchingCubes
             isBaseLoading = true;
             GetGpuSurface().BeginChunkSequence(true, keepCurrentBaseVisibleUntilComplete);
             QueueChunkLoad(lod, sequence, onComplete);
+        }
+
+        private void LoadBaseFromShell()
+        {
+            LoadBase(shellLod, () =>
+            {
+                ReleaseShell();
+                isSetUp = true;
+                Debug.Log("BaseLoaded", this);
+
+                if (baseLod == shellLod || !isAlive)
+                {
+                    return;
+                }
+
+                LoadBase(baseLod, () =>
+                {
+                    isSetUp = true;
+                    Debug.Log("BaseRefined", this);
+                }, true);
+            });
         }
 
         public async void LoadChunk(PlanetChunkLod lod, PlanetGridCoordinates? chunkID = null, Action onComplete = null)

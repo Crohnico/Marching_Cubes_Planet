@@ -575,7 +575,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalCameraData
   m_RenderShadows: 1
   m_RequiresDepthTextureOption: 2
@@ -1274,6 +1274,57 @@ MonoBehaviour:
   m_PointerBehavior: 0
   m_CursorLockBehavior: 0
   m_ScrollDeltaPerTick: 6
+--- !u!1 &1970582146
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1970582148}
+  - component: {fileID: 1970582147}
+  m_Layer: 0
+  m_Name: StellarSystem
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1970582147
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1970582146}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 504e6e8234fa46849c943f5f0635be6f, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: MarchingCubesPlanet.MarchingCubes::MarchingCubesPlanet.MarchingCubes.StellarSystemDirector
+  stellarSystemSeedId: 1
+  planets:
+  - {fileID: 2000400002}
+  shellLod: 2
+  loadShellsOnStart: 1
+  discoverChildPlanets: 1
+  clearCacheWhenSystemIdChanges: 1
+--- !u!4 &1970582148
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1970582146}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -8736.654, y: 605.9878, z: 11394.405}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2000400000
 GameObject:
   m_ObjectHideFlags: 0
@@ -1324,7 +1375,7 @@ MonoBehaviour:
   recipe:
     gridRadius: 130
     worldScale: 54
-    seed: 315572586
+    seed: 0
     isoLevel: 0
     voronoiDivision: 80
     continentCells: 51
@@ -1354,6 +1405,71 @@ MonoBehaviour:
     mountainBiomePeakFalloff: 2
     minRoughness: 0.6
     maxRoughness: 1.48
+    materialLayers:
+    - name: Tierra basica
+      enabled: 1
+      operation: 0
+      material: 0
+      atlasColor: {r: 0.5283019, g: 0.29846004, b: 0.246707, a: 1}
+      heightMin01: 0
+      heightMax01: 1.5
+      falloffMin01: 0
+      falloffMax01: 0
+      coverage01: 1
+      massScaleMinMeters: 1
+      massScaleMaxMeters: 1
+      massCoherence01: 1
+      strength01: 1
+      altitudeBias: 0
+      seedOffset: 0
+    - name: Cesped
+      enabled: 1
+      operation: 1
+      material: 2
+      atlasColor: {r: 0.111366525, g: 0.4433962, b: 0.07320219, a: 1}
+      heightMin01: 0.78
+      heightMax01: 1.5
+      falloffMin01: 0.08
+      falloffMax01: 0.22
+      coverage01: 1
+      massScaleMinMeters: 18
+      massScaleMaxMeters: 2000
+      massCoherence01: 0.82
+      strength01: 1
+      altitudeBias: 0.05
+      seedOffset: 23
+    - name: Arena
+      enabled: 1
+      operation: 1
+      material: 3
+      atlasColor: {r: 0.78, g: 0.68, b: 0.42, a: 1}
+      heightMin01: 0.7
+      heightMax01: 1.01
+      falloffMin01: 0.12
+      falloffMax01: 0.06
+      coverage01: 0.72
+      massScaleMinMeters: 160
+      massScaleMaxMeters: 1400
+      massCoherence01: 0.9
+      strength01: 0.95
+      altitudeBias: -0.65
+      seedOffset: 37
+    - name: Roca
+      enabled: 1
+      operation: 1
+      material: 1
+      atlasColor: {r: 0.46, g: 0.46, b: 0.43, a: 1}
+      heightMin01: 0
+      heightMax01: 1.5
+      falloffMin01: 0.08
+      falloffMax01: 0.08
+      coverage01: 0.34
+      massScaleMinMeters: 1
+      massScaleMaxMeters: 1000
+      massCoherence01: 0.52
+      strength01: 0.82
+      altitudeBias: 0.85
+      seedOffset: 11
   placement:
     planetStellarCenter:
       x: 0
@@ -1368,6 +1484,7 @@ MonoBehaviour:
   activationRange: 10000
   shellLod: 2
   baseLod: 0
+  standaloneLoadShellOnStart: 0
   oceanMaterial: {fileID: 0}
   useBaseOctree: 1
   baseOctreeLod0RadiusChunks: 3
@@ -1375,6 +1492,7 @@ MonoBehaviour:
   baseOctreeMaxChunks: 256
   baseOctreeOutputVertexCapacity: 1500000
   baseRebuildDistanceChunks: 2
+  baseTransvoxelWidthCells: 0.5
   meshFilter: {fileID: 2000400004}
   meshRenderer: {fileID: 2000400003}
   gpuSurface: {fileID: 2000400005}
@@ -1505,3 +1623,4 @@ SceneRoots:
   - {fileID: 2100000001}
   - {fileID: 1231763937}
   - {fileID: 1910126216}
+  - {fileID: 1970582148}

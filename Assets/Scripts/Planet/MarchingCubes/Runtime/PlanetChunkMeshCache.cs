@@ -654,6 +654,35 @@ namespace MarchingCubesPlanet.MarchingCubes
             Append(builder, "MountainBiomePeakFalloff", recipe.MountainBiomePeakFalloff);
             Append(builder, "MinRoughness", recipe.MinRoughness);
             Append(builder, "MaxRoughness", recipe.MaxRoughness);
+            PlanetMaterialLayer[] layers = recipe.MaterialLayers;
+            Append(builder, "MaterialLayerCount", layers == null ? 0 : layers.Length);
+            if (layers != null)
+            {
+                for (int i = 0; i < layers.Length; i++)
+                {
+                    PlanetMaterialLayer layer = layers[i];
+                    Append(builder, "LayerIndex", i);
+                    Append(builder, "LayerEnabled", layer.Enabled ? 1 : 0);
+                    Append(builder, "LayerOperation", (int)layer.Operation);
+                    Append(builder, "LayerMaterial", (int)layer.Material);
+                    Append(builder, "LayerColorR", layer.AtlasColor.r);
+                    Append(builder, "LayerColorG", layer.AtlasColor.g);
+                    Append(builder, "LayerColorB", layer.AtlasColor.b);
+                    Append(builder, "LayerColorA", layer.AtlasColor.a);
+                    Append(builder, "LayerHeightMin01", layer.HeightMin01);
+                    Append(builder, "LayerHeightMax01", layer.HeightMax01);
+                    Append(builder, "LayerFalloffMin01", layer.FalloffMin01);
+                    Append(builder, "LayerFalloffMax01", layer.FalloffMax01);
+                    Append(builder, "LayerCoverage01", layer.Coverage01);
+                    Append(builder, "LayerMassScaleMinMeters", layer.MassScaleMinMeters);
+                    Append(builder, "LayerMassScaleMaxMeters", layer.MassScaleMaxMeters);
+                    Append(builder, "LayerMassCoherence01", layer.MassCoherence01);
+                    Append(builder, "LayerStrength01", layer.Strength01);
+                    Append(builder, "LayerAltitudeBias", layer.AltitudeBias);
+                    Append(builder, "LayerSeedOffset", layer.SeedOffset);
+                }
+            }
+
             return builder.ToString();
         }
 

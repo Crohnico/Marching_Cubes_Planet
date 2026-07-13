@@ -172,6 +172,41 @@ namespace MarchingCubesPlanet.Coordinates
                 return false;
             }
 
+            PlanetMaterialLayer[] layers = recipe.MaterialLayers;
+            if (layers == null || layers.Length == 0)
+            {
+                message = "PlanetRecipe must contain at least the required base material layer.";
+                return false;
+            }
+
+            if (layers.Length > PlanetRecipe.MaxMaterialLayers)
+            {
+                message = "PlanetRecipe material layer count exceeds the supported maximum.";
+                return false;
+            }
+
+            if (layers[0].Operation != PlanetLayerOperation.BaseSurface)
+            {
+                message = "PlanetRecipe material layer zero must be the required base surface layer.";
+                return false;
+            }
+
+            for (int i = 0; i < layers.Length; i++)
+            {
+                PlanetMaterialLayer layer = layers[i];
+                if (layer.HeightMax01 < layer.HeightMin01)
+                {
+                    message = "PlanetRecipe material layer height range is invalid at index " + i + ".";
+                    return false;
+                }
+
+                if (layer.MassScaleMinMeters <= 0f || layer.MassScaleMaxMeters < layer.MassScaleMinMeters)
+                {
+                    message = "PlanetRecipe material layer mass scale is invalid at index " + i + ".";
+                    return false;
+                }
+            }
+
             message = "PlanetRecipe is valid.";
             return true;
         }
