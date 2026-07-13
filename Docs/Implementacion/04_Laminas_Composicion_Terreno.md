@@ -230,17 +230,53 @@ version del algoritmo de laminas
 resolucion / LOD de cache
 ```
 
-La cache puede guardar:
+Decision practica inicial:
 
 ```text
-chunks confirmados con informacion
-datos compactos de Shell compuesta
-materiales superficiales resueltos
-metadatos para acelerar recarga
+El sistema estelar controla la vida de la cache de Shell.
+
+StellarSystemSeedId cambia -> se borra la cache de shells antes de cargar.
+PlanetSeed = StellarSystemSeedId + indicePlaneta.
 ```
 
-No debe guardar un volumen completo del planeta salvo que se justifique por
-presupuesto de disco/RAM.
+Regla de arranque:
+
+```text
+PlanetDirector no debe cargar Shell por si mismo en runtime normal.
+El arranque de Shell lo ordena StellarSystemDirector.
+```
+
+Solo puede activarse carga standalone de un planeta de forma explicita para
+pruebas controladas.
+
+Formato inicial de Shell:
+
+```text
+buffer GPU de vertices completo 1:1 con la capacidad reservada
+drawArgs indirectos
+LOD de Shell
+hash de receta
+version del formato
+```
+
+Se guarda la capacidad completa del buffer, no solo los vertices usados.
+
+Motivo:
+
+```text
+La recarga debe alimentar a la GPU de forma directa y barata,
+sin recomponer geometria ni reconstruir listas intermedias.
+```
+
+Coste aceptado:
+
+```text
+mas disco que un formato compacto
+readback sincronico al crear cache por primera vez
+```
+
+La carga desde cache debe hidratar el mismo slot GPU de Shell que usa el render
+actual. No debe crear una ruta de render paralela.
 
 ## Relacion con PlanetGrid
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.IO;
 using MarchingCubesPlanet.Compute;
 using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.Shape;
@@ -20,6 +21,8 @@ namespace MarchingCubesPlanet.MarchingCubes
         private const int SurfaceAtlasResolution = 256;
         private const int IndirectArgsCount = 4;
         private const int MaxThreadGroupsPerDispatchAxis = 65535;
+        private const int ShellCacheMagic = 0x4d435053;
+        private const int ShellCacheVersion = 1;
 
         private static readonly int ShapeParametersId = Shader.PropertyToID("_PlanetShapeParameters");
         private static readonly int ShapeCellsId = Shader.PropertyToID("_PlanetShapeCells");
@@ -353,6 +356,129 @@ namespace MarchingCubesPlanet.MarchingCubes
             chunkAggregatePublished = false;
         }
 
+        public bool TryLoadShellCache(
+            string path,
+            PlanetRecipe recipe,
+            PlanetPlacement placement,
+            PlanetChunkLod lod,
+            MeshRenderer materialSource)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                return false;
+            }
+
+            try
+            {
+                PlanetRecipe lodRecipe = PlanetChunkLodUtility.BuildRecipeForLod(in recipe, lod);
+                string expectedPlanetId = PlanetChunkMeshCache.BuildPlanetId(in recipe);
+                using (BinaryReader reader = new BinaryReader(File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read)))
+                {
+                    if (reader.ReadInt32() != ShellCacheMagic ||
+                        reader.ReadInt32() != ShellCacheVersion ||
+                        reader.ReadInt32() != PlanetMarchingCubesVertex.Stride ||
+                        reader.ReadInt32() != (int)lod ||
+                        !string.Equals(reader.ReadString(), expectedPlanetId, StringComparison.Ordinal))
+                    {
+                        return false;
+                    }
+
+                    int vertexCapacity = reader.ReadInt32();
+                    int drawArgsCount = reader.ReadInt32();
+                    if (vertexCapacity <= 0 || drawArgsCount != IndirectArgsCount)
+                    {
+                        return false;
+                    }
+
+                    uint[] drawArgs = new uint[IndirectArgsCount];
+                    for (int i = 0; i < drawArgs.Length; i++)
+                    {
+                        drawArgs[i] = reader.ReadUInt32();
+                    }
+
+                    PlanetMarchingCubesVertex[] vertices = new PlanetMarchingCubesVertex[vertexCapacity];
+                    for (int i = 0; i < vertices.Length; i++)
+                    {
+                        vertices[i] = ReadVertex(reader);
+                    }
+
+                    EnsureShellCacheBuffers(vertexCapacity);
+                    shellSlot.vertexBuffer.SetData(vertices, 0, 0, vertexCapacity);
+                    shellSlot.drawArgsBuffer.SetData(drawArgs, 0, 0, IndirectArgsCount);
+
+                    EnsureShapeCells(in lodRecipe);
+                    ResolveMaterial(materialSource, shapeCells);
+                    shellSlot.renderRecipe = lodRecipe;
+                    shellSlot.hasRenderRecipe = true;
+                    shellSlot.hasDrawable = true;
+                    SetPlacement(placement);
+
+                    ReleaseChunkAggregateSlots();
+                    chunkAggregatePublished = false;
+                    chunkAggregateOpen = false;
+                    return true;
+                }
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("Shell GPU cache load failed: " + exception.Message, this);
+                return false;
+            }
+        }
+
+        public bool TrySaveShellCache(string path, PlanetRecipe recipe, PlanetChunkLod lod)
+        {
+            if (string.IsNullOrWhiteSpace(path) ||
+                shellSlot.vertexBuffer == null ||
+                shellSlot.drawArgsBuffer == null ||
+                !shellSlot.hasDrawable)
+            {
+                return false;
+            }
+
+            try
+            {
+                string directory = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                int vertexCapacity = shellSlot.vertexBuffer.count;
+                PlanetMarchingCubesVertex[] vertices = new PlanetMarchingCubesVertex[vertexCapacity];
+                uint[] drawArgs = new uint[IndirectArgsCount];
+                shellSlot.vertexBuffer.GetData(vertices, 0, 0, vertexCapacity);
+                shellSlot.drawArgsBuffer.GetData(drawArgs, 0, 0, IndirectArgsCount);
+
+                using (BinaryWriter writer = new BinaryWriter(File.Open(path, FileMode.Create, FileAccess.Write, FileShare.None)))
+                {
+                    writer.Write(ShellCacheMagic);
+                    writer.Write(ShellCacheVersion);
+                    writer.Write(PlanetMarchingCubesVertex.Stride);
+                    writer.Write((int)lod);
+                    writer.Write(PlanetChunkMeshCache.BuildPlanetId(in recipe));
+                    writer.Write(vertexCapacity);
+                    writer.Write(IndirectArgsCount);
+                    for (int i = 0; i < drawArgs.Length; i++)
+                    {
+                        writer.Write(drawArgs[i]);
+                    }
+
+                    for (int i = 0; i < vertices.Length; i++)
+                    {
+                        WriteVertex(writer, vertices[i]);
+                    }
+                }
+
+                return true;
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("Shell GPU cache save failed: " + exception.Message, this);
+                return false;
+            }
+        }
+
         private void ReleaseChunkAggregateSlots()
         {
             for (int i = 0; i < chunkAggregateSlots.Length; i++)
@@ -486,6 +612,12 @@ namespace MarchingCubesPlanet.MarchingCubes
             edgeTableBuffer = EnsureBuffer(edgeTableBuffer, "Planet GPU MC Edge Table", PlanetMarchingCubesLookupTables.EdgeTable.Length, sizeof(uint), ComputeBufferType.Structured);
             triTableBuffer = EnsureBuffer(triTableBuffer, "Planet GPU MC Tri Table", PlanetMarchingCubesLookupTables.TriTable.Length, sizeof(int), ComputeBufferType.Structured);
             transvoxelFaceBuffer = EnsureBuffer(transvoxelFaceBuffer, "Planet GPU Transvoxel Face Descriptors", 1, PlanetTransvoxelFaceDescriptor.Stride, ComputeBufferType.Structured);
+        }
+
+        private void EnsureShellCacheBuffers(int vertexCapacity)
+        {
+            shellSlot.vertexBuffer = EnsureBuffer(shellSlot.vertexBuffer, "Planet GPU MC Shell Vertices", Mathf.Max(1, vertexCapacity), PlanetMarchingCubesVertex.Stride, ComputeBufferType.Structured);
+            shellSlot.drawArgsBuffer = EnsureBuffer(shellSlot.drawArgsBuffer, "Planet GPU MC Shell Draw Args", IndirectArgsCount, sizeof(uint), ComputeBufferType.IndirectArguments);
         }
 
         private void EnsureTransvoxelBuffers(int faceCount)
@@ -903,6 +1035,38 @@ namespace MarchingCubesPlanet.MarchingCubes
             x *= 0x846ca68bu;
             x ^= x >> 16;
             return (x & 0x00ffffffu) / 16777215f;
+        }
+
+        private static PlanetMarchingCubesVertex ReadVertex(BinaryReader reader)
+        {
+            return new PlanetMarchingCubesVertex
+            {
+                positionAndCase = ReadVector4(reader),
+                normalAndDiagnostic = ReadVector4(reader)
+            };
+        }
+
+        private static void WriteVertex(BinaryWriter writer, PlanetMarchingCubesVertex vertex)
+        {
+            WriteVector4(writer, vertex.positionAndCase);
+            WriteVector4(writer, vertex.normalAndDiagnostic);
+        }
+
+        private static Vector4 ReadVector4(BinaryReader reader)
+        {
+            return new Vector4(
+                reader.ReadSingle(),
+                reader.ReadSingle(),
+                reader.ReadSingle(),
+                reader.ReadSingle());
+        }
+
+        private static void WriteVector4(BinaryWriter writer, Vector4 value)
+        {
+            writer.Write(value.x);
+            writer.Write(value.y);
+            writer.Write(value.z);
+            writer.Write(value.w);
         }
 
         private static void ReleaseBuffer(ref ComputeBuffer buffer)

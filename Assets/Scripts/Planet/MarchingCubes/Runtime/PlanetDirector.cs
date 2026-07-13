@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading.Tasks;
 using MarchingCubesPlanet.Coordinates;
 using UnityEngine;
@@ -20,6 +21,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         [SerializeField] private float activationRange = 10000f;
         [SerializeField] private PlanetChunkLod shellLod = PlanetChunkLod.LOD2;
         [SerializeField] private PlanetChunkLod baseLod = PlanetChunkLod.LOD0;
+        [SerializeField] private bool standaloneLoadShellOnStart;
         [SerializeField] private Material oceanMaterial;
         [SerializeField] private bool useBaseOctree = true;
         [SerializeField] private int baseOctreeLod0RadiusChunks = 3;
@@ -72,13 +74,18 @@ namespace MarchingCubesPlanet.MarchingCubes
         {
             SyncPlacementFromTransform();
             gpuSurface = GetGpuSurface();
-            GenerateGrid();
 
             if (player == null && Camera.main != null)
             {
                 player = Camera.main.transform;
             }
 
+            if (!standaloneLoadShellOnStart)
+            {
+                yield break;
+            }
+
+            GenerateGrid();
             yield return new WaitForSeconds(0.1f);
         
             LoadShell(shellLod, () => isSetUp = false);
@@ -169,6 +176,65 @@ namespace MarchingCubesPlanet.MarchingCubes
                 keepBaseVisibleUntilComplete);
             EnsureOceanSphere();
             onComplete?.Invoke();
+        }
+
+        public void LoadShellFromCacheOrGenerate(
+            string shellCachePath,
+            PlanetChunkLod lod,
+            Action onComplete = null,
+            bool keepBaseVisibleUntilComplete = false)
+        {
+            SyncPlacementFromTransform();
+            loadVersion++;
+            isBaseLoading = false;
+            chunkLoadIndex = -1;
+            ClearLegacyMesh();
+
+            PlanetGpuMarchingCubesSurface surface = GetGpuSurface();
+            if (surface.TryLoadShellCache(shellCachePath, recipe, placement, lod, meshRenderer))
+            {
+                Debug.Log("<color=#37D67A>[Shell Cache] Loaded from disk: " + Path.GetFileName(shellCachePath) + "</color>", this);
+                EnsureOceanSphere();
+                onComplete?.Invoke();
+                return;
+            }
+
+            Debug.Log("<color=#FFD400>[Shell Cache] Missing. Generating shell: " + Path.GetFileName(shellCachePath) + "</color>", this);
+            surface.GenerateShell(
+                recipe,
+                placement,
+                lod,
+                meshRenderer,
+                keepBaseVisibleUntilComplete);
+            EnsureOceanSphere();
+            bool saved = surface.TrySaveShellCache(shellCachePath, recipe, lod);
+            if (saved)
+            {
+                Debug.Log("<color=#FFD400>[Shell Cache] Generated and saved to disk: " + Path.GetFileName(shellCachePath) + "</color>", this);
+            }
+            else
+            {
+                Debug.LogWarning("[Shell Cache] Generated but could not save to disk: " + shellCachePath, this);
+            }
+
+            onComplete?.Invoke();
+        }
+
+        public void SetAutoLoadShellOnStart(bool enabled)
+        {
+            standaloneLoadShellOnStart = enabled;
+        }
+
+        public void SetPlanetSeed(int seed)
+        {
+            if (recipe.Seed == seed)
+            {
+                return;
+            }
+
+            recipe.Seed = seed;
+            grid = null;
+            UpdateOceanSphere();
         }
 
         public void LoadBase(PlanetChunkLod lod, Action onComplete = null, bool keepCurrentBaseVisibleUntilComplete = false)
