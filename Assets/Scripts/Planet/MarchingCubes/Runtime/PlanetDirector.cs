@@ -27,6 +27,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         [SerializeField] private int baseOctreeMaxChunks = 256;
         [SerializeField] private int baseOctreeOutputVertexCapacity = 1500000;
         [SerializeField] private int baseRebuildDistanceChunks = 2;
+        [SerializeField] private float baseTransvoxelWidthCells = 0.5f;
 
         [SerializeField] private MeshFilter meshFilter;
         [SerializeField] private MeshRenderer meshRenderer;
@@ -37,6 +38,8 @@ namespace MarchingCubesPlanet.MarchingCubes
         private Mesh oceanMesh;
         private PlanetGrid grid;
         private readonly List<PlanetGridCoordinates> baseChunkCoordinates = new List<PlanetGridCoordinates>(256);
+        private readonly Dictionary<PlanetGridCoordinates, PlanetChunkLod> activeBaseChunkLods = new Dictionary<PlanetGridCoordinates, PlanetChunkLod>(256);
+        private readonly PlanetTransvoxelFaceDescriptor[] transitionFaceScratch = new PlanetTransvoxelFaceDescriptor[6];
         private int chunkLoadIndex = -1;
         private int loadVersion;
         private bool isAlive;
@@ -45,6 +48,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private Vector3 baseFocusGrid;
         private Vector3 loadedBaseFocusGrid;
         private bool hasLoadedBaseFocus;
+        private int baseTransitionFaceCount;
 
         public PlanetGrid Grid => grid;
         public bool IsAlive => isAlive;
@@ -176,8 +180,10 @@ namespace MarchingCubesPlanet.MarchingCubes
 
             grid.CopyInformationCells(baseChunkCoordinates);
             PrepareBaseOctree();
+            PrepareBaseTransitionState(lod);
             int sequence = ++loadVersion;
             chunkLoadIndex = -1;
+            baseTransitionFaceCount = 0;
             isBaseLoading = true;
             GetGpuSurface().BeginChunkSequence(true, keepCurrentBaseVisibleUntilComplete);
             QueueChunkLoad(lod, sequence, onComplete);
@@ -220,6 +226,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             isBaseLoading = false;
             chunkLoadIndex = -1;
             baseChunkCoordinates.Clear();
+            activeBaseChunkLods.Clear();
             hasLoadedBaseFocus = false;
         }
 
@@ -242,12 +249,15 @@ namespace MarchingCubesPlanet.MarchingCubes
                 loadedBaseFocusGrid = baseFocusGrid;
                 hasLoadedBaseFocus = true;
                 GetGpuSurface().CompleteChunkSequence();
+                Debug.Log("Base Transvoxel faces: " + baseTransitionFaceCount, this);
                 onComplete?.Invoke();
                 return;
             }
 
             PlanetGridCoordinates chunkID = baseChunkCoordinates[chunkLoadIndex];
-            PlanetChunkLod chunkLod = SelectBaseChunkLod(lod, chunkID);
+            PlanetChunkLod chunkLod = GetActiveBaseChunkLod(lod, chunkID);
+            int transitionFaceCount = BuildTransitionFaces(chunkID, chunkLod, chunkLoadIndex);
+            baseTransitionFaceCount += transitionFaceCount;
             ClearLegacyMesh();
             GetGpuSurface().GenerateChunkIntoBase(
                 recipe,
@@ -255,7 +265,9 @@ namespace MarchingCubesPlanet.MarchingCubes
                 chunkLod,
                 chunkID,
                 meshRenderer,
-                useBaseOctree ? baseOctreeOutputVertexCapacity : PlanetMarchingCubesSettings.DefaultOutputVertexCapacity);
+                useBaseOctree ? baseOctreeOutputVertexCapacity : PlanetMarchingCubesSettings.DefaultOutputVertexCapacity,
+                transitionFaceScratch,
+                transitionFaceCount);
             await Task.Yield();
             QueueChunkLoad(lod, sequence, onComplete);
         }
@@ -266,6 +278,8 @@ namespace MarchingCubesPlanet.MarchingCubes
             isBaseLoading = false;
             chunkLoadIndex = -1;
             baseChunkCoordinates.Clear();
+            activeBaseChunkLods.Clear();
+            baseTransitionFaceCount = 0;
             hasLoadedBaseFocus = false;
         }
 
@@ -289,6 +303,83 @@ namespace MarchingCubesPlanet.MarchingCubes
             if (maxChunks > 0 && baseChunkCoordinates.Count > maxChunks)
             {
                 baseChunkCoordinates.RemoveRange(maxChunks, baseChunkCoordinates.Count - maxChunks);
+            }
+        }
+
+        private void PrepareBaseTransitionState(PlanetChunkLod requestedLod)
+        {
+            activeBaseChunkLods.Clear();
+            for (int i = 0; i < baseChunkCoordinates.Count; i++)
+            {
+                PlanetGridCoordinates coordinates = baseChunkCoordinates[i];
+                activeBaseChunkLods[coordinates] = SelectBaseChunkLod(requestedLod, coordinates);
+            }
+        }
+
+        private PlanetChunkLod GetActiveBaseChunkLod(PlanetChunkLod requestedLod, PlanetGridCoordinates coordinates)
+        {
+            return activeBaseChunkLods.TryGetValue(coordinates, out PlanetChunkLod lod)
+                ? lod
+                : SelectBaseChunkLod(requestedLod, coordinates);
+        }
+
+        private int BuildTransitionFaces(PlanetGridCoordinates coordinates, PlanetChunkLod chunkLod, int outputChunkIndex)
+        {
+            if (!useBaseOctree || chunkLod == PlanetChunkLod.LOD0)
+            {
+                return 0;
+            }
+
+            int count = 0;
+            AddTransitionFaceIfNeeded(coordinates, chunkLod, outputChunkIndex, 0, -1, ref count);
+            AddTransitionFaceIfNeeded(coordinates, chunkLod, outputChunkIndex, 0, 1, ref count);
+            AddTransitionFaceIfNeeded(coordinates, chunkLod, outputChunkIndex, 1, -1, ref count);
+            AddTransitionFaceIfNeeded(coordinates, chunkLod, outputChunkIndex, 1, 1, ref count);
+            AddTransitionFaceIfNeeded(coordinates, chunkLod, outputChunkIndex, 2, -1, ref count);
+            AddTransitionFaceIfNeeded(coordinates, chunkLod, outputChunkIndex, 2, 1, ref count);
+            return count;
+        }
+
+        private void AddTransitionFaceIfNeeded(
+            PlanetGridCoordinates coordinates,
+            PlanetChunkLod chunkLod,
+            int outputChunkIndex,
+            int axis,
+            int sign,
+            ref int count)
+        {
+            PlanetGridCoordinates neighbor = OffsetCoordinates(coordinates, axis, sign);
+            if (!activeBaseChunkLods.TryGetValue(neighbor, out PlanetChunkLod neighborLod))
+            {
+                return;
+            }
+
+            if ((int)neighborLod != (int)chunkLod - 1)
+            {
+                return;
+            }
+
+            PlanetMarchingCubesChunkOrigin coarseOrigin = coordinates.ToChunkOrigin(chunkLod);
+            int chunkSize = PlanetChunkLodUtility.GetChunkSizeForLod(chunkLod);
+            transitionFaceScratch[count++] = new PlanetTransvoxelFaceDescriptor(
+                coarseOrigin,
+                chunkSize,
+                axis,
+                sign,
+                outputChunkIndex,
+                Mathf.Clamp(baseTransvoxelWidthCells, 0.1f, 2f));
+        }
+
+        private static PlanetGridCoordinates OffsetCoordinates(PlanetGridCoordinates coordinates, int axis, int sign)
+        {
+            switch (axis)
+            {
+                case 0:
+                    return new PlanetGridCoordinates(coordinates.x + sign, coordinates.y, coordinates.z);
+                case 1:
+                    return new PlanetGridCoordinates(coordinates.x, coordinates.y + sign, coordinates.z);
+                default:
+                    return new PlanetGridCoordinates(coordinates.x, coordinates.y, coordinates.z + sign);
             }
         }
 

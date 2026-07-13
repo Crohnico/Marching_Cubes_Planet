@@ -290,6 +290,12 @@ Transvoxel genera una mesh auxiliar de transicion.
 
 No modifica el `.pmesh` base del terreno ni el `.pmesh` base del agua.
 
+La ruta runtime GPU vigente para la Base mixta queda documentada en:
+
+```text
+Docs/Implementacion/Pasos/12_Transvoxel_Stitching.md
+```
+
 Decision:
 
 ```text

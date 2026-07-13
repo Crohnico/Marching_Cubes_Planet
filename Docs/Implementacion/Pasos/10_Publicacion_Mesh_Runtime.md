@@ -265,8 +265,8 @@ Referencia Transvoxel:
 
 ```text
 Las tablas oficiales de Eric Lengyel se guardan en ThirdParty/Transvoxel.
-Quedan como referencia MIT para implementar transition cells mas adelante.
-No forman parte todavia del runtime ni del build caliente.
+La implementacion runtime vigente se define en Docs/Implementacion/Pasos/12_Transvoxel_Stitching.md.
+La primera fase cose caras 2:1 dentro de la Base GPU mixta sin crear buffers por LOD/chunk.
 ```
 
 Agua visual temporal:

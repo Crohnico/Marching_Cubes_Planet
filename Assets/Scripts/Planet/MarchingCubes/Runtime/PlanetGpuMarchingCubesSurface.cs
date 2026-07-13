@@ -29,6 +29,15 @@ namespace MarchingCubesPlanet.MarchingCubes
         private static readonly int DrawArgsId = Shader.PropertyToID("_MarchingCubesDrawArgs");
         private static readonly int EdgeTableId = Shader.PropertyToID("_MarchingCubesEdgeTable");
         private static readonly int TriTableId = Shader.PropertyToID("_MarchingCubesTriTable");
+        private static readonly int TransvoxelFaceDescriptorsId = Shader.PropertyToID("_TransvoxelFaceDescriptors");
+        private static readonly int TransvoxelTransitionCellClassId = Shader.PropertyToID("_TransvoxelTransitionCellClass");
+        private static readonly int TransvoxelTransitionCellGeometryCountsId = Shader.PropertyToID("_TransvoxelTransitionCellGeometryCounts");
+        private static readonly int TransvoxelTransitionCellVertexIndicesId = Shader.PropertyToID("_TransvoxelTransitionCellVertexIndices");
+        private static readonly int TransvoxelTransitionVertexDataId = Shader.PropertyToID("_TransvoxelTransitionVertexData");
+        private static readonly int TransvoxelCellCountId = Shader.PropertyToID("_TransvoxelCellCount");
+        private static readonly int TransvoxelCellStartIndexId = Shader.PropertyToID("_TransvoxelCellStartIndex");
+        private static readonly int TransvoxelCellEndIndexId = Shader.PropertyToID("_TransvoxelCellEndIndex");
+        private static readonly int TransvoxelFaceCountId = Shader.PropertyToID("_TransvoxelFaceCount");
         private static readonly int CellCountId = Shader.PropertyToID("_MarchingCubesCellCount");
         private static readonly int CellStartIndexId = Shader.PropertyToID("_MarchingCubesCellStartIndex");
         private static readonly int CellEndIndexId = Shader.PropertyToID("_MarchingCubesCellEndIndex");
@@ -63,11 +72,19 @@ namespace MarchingCubesPlanet.MarchingCubes
 
         private ComputeShader marchingShader;
         private int extractKernel;
+        private int transitionKernel;
         private uint threadGroupSizeX;
+        private uint transitionThreadGroupSizeX;
         private ComputeBuffer chunkOriginBuffer;
         private ComputeBuffer stateBuffer;
         private ComputeBuffer edgeTableBuffer;
         private ComputeBuffer triTableBuffer;
+        private ComputeBuffer transvoxelFaceBuffer;
+        private ComputeBuffer transvoxelCellClassBuffer;
+        private ComputeBuffer transvoxelCellGeometryBuffer;
+        private ComputeBuffer transvoxelCellVertexIndexBuffer;
+        private ComputeBuffer transvoxelVertexDataBuffer;
+        private bool transvoxelTablesUploaded;
         private Material runtimeMaterial;
         private Material sourceMaterial;
         private MaterialPropertyBlock properties;
@@ -276,7 +293,9 @@ namespace MarchingCubesPlanet.MarchingCubes
             PlanetChunkLod lod,
             PlanetGridCoordinates chunkId,
             MeshRenderer materialSource,
-            int outputVertexCapacity)
+            int outputVertexCapacity,
+            PlanetTransvoxelFaceDescriptor[] transitionFaces = null,
+            int transitionFaceCount = 0)
         {
             PlanetRecipe lodRecipe = PlanetChunkLodUtility.BuildRecipeForLod(in recipe, lod);
             singleChunkOrigins[0] = chunkId.ToChunkOrigin(lod);
@@ -298,7 +317,9 @@ namespace MarchingCubesPlanet.MarchingCubes
                 BuildChunkAggregateSlot,
                 !BuildChunkAggregateSlot.hasDrawable,
                 in recipe,
-                outputGridScale);
+                outputGridScale,
+                transitionFaces,
+                transitionFaceCount);
         }
 
         public void Render()
@@ -354,6 +375,12 @@ namespace MarchingCubesPlanet.MarchingCubes
             shapeEvaluator.Release();
             ReleaseBuffer(ref triTableBuffer);
             ReleaseBuffer(ref edgeTableBuffer);
+            ReleaseBuffer(ref transvoxelVertexDataBuffer);
+            ReleaseBuffer(ref transvoxelCellVertexIndexBuffer);
+            ReleaseBuffer(ref transvoxelCellGeometryBuffer);
+            ReleaseBuffer(ref transvoxelCellClassBuffer);
+            ReleaseBuffer(ref transvoxelFaceBuffer);
+            transvoxelTablesUploaded = false;
             ReleaseBuffer(ref stateBuffer);
             ReleaseBuffer(ref chunkOriginBuffer);
             shellSlot.Release();
@@ -388,7 +415,9 @@ namespace MarchingCubesPlanet.MarchingCubes
             GpuSurfaceSlot slot,
             bool resetDrawArgs,
             in PlanetRecipe renderRecipe,
-            float outputGridScale)
+            float outputGridScale,
+            PlanetTransvoxelFaceDescriptor[] transitionFaces = null,
+            int transitionFaceCount = 0)
         {
             if (origins == null || originCount <= 0)
             {
@@ -407,7 +436,9 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
 
             extractKernel = marchingShader.FindKernel("CS_ExtractChunkedCartesianSurface");
+            transitionKernel = marchingShader.FindKernel("CS_ExtractTransitionSurface");
             marchingShader.GetKernelThreadGroupSizes(extractKernel, out threadGroupSizeX, out _, out _);
+            marchingShader.GetKernelThreadGroupSizes(transitionKernel, out transitionThreadGroupSizeX, out _, out _);
 
             long cellsPerChunk = (long)Mathf.Max(1, chunkSize) * chunkSize * chunkSize;
             long activeCellCount = originCount * cellsPerChunk;
@@ -417,6 +448,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
 
             EnsureBuffers(originCount, Mathf.Max(1, outputVertexCapacity), slot);
+            int safeTransitionFaceCount = PrepareTransvoxelFaces(transitionFaces, transitionFaceCount);
             chunkOriginBuffer.SetData(origins, 0, 0, originCount);
             edgeTableBuffer.SetData(PlanetMarchingCubesLookupTables.EdgeTable);
             triTableBuffer.SetData(PlanetMarchingCubesLookupTables.TriTable);
@@ -433,8 +465,10 @@ namespace MarchingCubesPlanet.MarchingCubes
             marchingShader.SetInt(OutputVertexLimitId, Mathf.Max(1, outputVertexCapacity));
             marchingShader.SetInt(WriteEnabledId, 1);
             marchingShader.SetInt(DrawArgsEnabledId, 1);
+            marchingShader.SetInt(TransvoxelFaceCountId, safeTransitionFaceCount);
             marchingShader.SetFloat(OutputGridScaleId, Mathf.Max(0.000001f, outputGridScale));
             Dispatch(activeCellCount);
+            DispatchTransitions(slot, safeTransitionFaceCount, chunkSize, Mathf.Max(1, outputVertexCapacity));
 
             ResolveMaterial(materialSource, shapeCells);
             slot.renderRecipe = renderRecipe;
@@ -451,6 +485,25 @@ namespace MarchingCubesPlanet.MarchingCubes
             slot.drawArgsBuffer = EnsureBuffer(slot.drawArgsBuffer, "Planet GPU MC " + slot.name + " Draw Args", IndirectArgsCount, sizeof(uint), ComputeBufferType.IndirectArguments);
             edgeTableBuffer = EnsureBuffer(edgeTableBuffer, "Planet GPU MC Edge Table", PlanetMarchingCubesLookupTables.EdgeTable.Length, sizeof(uint), ComputeBufferType.Structured);
             triTableBuffer = EnsureBuffer(triTableBuffer, "Planet GPU MC Tri Table", PlanetMarchingCubesLookupTables.TriTable.Length, sizeof(int), ComputeBufferType.Structured);
+            transvoxelFaceBuffer = EnsureBuffer(transvoxelFaceBuffer, "Planet GPU Transvoxel Face Descriptors", 1, PlanetTransvoxelFaceDescriptor.Stride, ComputeBufferType.Structured);
+        }
+
+        private void EnsureTransvoxelBuffers(int faceCount)
+        {
+            bool needsTableUpload =
+                transvoxelCellClassBuffer == null ||
+                transvoxelCellGeometryBuffer == null ||
+                transvoxelCellVertexIndexBuffer == null ||
+                transvoxelVertexDataBuffer == null;
+            transvoxelFaceBuffer = EnsureBuffer(transvoxelFaceBuffer, "Planet GPU Transvoxel Face Descriptors", Mathf.Max(1, faceCount), PlanetTransvoxelFaceDescriptor.Stride, ComputeBufferType.Structured);
+            transvoxelCellClassBuffer = EnsureBuffer(transvoxelCellClassBuffer, "Planet GPU Transvoxel Cell Class", PlanetTransvoxelLookupTables.TransitionCellClass.Length, sizeof(uint), ComputeBufferType.Structured);
+            transvoxelCellGeometryBuffer = EnsureBuffer(transvoxelCellGeometryBuffer, "Planet GPU Transvoxel Cell Geometry", PlanetTransvoxelLookupTables.TransitionCellGeometryCounts.Length, sizeof(uint), ComputeBufferType.Structured);
+            transvoxelCellVertexIndexBuffer = EnsureBuffer(transvoxelCellVertexIndexBuffer, "Planet GPU Transvoxel Cell Vertex Indices", PlanetTransvoxelLookupTables.TransitionCellVertexIndices.Length, sizeof(uint), ComputeBufferType.Structured);
+            transvoxelVertexDataBuffer = EnsureBuffer(transvoxelVertexDataBuffer, "Planet GPU Transvoxel Vertex Data", PlanetTransvoxelLookupTables.TransitionVertexData.Length, sizeof(uint), ComputeBufferType.Structured);
+            if (needsTableUpload)
+            {
+                transvoxelTablesUploaded = false;
+            }
         }
 
         private static ComputeBuffer EnsureBuffer(ComputeBuffer buffer, string name, int count, int stride, ComputeBufferType type)
@@ -477,6 +530,21 @@ namespace MarchingCubesPlanet.MarchingCubes
             marchingShader.SetBuffer(extractKernel, DrawArgsId, slot.drawArgsBuffer);
             marchingShader.SetBuffer(extractKernel, EdgeTableId, edgeTableBuffer);
             marchingShader.SetBuffer(extractKernel, TriTableId, triTableBuffer);
+            marchingShader.SetBuffer(extractKernel, TransvoxelFaceDescriptorsId, transvoxelFaceBuffer);
+        }
+
+        private void BindTransitionBuffers(GpuSurfaceSlot slot)
+        {
+            marchingShader.SetBuffer(transitionKernel, ShapeParametersId, shapeEvaluator.ParameterBuffer.ComputeBuffer);
+            marchingShader.SetBuffer(transitionKernel, ShapeCellsId, shapeEvaluator.CellBuffer.ComputeBuffer);
+            marchingShader.SetBuffer(transitionKernel, VerticesId, slot.vertexBuffer);
+            marchingShader.SetBuffer(transitionKernel, StateId, stateBuffer);
+            marchingShader.SetBuffer(transitionKernel, DrawArgsId, slot.drawArgsBuffer);
+            marchingShader.SetBuffer(transitionKernel, TransvoxelFaceDescriptorsId, transvoxelFaceBuffer);
+            marchingShader.SetBuffer(transitionKernel, TransvoxelTransitionCellClassId, transvoxelCellClassBuffer);
+            marchingShader.SetBuffer(transitionKernel, TransvoxelTransitionCellGeometryCountsId, transvoxelCellGeometryBuffer);
+            marchingShader.SetBuffer(transitionKernel, TransvoxelTransitionCellVertexIndicesId, transvoxelCellVertexIndexBuffer);
+            marchingShader.SetBuffer(transitionKernel, TransvoxelTransitionVertexDataId, transvoxelVertexDataBuffer);
         }
 
         private void Dispatch(long activeCellCount)
@@ -497,6 +565,74 @@ namespace MarchingCubesPlanet.MarchingCubes
                 marchingShader.SetInt(CellStartIndexId, unchecked((int)(uint)cellStartIndex));
                 marchingShader.SetInt(CellEndIndexId, unchecked((int)(uint)(cellStartIndex + dispatchCellCount)));
                 marchingShader.Dispatch(extractKernel, groupCount, 1, 1);
+                cellStartIndex += dispatchCellCount;
+            }
+        }
+
+        private int PrepareTransvoxelFaces(
+            PlanetTransvoxelFaceDescriptor[] transitionFaces,
+            int transitionFaceCount)
+        {
+            if (transitionFaces == null || transitionFaceCount <= 0)
+            {
+                return 0;
+            }
+
+            int safeFaceCount = Mathf.Min(transitionFaceCount, transitionFaces.Length);
+            if (safeFaceCount <= 0)
+            {
+                return 0;
+            }
+
+            EnsureTransvoxelBuffers(safeFaceCount);
+            transvoxelFaceBuffer.SetData(transitionFaces, 0, 0, safeFaceCount);
+            return safeFaceCount;
+        }
+
+        private void DispatchTransitions(
+            GpuSurfaceSlot slot,
+            int safeFaceCount,
+            int chunkSize,
+            int outputVertexCapacity)
+        {
+            if (safeFaceCount <= 0)
+            {
+                return;
+            }
+
+            long cellsPerFace = (long)Mathf.Max(1, chunkSize) * chunkSize;
+            long activeCellCount = safeFaceCount * cellsPerFace;
+            if (activeCellCount <= 0 || activeCellCount > uint.MaxValue)
+            {
+                return;
+            }
+
+            EnsureTransvoxelBuffers(safeFaceCount);
+            if (!transvoxelTablesUploaded)
+            {
+                transvoxelCellClassBuffer.SetData(PlanetTransvoxelLookupTables.TransitionCellClass);
+                transvoxelCellGeometryBuffer.SetData(PlanetTransvoxelLookupTables.TransitionCellGeometryCounts);
+                transvoxelCellVertexIndexBuffer.SetData(PlanetTransvoxelLookupTables.TransitionCellVertexIndices);
+                transvoxelVertexDataBuffer.SetData(PlanetTransvoxelLookupTables.TransitionVertexData);
+                transvoxelTablesUploaded = true;
+            }
+            BindTransitionBuffers(slot);
+            marchingShader.SetInt(OutputPrimitiveLimitId, Mathf.Max(1, outputVertexCapacity) / 3);
+            marchingShader.SetInt(OutputVertexLimitId, Mathf.Max(1, outputVertexCapacity));
+            marchingShader.SetInt(WriteEnabledId, 1);
+            marchingShader.SetInt(DrawArgsEnabledId, 1);
+
+            uint safeThreadGroupSizeX = transitionThreadGroupSizeX == 0u ? 1u : transitionThreadGroupSizeX;
+            long maxCellsPerDispatch = MaxThreadGroupsPerDispatchAxis * (long)safeThreadGroupSizeX;
+            long cellStartIndex = 0L;
+            while (cellStartIndex < activeCellCount)
+            {
+                long dispatchCellCount = Math.Min(activeCellCount - cellStartIndex, maxCellsPerDispatch);
+                int groupCount = Mathf.CeilToInt(dispatchCellCount / (float)safeThreadGroupSizeX);
+                marchingShader.SetInt(TransvoxelCellCountId, unchecked((int)(uint)activeCellCount));
+                marchingShader.SetInt(TransvoxelCellStartIndexId, unchecked((int)(uint)cellStartIndex));
+                marchingShader.SetInt(TransvoxelCellEndIndexId, unchecked((int)(uint)(cellStartIndex + dispatchCellCount)));
+                marchingShader.Dispatch(transitionKernel, groupCount, 1, 1);
                 cellStartIndex += dispatchCellCount;
             }
         }

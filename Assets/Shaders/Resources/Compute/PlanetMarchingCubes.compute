@@ -1,4 +1,5 @@
 #pragma kernel CS_ExtractChunkedCartesianSurface
+#pragma kernel CS_ExtractTransitionSurface
 
 #include "PlanetShapeDensity.hlsl"
 #include "PlanetMarchingCubesTables.hlsl"
@@ -21,16 +22,37 @@ struct PlanetMarchingCubesStateGpu
     uint invalidCaseFlag;
 };
 
+struct PlanetTransvoxelFaceDescriptor
+{
+    int originX;
+    int originY;
+    int originZ;
+    int chunkSize;
+    int axis;
+    int sign;
+    int outputChunkIndex;
+    float transitionWidth;
+};
+
 StructuredBuffer<int4> _MarchingCubesChunkOrigins;
 RWStructuredBuffer<PlanetMarchingCubesVertex> _MarchingCubesVertices;
 RWStructuredBuffer<PlanetMarchingCubesStateGpu> _MarchingCubesState;
 RWStructuredBuffer<uint> _MarchingCubesDrawArgs;
 StructuredBuffer<uint> _MarchingCubesEdgeTable;
 StructuredBuffer<int> _MarchingCubesTriTable;
+StructuredBuffer<PlanetTransvoxelFaceDescriptor> _TransvoxelFaceDescriptors;
+StructuredBuffer<uint> _TransvoxelTransitionCellClass;
+StructuredBuffer<uint> _TransvoxelTransitionCellGeometryCounts;
+StructuredBuffer<uint> _TransvoxelTransitionCellVertexIndices;
+StructuredBuffer<uint> _TransvoxelTransitionVertexData;
 
 uint _MarchingCubesCellCount;
 uint _MarchingCubesCellStartIndex;
 uint _MarchingCubesCellEndIndex;
+uint _TransvoxelCellCount;
+uint _TransvoxelCellStartIndex;
+uint _TransvoxelCellEndIndex;
+uint _TransvoxelFaceCount;
 uint _MarchingCubesChunkSize;
 uint _MarchingCubesChunkIndexBase;
 uint _MarchingCubesOutputPrimitiveLimit;
@@ -180,6 +202,208 @@ void PlanetMcEmitCube(uint cellIndex, float3 cornerPositions[8], float cornerDen
     }
 }
 
+uint PlanetTxCaseBit(int sampleIndex)
+{
+    switch (sampleIndex)
+    {
+        case 0: return 0x001u;
+        case 1: return 0x002u;
+        case 2: return 0x004u;
+        case 3: return 0x080u;
+        case 4: return 0x100u;
+        case 5: return 0x008u;
+        case 6: return 0x040u;
+        case 7: return 0x020u;
+        case 8: return 0x010u;
+        default: return 0u;
+    }
+}
+
+float2 PlanetTxSampleOffset(int sampleIndex)
+{
+    switch (sampleIndex)
+    {
+        case 0: return float2(0.0, 0.0);
+        case 1: return float2(0.5, 0.0);
+        case 2: return float2(1.0, 0.0);
+        case 3: return float2(0.0, 0.5);
+        case 4: return float2(0.5, 0.5);
+        case 5: return float2(1.0, 0.5);
+        case 6: return float2(0.0, 1.0);
+        case 7: return float2(0.5, 1.0);
+        case 8: return float2(1.0, 1.0);
+        case 9: return float2(0.0, 0.0);
+        case 10: return float2(1.0, 0.0);
+        case 11: return float2(0.0, 1.0);
+        case 12: return float2(1.0, 1.0);
+        default: return float2(0.0, 0.0);
+    }
+}
+
+float3 PlanetTxFacePosition(PlanetTransvoxelFaceDescriptor descriptor, uint localU, uint localV, int sampleIndex)
+{
+    float2 offset = PlanetTxSampleOffset(sampleIndex);
+    float u = (float)localU + offset.x;
+    float v = (float)localV + offset.y;
+    float width = max(0.0, descriptor.transitionWidth);
+    float fixedCoordinate = descriptor.sign >= 0
+        ? (float)(descriptor.originX + descriptor.chunkSize)
+        : (float)descriptor.originX;
+    if (sampleIndex >= 9)
+    {
+        fixedCoordinate -= (float)descriptor.sign * width;
+    }
+
+    if (descriptor.axis == 1)
+    {
+        fixedCoordinate = descriptor.sign >= 0
+            ? (float)(descriptor.originY + descriptor.chunkSize)
+            : (float)descriptor.originY;
+        if (sampleIndex >= 9)
+        {
+            fixedCoordinate -= (float)descriptor.sign * width;
+        }
+        return float3((float)descriptor.originX + u, fixedCoordinate, (float)descriptor.originZ + v);
+    }
+
+    if (descriptor.axis == 2)
+    {
+        fixedCoordinate = descriptor.sign >= 0
+            ? (float)(descriptor.originZ + descriptor.chunkSize)
+            : (float)descriptor.originZ;
+        if (sampleIndex >= 9)
+        {
+            fixedCoordinate -= (float)descriptor.sign * width;
+        }
+        return float3((float)descriptor.originX + u, (float)descriptor.originY + v, fixedCoordinate);
+    }
+
+    return float3(fixedCoordinate, (float)descriptor.originY + u, (float)descriptor.originZ + v);
+}
+
+float3 PlanetTxDecodeVertex(uint vertexCode, float3 samplePositions[13], float sampleDensities[13])
+{
+    int endpointA = (int)((vertexCode >> 4) & 0xFu);
+    int endpointB = (int)(vertexCode & 0xFu);
+    endpointA = clamp(endpointA, 0, 12);
+    endpointB = clamp(endpointB, 0, 12);
+    return PlanetMcInterpolate(
+        samplePositions[endpointA],
+        samplePositions[endpointB],
+        sampleDensities[endpointA],
+        sampleDensities[endpointB]);
+}
+
+void PlanetTxEmitTransitionCell(
+    float3 samplePositions[13],
+    float sampleDensities[13],
+    uint caseIndex,
+    uint outputChunkIndex)
+{
+    if (caseIndex == 0u || caseIndex == 511u)
+    {
+        return;
+    }
+
+    uint classEntry = _TransvoxelTransitionCellClass[caseIndex];
+    uint classIndex = classEntry & 0x7Fu;
+    uint geometryCounts = _TransvoxelTransitionCellGeometryCounts[classIndex];
+    uint triangleCount = geometryCounts & 0x0Fu;
+    if (triangleCount == 0u)
+    {
+        return;
+    }
+
+    uint attemptedStart;
+    InterlockedAdd(_MarchingCubesState[0].triangleCountAttempted, triangleCount, attemptedStart);
+
+    uint outputPrimitiveLimit = _MarchingCubesOutputPrimitiveLimit;
+    if (attemptedStart + triangleCount > outputPrimitiveLimit)
+    {
+        uint previousOverflow;
+        InterlockedExchange(_MarchingCubesState[0].overflowFlag, 1u, previousOverflow);
+        return;
+    }
+
+    if (_MarchingCubesWriteEnabled == 0u)
+    {
+        return;
+    }
+
+    uint vertexCountToAdd = triangleCount * 3u;
+    uint vertexStart;
+    if (_MarchingCubesDrawArgsEnabled != 0u)
+    {
+        InterlockedAdd(_MarchingCubesDrawArgs[0], vertexCountToAdd, vertexStart);
+        if (vertexStart + vertexCountToAdd > _MarchingCubesOutputVertexLimit)
+        {
+            uint previousOverflow;
+            InterlockedExchange(_MarchingCubesState[0].overflowFlag, 1u, previousOverflow);
+            uint previousDrawVertexCount;
+            InterlockedExchange(_MarchingCubesDrawArgs[0], _MarchingCubesOutputVertexLimit, previousDrawVertexCount);
+            return;
+        }
+    }
+    else
+    {
+        vertexStart = attemptedStart * 3u;
+    }
+
+    uint previousTriangleCount;
+    InterlockedAdd(_MarchingCubesState[0].triangleCountWritten, triangleCount, previousTriangleCount);
+
+    uint previousVertexCount;
+    InterlockedAdd(_MarchingCubesState[0].vertexCountWritten, vertexCountToAdd, previousVertexCount);
+
+    bool inverted = (classEntry & 0x80u) != 0u;
+    uint indexBase = classIndex * 36u;
+    uint vertexDataBase = caseIndex * 12u;
+
+    for (uint triIndex = 0u; triIndex < triangleCount; triIndex++)
+    {
+        uint tableOffset = indexBase + triIndex * 3u;
+        uint localA = _TransvoxelTransitionCellVertexIndices[tableOffset];
+        uint localB = _TransvoxelTransitionCellVertexIndices[tableOffset + 1u];
+        uint localC = _TransvoxelTransitionCellVertexIndices[tableOffset + 2u];
+
+        float3 a = PlanetTxDecodeVertex(_TransvoxelTransitionVertexData[vertexDataBase + localA], samplePositions, sampleDensities);
+        float3 b = PlanetTxDecodeVertex(_TransvoxelTransitionVertexData[vertexDataBase + localB], samplePositions, sampleDensities);
+        float3 c = PlanetTxDecodeVertex(_TransvoxelTransitionVertexData[vertexDataBase + localC], samplePositions, sampleDensities);
+
+        if (inverted)
+        {
+            float3 swapVertex = b;
+            b = c;
+            c = swapVertex;
+        }
+
+        float3 normal = cross(b - a, c - a);
+        float normalLengthSquared = dot(normal, normal);
+        if (normalLengthSquared <= 0.00000001)
+        {
+            normal = dot(a, a) > 0.00000001 ? normalize(a) : float3(0.0, 1.0, 0.0);
+        }
+        else
+        {
+            normal *= rsqrt(normalLengthSquared);
+        }
+
+        float3 center = (a + b + c) * 0.3333333;
+        if (dot(normal, center) < 0.0)
+        {
+            float3 swapVertex = b;
+            b = c;
+            c = swapVertex;
+            normal = -normal;
+        }
+
+        uint outputVertex = vertexStart + triIndex * 3u;
+        PlanetMcWriteVertex(outputVertex, a, normal, caseIndex, outputChunkIndex);
+        PlanetMcWriteVertex(outputVertex + 1u, b, normal, caseIndex, outputChunkIndex);
+        PlanetMcWriteVertex(outputVertex + 2u, c, normal, caseIndex, outputChunkIndex);
+    }
+}
+
 [numthreads(64, 1, 1)]
 void CS_ExtractChunkedCartesianSurface(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
@@ -201,6 +425,7 @@ void CS_ExtractChunkedCartesianSurface(uint3 dispatchThreadId : SV_DispatchThrea
     uint localZ = localCellIndex / (chunkSize * chunkSize);
     int4 chunkOrigin = _MarchingCubesChunkOrigins[chunkIndex];
     uint outputChunkIndex = _MarchingCubesChunkIndexBase + chunkIndex;
+
     int3 cellOrigin = int3(chunkOrigin.x, chunkOrigin.y, chunkOrigin.z) + int3((int)localX, (int)localY, (int)localZ);
 
     float3 cornerPositions[8];
@@ -226,4 +451,59 @@ void CS_ExtractChunkedCartesianSurface(uint3 dispatchThreadId : SV_DispatchThrea
     }
 
     PlanetMcEmitCube(cellIndex, cornerPositions, cornerDensities, caseIndex, outputChunkIndex);
+}
+
+[numthreads(64, 1, 1)]
+void CS_ExtractTransitionSurface(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint transitionCellIndex = _TransvoxelCellStartIndex + dispatchThreadId.x;
+    if (transitionCellIndex >= _TransvoxelCellCount || transitionCellIndex >= _TransvoxelCellEndIndex)
+    {
+        return;
+    }
+
+    uint faceIndex = transitionCellIndex;
+    PlanetTransvoxelFaceDescriptor descriptor = _TransvoxelFaceDescriptors[0];
+    uint chunkSize = max(1u, (uint)descriptor.chunkSize);
+    uint cellsPerFace = chunkSize * chunkSize;
+    faceIndex = transitionCellIndex / cellsPerFace;
+    uint localCellIndex = transitionCellIndex - faceIndex * cellsPerFace;
+    descriptor = _TransvoxelFaceDescriptors[faceIndex];
+    chunkSize = max(1u, (uint)descriptor.chunkSize);
+    uint localU = localCellIndex % chunkSize;
+    uint localV = localCellIndex / chunkSize;
+
+    uint previousProcessed;
+    InterlockedAdd(_MarchingCubesState[0].cellCountProcessed, 1u, previousProcessed);
+
+    float3 samplePositions[13];
+    float sampleDensities[13];
+    uint caseIndex = 0u;
+
+    [unroll]
+    for (int sampleIndex = 0; sampleIndex < 9; sampleIndex++)
+    {
+        float surfaceOffset;
+        float effectiveRadius;
+        float continentFlag;
+        float3 samplePosition = PlanetTxFacePosition(descriptor, localU, localV, sampleIndex);
+        float density = PlanetShapeEvaluateDensity(samplePosition, surfaceOffset, effectiveRadius, continentFlag);
+        samplePositions[sampleIndex] = samplePosition;
+        sampleDensities[sampleIndex] = density;
+        if (density > 0.0)
+        {
+            caseIndex |= PlanetTxCaseBit(sampleIndex);
+        }
+    }
+
+    samplePositions[9] = PlanetTxFacePosition(descriptor, localU, localV, 9);
+    samplePositions[10] = PlanetTxFacePosition(descriptor, localU, localV, 10);
+    samplePositions[11] = PlanetTxFacePosition(descriptor, localU, localV, 11);
+    samplePositions[12] = PlanetTxFacePosition(descriptor, localU, localV, 12);
+    sampleDensities[9] = sampleDensities[0];
+    sampleDensities[10] = sampleDensities[2];
+    sampleDensities[11] = sampleDensities[6];
+    sampleDensities[12] = sampleDensities[8];
+
+    PlanetTxEmitTransitionCell(samplePositions, sampleDensities, caseIndex, (uint)descriptor.outputChunkIndex);
 }
