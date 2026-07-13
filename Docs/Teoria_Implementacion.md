@@ -1,5 +1,18 @@
 # Teoria de implementacion
 
+## Nota de estado
+
+Los documentos funcionales de los pasos 01 a 12 se han cerrado y consolidado.
+
+El mapa vivo para continuar el proyecto es:
+
+```text
+Docs/Implementacion/Estado_Actual_Proyecto.md
+```
+
+Las referencias historicas de este documento a pasos concretos del bloque 01-12
+se conservan solo como contexto de origen, no como plan vigente.
+
 ## Regla de validacion y workarounds
 
 Cada validacion ejecutable debe correr solo en el contexto definido por este documento.
@@ -231,7 +244,7 @@ Regla:
 Si ocultar o ignorar una celda puede romper gameplay o hacer desaparecer algo visible, usar Intersects.
 ```
 
-La consulta puede hacer una primera pasada por AABB para limitar el rango de celdas y despues filtrar por esfera. La version exacta se define en `Docs/Implementacion/Pasos/03_Coordenadas_Y_Receta.md`.
+La consulta puede hacer una primera pasada por AABB para limitar el rango de celdas y despues filtrar por esfera. La version vigente de coordenadas y estado del proyecto se resume en `Docs/Implementacion/Estado_Actual_Proyecto.md`.
 
 ## Mesh sin GC
 
@@ -717,10 +730,10 @@ Objetivo:
 Preparar el proyecto para probar PlanetImplementationLab en VR con Quest 3, Quest Link, camara estereo, movimiento basico y UI clicable con rayo.
 ```
 
-Documento funcional:
+Estado consolidado:
 
 ```text
-Docs/Implementacion/Pasos/05_Quest3_Player_Setup.md
+Docs/Implementacion/Estado_Actual_Proyecto.md
 ```
 
 Que se implementa:
@@ -1166,29 +1179,16 @@ La modificacion persiste.
 El planeta base sigue siendo procedural.
 ```
 
-## Deadline 01-05 - Base para empezar 06
+## Bloque 01-12 cerrado
 
-El gate de validacion entre los documentos `01` a `05` y el inicio de `06_Forma_Planeta_GPU` vive en:
-
-```text
-Docs/Implementacion/Pasos/_deadline_01-05.md
-```
-
-Ese documento define:
+El bloque de documentos 01-12 queda cerrado y consolidado en:
 
 ```text
-Lista completa de checks.
-Bloqueantes automaticos.
-Evidencias minimas.
-Definition of Done.
-Resultado de ejecucion del deadline.
+Docs/Implementacion/Estado_Actual_Proyecto.md
 ```
 
-Regla:
-
-```text
-No se empieza `Docs/Implementacion/Pasos/06_Forma_Planeta_GPU.md` si `Docs/Implementacion/Pasos/_deadline_01-05.md` no esta en verde.
-```
+Los deadlines y merges antiguos ya no son documentacion viva. El siguiente sistema
+importante debe abrir su propio documento funcional partiendo del estado actual.
 
 ## Regla final
 
