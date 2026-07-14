@@ -845,7 +845,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c5ba60977a5042229dce9830d8a41da8, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: MarchingCubesPlanet.Preview::MarchingCubesPlanet.Preview.PlanetMinimalXrRig
   head: {fileID: 629667606}
   headCamera: {fileID: 629667604}
@@ -1303,7 +1303,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 504e6e8234fa46849c943f5f0635be6f, type: 3}
   m_Name:
   m_EditorClassIdentifier: MarchingCubesPlanet.MarchingCubes::MarchingCubesPlanet.MarchingCubes.StellarSystemDirector
-  stellarSystemSeedId: 1
+  stellarSystemSeedId: 15062
   planets:
   - {fileID: 2000400002}
   shellLod: 2
@@ -1375,7 +1375,7 @@ MonoBehaviour:
   recipe:
     gridRadius: 130
     worldScale: 54
-    seed: 0
+    seed: 3345
     isoLevel: 0
     voronoiDivision: 80
     continentCells: 51
@@ -1411,6 +1411,21 @@ MonoBehaviour:
       operation: 0
       material: 0
       atlasColor: {r: 0.5283019, g: 0.29846004, b: 0.246707, a: 1}
+      minAppearance: 0
+      maxAppearance: 255
+      abundance: 100
+      coherence: 100
+      underwaterBehaviour: 0
+      underwaterAtlasColor: {r: 0.5283019, g: 0.29846004, b: 0.246707, a: 1}
+      underwaterProbability: 100
+      underwaterCoherence: 100
+      surfaceBehaviour: 1
+      surfaceAtlasColor: {r: 0.10980392, g: 0.44313726, b: 0.07450981, a: 1}
+      surfaceProbability: 73
+      surfaceCoherence: 86
+      surfaceMinAppearance: 183
+      surfaceMaxAppearance: 200
+      authoringVersion: 3
       heightMin01: 0
       heightMax01: 1.5
       falloffMin01: 0
@@ -1422,33 +1437,32 @@ MonoBehaviour:
       strength01: 1
       altitudeBias: 0
       seedOffset: 0
-    - name: Cesped
-      enabled: 1
-      operation: 1
-      material: 2
-      atlasColor: {r: 0.111366525, g: 0.4433962, b: 0.07320219, a: 1}
-      heightMin01: 0.78
-      heightMax01: 1.5
-      falloffMin01: 0.08
-      falloffMax01: 0.22
-      coverage01: 1
-      massScaleMinMeters: 18
-      massScaleMaxMeters: 2000
-      massCoherence01: 0.82
-      strength01: 1
-      altitudeBias: 0.05
-      seedOffset: 23
     - name: Arena
       enabled: 1
       operation: 1
       material: 3
       atlasColor: {r: 0.78, g: 0.68, b: 0.42, a: 1}
+      minAppearance: 150
+      maxAppearance: 197
+      abundance: 15
+      coherence: 100
+      underwaterBehaviour: 0
+      underwaterAtlasColor: {r: 0.78, g: 0.68, b: 0.42, a: 1}
+      underwaterProbability: 100
+      underwaterCoherence: 74
+      surfaceBehaviour: 0
+      surfaceAtlasColor: {r: 0.78, g: 0.68, b: 0.42, a: 1}
+      surfaceProbability: 100
+      surfaceCoherence: 74
+      surfaceMinAppearance: 0
+      surfaceMaxAppearance: 255
+      authoringVersion: 3
       heightMin01: 0.7
-      heightMax01: 1.01
+      heightMax01: 1.5
       falloffMin01: 0.12
       falloffMax01: 0.06
       coverage01: 0.72
-      massScaleMinMeters: 160
+      massScaleMinMeters: 1
       massScaleMaxMeters: 1400
       massCoherence01: 0.9
       strength01: 0.95
@@ -1456,18 +1470,33 @@ MonoBehaviour:
       seedOffset: 37
     - name: Roca
       enabled: 1
-      operation: 2
+      operation: 1
       material: 1
-      atlasColor: {r: 0.46, g: 0.46, b: 0.43, a: 1}
+      atlasColor: {r: 0.4339623, g: 0.4339623, b: 0.3827875, a: 1}
+      minAppearance: 0
+      maxAppearance: 255
+      abundance: 20
+      coherence: 100
+      underwaterBehaviour: 1
+      underwaterAtlasColor: {r: 0.322707, g: 0.43529412, b: 0.24071765, a: 1}
+      underwaterProbability: 70
+      underwaterCoherence: 100
+      surfaceBehaviour: 0
+      surfaceAtlasColor: {r: 0.4339623, g: 0.4339623, b: 0.3827875, a: 1}
+      surfaceProbability: 100
+      surfaceCoherence: 100
+      surfaceMinAppearance: 0
+      surfaceMaxAppearance: 255
+      authoringVersion: 3
       heightMin01: 0
       heightMax01: 1.5
       falloffMin01: 0.08
       falloffMax01: 0.08
-      coverage01: 0.34
+      coverage01: 0.4
       massScaleMinMeters: 1
-      massScaleMaxMeters: 1000
-      massCoherence01: 0.52
-      strength01: 0.82
+      massScaleMaxMeters: 500
+      massCoherence01: 1
+      strength01: 1
       altitudeBias: 0.85
       seedOffset: 11
   placement:
@@ -1482,6 +1511,7 @@ MonoBehaviour:
     planetRotation: {x: 0, y: 0, z: 0, w: 1}
   player: {fileID: 1231763937}
   activationRange: 10000
+  baseGridPrewarmRange: 15000
   shellLod: 2
   baseLod: 0
   standaloneLoadShellOnStart: 0

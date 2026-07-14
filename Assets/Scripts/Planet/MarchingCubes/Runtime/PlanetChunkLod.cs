@@ -599,7 +599,7 @@ namespace MarchingCubesPlanet.MarchingCubes
 
         private static Vector3 ReadGridPosition(PlanetMarchingCubesVertex vertex)
         {
-            Vector4 packedPosition = vertex.positionAndCase;
+            Vector4 packedPosition = vertex.positionAndMaterial;
             return new Vector3(packedPosition.x, packedPosition.y, packedPosition.z);
         }
 

@@ -14,6 +14,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private static readonly int VerticesId = Shader.PropertyToID("_MarchingCubesVertices");
         private static readonly int StateId = Shader.PropertyToID("_MarchingCubesState");
         private static readonly int DrawArgsId = Shader.PropertyToID("_MarchingCubesDrawArgs");
+        private static readonly int ChunkOccupancyId = Shader.PropertyToID("_MarchingCubesChunkOccupancy");
         private static readonly int EdgeTableId = Shader.PropertyToID("_MarchingCubesEdgeTable");
         private static readonly int TriTableId = Shader.PropertyToID("_MarchingCubesTriTable");
         private static readonly int CellCountId = Shader.PropertyToID("_MarchingCubesCellCount");
@@ -25,6 +26,16 @@ namespace MarchingCubesPlanet.MarchingCubes
         private static readonly int OutputVertexLimitId = Shader.PropertyToID("_MarchingCubesOutputVertexLimit");
         private static readonly int WriteEnabledId = Shader.PropertyToID("_MarchingCubesWriteEnabled");
         private static readonly int DrawArgsEnabledId = Shader.PropertyToID("_MarchingCubesDrawArgsEnabled");
+        private static readonly int ChunkOccupancyEnabledId = Shader.PropertyToID("_MarchingCubesChunkOccupancyEnabled");
+        private static readonly int PlanetGridRadiusId = Shader.PropertyToID("_PlanetGridRadius");
+        private static readonly int PlanetMaterialOuterRadiusId = Shader.PropertyToID("_PlanetMaterialOuterRadius");
+        private static readonly int PlanetWorldScaleId = Shader.PropertyToID("_PlanetWorldScale");
+        private static readonly int PlanetSeedId = Shader.PropertyToID("_PlanetSeed");
+        private static readonly int PlanetLayerCountId = Shader.PropertyToID("_PlanetLayerCount");
+        private static readonly int PlanetLayerHeightsId = Shader.PropertyToID("_PlanetLayerHeights");
+        private static readonly int PlanetLayerNoiseId = Shader.PropertyToID("_PlanetLayerNoise");
+        private static readonly int PlanetLayerFlagsId = Shader.PropertyToID("_PlanetLayerFlags");
+        private static readonly int PlanetLayerSeedsId = Shader.PropertyToID("_PlanetLayerSeeds");
 
         private const string ExtractChunkedCartesianSurfaceKernelName = "CS_ExtractChunkedCartesianSurface";
         private const int MaxThreadGroupsPerDispatchAxis = 65535;
@@ -34,6 +45,10 @@ namespace MarchingCubesPlanet.MarchingCubes
         private readonly PlanetMarchingCubesState[] stateReadback = new PlanetMarchingCubesState[1];
         private readonly PlanetMarchingCubesChunkOrigin[] singleChunkUpload = new PlanetMarchingCubesChunkOrigin[1];
         private readonly PlanetMarchingCubesChunkOrigin[] reusableSingleChunkCandidate = new PlanetMarchingCubesChunkOrigin[1];
+        private readonly Vector4[] layerHeightUpload = new Vector4[PlanetRecipe.MaxMaterialLayers];
+        private readonly Vector4[] layerNoiseUpload = new Vector4[PlanetRecipe.MaxMaterialLayers];
+        private readonly Vector4[] layerFlagUpload = new Vector4[PlanetRecipe.MaxMaterialLayers];
+        private readonly Vector4[] layerSeedUpload = new Vector4[PlanetRecipe.MaxMaterialLayers];
 
         private ComputeShader computeShader;
         private int extractKernel;
@@ -46,9 +61,11 @@ namespace MarchingCubesPlanet.MarchingCubes
         private PlanetGpuBufferHandle vertexBuffer;
         private PlanetGpuBufferHandle stateBuffer;
         private PlanetGpuBufferHandle drawArgsBuffer;
+        private PlanetGpuBufferHandle chunkOccupancyBuffer;
         private PlanetGpuBufferHandle edgeTableBuffer;
         private PlanetGpuBufferHandle triTableBuffer;
         private PlanetMarchingCubesVertex[] vertexReadback;
+        private uint[] chunkOccupancyClear = Array.Empty<uint>();
         private PlanetMarchingCubesChunkOrigin[] chunkOrigins = Array.Empty<PlanetMarchingCubesChunkOrigin>();
         private PlanetMarchingCubesChunkBuildStats chunkBuildStats;
         private bool hasActiveIncrementalExtraction;
@@ -215,6 +232,7 @@ namespace MarchingCubesPlanet.MarchingCubes
 
             extractKernel = computeShader.FindKernel(ExtractChunkedCartesianSurfaceKernelName);
             computeShader.GetKernelThreadGroupSizes(extractKernel, out threadGroupSizeX, out _, out _);
+            UploadMaterialLayers(in sourceRecipe);
 
             int chunkOriginElementCount = Math.Max(1, chunkOrigins.Length);
             chunkOriginBuffer = EnsureBuffer(
@@ -233,6 +251,11 @@ namespace MarchingCubesPlanet.MarchingCubes
                 PlanetMarchingCubesVertex.Stride);
             stateBuffer = EnsureBuffer(stateBuffer, "Planet Marching Cubes State", 1, PlanetMarchingCubesState.Stride);
             drawArgsBuffer = EnsureBuffer(drawArgsBuffer, "Planet Marching Cubes Legacy Draw Args", 4, sizeof(uint));
+            chunkOccupancyBuffer = EnsureBuffer(
+                chunkOccupancyBuffer,
+                "Planet Marching Cubes Chunk Occupancy",
+                chunkOriginElementCount,
+                sizeof(uint));
             edgeTableBuffer = EnsureBuffer(edgeTableBuffer, "Planet Marching Cubes Edge Table", PlanetMarchingCubesLookupTables.EdgeTable.Length, sizeof(uint));
             triTableBuffer = EnsureBuffer(triTableBuffer, "Planet Marching Cubes Tri Table", PlanetMarchingCubesLookupTables.TriTable.Length, sizeof(int));
 
@@ -247,6 +270,55 @@ namespace MarchingCubesPlanet.MarchingCubes
             {
                 vertexReadback = new PlanetMarchingCubesVertex[reusableVertexCapacity];
             }
+
+            if (chunkOccupancyClear.Length < chunkOriginElementCount)
+            {
+                chunkOccupancyClear = new uint[chunkOriginElementCount];
+            }
+        }
+
+        public int ClassifyCandidateChunkSurfaces(uint[] occupancyResults)
+        {
+            if (!IsInitialized)
+            {
+                throw new InvalidOperationException("PlanetMarchingCubesExtractor must be initialized before chunk classification.");
+            }
+
+            int candidateCount = chunkOrigins.Length;
+            if (occupancyResults == null || occupancyResults.Length < candidateCount)
+            {
+                throw new ArgumentException("Chunk occupancy output must fit every candidate chunk.", nameof(occupancyResults));
+            }
+
+            if (candidateCount == 0)
+            {
+                return 0;
+            }
+
+            Array.Clear(chunkOccupancyClear, 0, candidateCount);
+            SetData(chunkOccupancyBuffer, chunkOccupancyClear, candidateCount);
+            UploadChunkOrigins(0, candidateCount);
+
+            long activeCellCount = (long)candidateCount * CellsPerActiveChunk;
+            BindCommonBuffers(extractKernel);
+            ResetExtractionState(candidateCount);
+            SetCommonParameters(activeCellCount, 0);
+            computeShader.SetInt(WriteEnabledId, 0);
+            computeShader.SetInt(ChunkOccupancyEnabledId, 1);
+            Dispatch(extractKernel, activeCellCount);
+            GetData(chunkOccupancyBuffer, occupancyResults, candidateCount);
+            computeShader.SetInt(ChunkOccupancyEnabledId, 0);
+
+            int occupiedCount = 0;
+            for (int i = 0; i < candidateCount; i++)
+            {
+                if (occupancyResults[i] != 0u)
+                {
+                    occupiedCount++;
+                }
+            }
+
+            return occupiedCount;
         }
 
         public PlanetMarchingCubesExtractionResult ExtractPlanetSurface()
@@ -525,6 +597,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             ReleaseBuffer(ref triTableBuffer);
             ReleaseBuffer(ref edgeTableBuffer);
             ReleaseBuffer(ref drawArgsBuffer);
+            ReleaseBuffer(ref chunkOccupancyBuffer);
             ReleaseBuffer(ref stateBuffer);
             ReleaseBuffer(ref vertexBuffer);
             ReleaseBuffer(ref chunkOriginBuffer);
@@ -533,6 +606,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             threadGroupSizeX = 0;
             shapeEvaluator = null;
             vertexReadback = null;
+            chunkOccupancyClear = Array.Empty<uint>();
             chunkOrigins = Array.Empty<PlanetMarchingCubesChunkOrigin>();
             chunkBuildStats = default;
         }
@@ -545,9 +619,54 @@ namespace MarchingCubesPlanet.MarchingCubes
             vertexBuffer.BindTo(computeShader, kernel, VerticesId);
             stateBuffer.BindTo(computeShader, kernel, StateId);
             drawArgsBuffer.BindTo(computeShader, kernel, DrawArgsId);
+            chunkOccupancyBuffer.BindTo(computeShader, kernel, ChunkOccupancyId);
             edgeTableBuffer.BindTo(computeShader, kernel, EdgeTableId);
             triTableBuffer.BindTo(computeShader, kernel, TriTableId);
             computeShader.SetInt(DrawArgsEnabledId, 0);
+            computeShader.SetInt(ChunkOccupancyEnabledId, 0);
+        }
+
+        private void UploadMaterialLayers(in PlanetRecipe sourceRecipe)
+        {
+            PlanetMaterialLayer[] layers = sourceRecipe.MaterialLayers;
+            int layerCount = Mathf.Clamp(layers == null ? 0 : layers.Length, 1, PlanetRecipe.MaxMaterialLayers);
+            for (int i = 0; i < PlanetRecipe.MaxMaterialLayers; i++)
+            {
+                PlanetMaterialLayer layer = i < layerCount
+                    ? layers[i]
+                    : PlanetMaterialLayer.Base("Unused", Color.magenta);
+                layerHeightUpload[i] = new Vector4(
+                    layer.MinAppearance,
+                    layer.MaxAppearance,
+                    layer.UnderwaterCoherence * 0.01f,
+                    layer.SurfaceCoherence * 0.01f);
+                layerNoiseUpload[i] = new Vector4(
+                    layer.Abundance * 0.01f,
+                    layer.Coherence * 0.01f,
+                    layer.UnderwaterProbability * 0.01f,
+                    layer.SurfaceProbability * 0.01f);
+                layerFlagUpload[i] = new Vector4(
+                    layer.Enabled ? 1f : 0f,
+                    (float)layer.Operation,
+                    (float)layer.UnderwaterBehaviour,
+                    (float)layer.SurfaceBehaviour);
+                layerSeedUpload[i] = new Vector4(
+                    i,
+                    (float)layer.Material,
+                    layer.SurfaceMinAppearance,
+                    layer.SurfaceMaxAppearance);
+            }
+
+            PlanetMarchingCubesChunkRange.CalculateSurfaceShell(in sourceRecipe, 0, out _, out float materialOuterRadius);
+            computeShader.SetFloat(PlanetGridRadiusId, sourceRecipe.GridRadius);
+            computeShader.SetFloat(PlanetMaterialOuterRadiusId, materialOuterRadius);
+            computeShader.SetFloat(PlanetWorldScaleId, sourceRecipe.WorldScale);
+            computeShader.SetFloat(PlanetSeedId, sourceRecipe.Seed);
+            computeShader.SetInt(PlanetLayerCountId, layerCount);
+            computeShader.SetVectorArray(PlanetLayerHeightsId, layerHeightUpload);
+            computeShader.SetVectorArray(PlanetLayerNoiseId, layerNoiseUpload);
+            computeShader.SetVectorArray(PlanetLayerFlagsId, layerFlagUpload);
+            computeShader.SetVectorArray(PlanetLayerSeedsId, layerSeedUpload);
         }
 
         private void ResetExtractionState(int activeChunkCount)

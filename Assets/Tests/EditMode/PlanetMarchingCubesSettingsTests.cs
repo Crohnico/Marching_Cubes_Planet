@@ -1,6 +1,9 @@
+using MarchingCubesPlanet.Compute;
 using MarchingCubesPlanet.Coordinates;
 using MarchingCubesPlanet.MarchingCubes;
+using MarchingCubesPlanet.Shape;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 
 namespace MarchingCubesPlanet.Tests
@@ -136,6 +139,75 @@ namespace MarchingCubesPlanet.Tests
             Assert.AreEqual(32, PlanetMarchingCubesVertex.Stride);
             Assert.AreEqual(32, PlanetMarchingCubesState.Stride);
             Assert.AreEqual(16, PlanetMarchingCubesChunkOrigin.Stride);
+        }
+
+        [Test]
+        public void GpuExtractionStoresSubstanceAndSurfaceAppearanceBeforeRendering()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                Assert.Ignore("Compute shaders are required for the GPU material composition contract.");
+            }
+
+            PlanetRecipe recipe = PlanetRecipe.Default();
+            recipe.GridRadius = 8;
+            recipe.WorldScale = 1f;
+            recipe.VoronoiDivision = 8;
+            recipe.ContinentCells = 8;
+            recipe.MountainBiomeCells = 2;
+            recipe.SurfaceNoiseAmplitude = 0f;
+            recipe.MaterialLayers = new[]
+            {
+                PlanetMaterialLayer.Base("Hierro", PlanetLayerMaterial.Iron, Color.gray)
+                    .WithSurfaceAppearance(Color.green, 100)
+            };
+
+            PlanetGpuShapeCell[] shapeCells = new PlanetGpuShapeCell[recipe.VoronoiDivision];
+            PlanetGpuShapeCellBuilder.Build(in recipe, shapeCells);
+            PlanetGpuShapeEvaluator shape = new PlanetGpuShapeEvaluator();
+            PlanetMarchingCubesExtractor extractor = new PlanetMarchingCubesExtractor();
+            PlanetMarchingCubesSettings settings = PlanetMarchingCubesSettings.Default();
+            settings.chunkRange.chunkSize = 16;
+            settings.outputVertexCapacity = 100000;
+
+            try
+            {
+                ComputeShader shapeShader = AssetDatabase.LoadAssetAtPath<ComputeShader>(
+                    "Assets/Shaders/Resources/Compute/PlanetShapeDensity.compute");
+                ComputeShader marchingShader = AssetDatabase.LoadAssetAtPath<ComputeShader>(
+                    "Assets/Shaders/Resources/Compute/PlanetMarchingCubes.compute");
+                Assert.IsNotNull(shapeShader);
+                Assert.IsNotNull(marchingShader);
+
+                shape.Initialize(shapeShader, in recipe, shapeCells, PlanetGpuBufferMode.ComputeBuffer);
+                extractor.InitializeSingleChunk(
+                    marchingShader,
+                    in recipe,
+                    in settings,
+                    shape,
+                    PlanetGpuBufferMode.ComputeBuffer,
+                    new PlanetMarchingCubesChunkOrigin(-8, -8, -8));
+
+                PlanetMarchingCubesExtractionResult result = extractor.ExtractCandidateChunkSurface(0);
+
+                Assert.Greater(result.VertexCount, 0);
+                for (int i = 0; i < result.VertexCount; i++)
+                {
+                    float packedMaterial = result.Vertices[i].positionAndMaterial.w;
+                    Assert.GreaterOrEqual(packedMaterial, PlanetMaterialVertexEncoding.PackedMarker);
+                    Assert.AreEqual(
+                        (int)PlanetLayerMaterial.Iron,
+                        PlanetMaterialVertexEncoding.DecodeMaterialId(packedMaterial));
+                    Assert.AreEqual(
+                        PlanetMaterialAppearanceState.Surface,
+                        PlanetMaterialVertexEncoding.DecodeAppearanceState(packedMaterial));
+                }
+            }
+            finally
+            {
+                extractor.Release();
+                shape.Release();
+            }
         }
     }
 }

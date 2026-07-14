@@ -38,6 +38,53 @@ planetMaterial(point)
 Ese campo compuesto es lo que se usa para decidir si hay superficie, material,
 colision y chunks renderizables.
 
+Decision cerrada:
+
+```text
+El material de una lamina es sustancia logica del volumen.
+No es un color calculado despues de Marching Cubes.
+```
+
+La autoria inicial de un planeta debe ser sencilla:
+
+```text
+Lamina 0 -> sustancia principal de todo el solido.
+Lamina 1 -> sustituye sustancia dentro de un rango de altura.
+Lamina N -> vuelve a sustituir sustancia dentro de su rango y mascara.
+```
+
+La autoria visible de cada material queda limitada a:
+
+```text
+name / enabled
+operation
+material
+atlasColor
+minAppearance / maxAppearance: 0..255
+abundance: 0..100 %
+coherence: 0..100 %
+underwaterBehaviour / underwaterAtlasColor / underwaterProbability / underwaterCoherence
+surfaceBehaviour / surfaceAtlasColor / surfaceProbability / surfaceCoherence
+surfaceMinAppearance / surfaceMaxAppearance: 0..255
+```
+
+No se exponen escalas de masa, falloff, strength, bias ni seed offset. La escala
+espacial se deriva de `coherence` y del radio de la receta. La seed de cada capa
+se deriva de la seed del planeta y de su indice estable.
+
+Ejemplos de sustancia principal:
+
+```text
+tierra
+roca
+hierro
+silicio
+hielo
+```
+
+El color, atlas y parametros de shader son la presentacion visual de una
+sustancia. Cambiar la presentacion no cambia las cells ni invalida geometria.
+
 ## Metafora operativa
 
 Las laminas son como papeles invisibles colocados unos sobre otros.
@@ -144,51 +191,117 @@ La altura sigue afectando a la forma, no al material.
 
 Las laminas de material viven en `PlanetRecipe`.
 
-Primera estructura funcional:
+Estructura funcional:
 
 ```text
 enabled
 operation
 material
 atlasColor
-heightMin01 / heightMax01
-falloffMin01 / falloffMax01
-coverage01
-massScaleMinMeters / massScaleMaxMeters
-massCoherence01
-strength01
-altitudeBias
-seedOffset
+minAppearance / maxAppearance
+abundance
+coherence
+underwaterBehaviour / underwaterAtlasColor / underwaterProbability / underwaterCoherence
+surfaceBehaviour / surfaceAtlasColor / surfaceProbability / surfaceCoherence
+surfaceMinAppearance / surfaceMaxAppearance
 ```
 
-Operaciones iniciales:
+Operaciones de material:
 
 ```text
-BaseSurface     -> lamina 0 obligatoria, material base de todo solido.
-PaintMaterial   -> tinta/mezcla sobre lo anterior, para cesped y arena.
-OverlayMaterial -> sobrescribe visualmente sobre lo anterior, para masas tipo roca.
-SubtractDensity -> resta densidad, reservado para cavidades/cuevas.
+BaseMaterial    -> lamina 0 obligatoria, material fallback de todo solido.
+ReplaceMaterial -> sustituye sustancia sobre lo anterior usando rango y mascara.
 ```
 
-`heightMin01` y `heightMax01` usan radio normalizado:
+`minAppearance` y `maxAppearance` usan radio normalizado a byte:
 
 ```text
 0 = centro del planeta
-1 = radio de grid de la receta
+255 = radio exterior maximo que puede generar la receta, incluido su margen de altura
 ```
+
+El rango no crea solido en atmosfera. Solo clasifica cells que el campo de
+densidad ya ha considerado solidas.
+
+`abundance` es la probabilidad espacial de que una capa candidata reemplace el
+material acumulado. No se llama `density` porque ese termino queda reservado al
+campo SDF solido/aire.
+
+`coherence` controla agrupacion sin exponer metros:
+
+```text
+0   -> decisiones practicamente por cell
+100 -> grandes masas conectadas
+```
+
+El dominio procedural evita alinearse con Marching Cubes:
+
+```text
+material volumetrico -> posicion 3D rotada respecto al grid cartesiano
+behaviour exterior   -> direccion esferica proyectada al radio exterior
+```
+
+Una deformacion determinista barata rompe contornos demasiado regulares. Los
+behaviours no muestrean profundidad radial, evitando bandas y flechas al cortar
+ruido cartesiano con pendientes o con la esfera del planeta.
+
+Las capas se evaluan en orden y una coincidencia posterior reemplaza la anterior.
+La capa cero siempre es el fallback y se normaliza a rango completo y abundancia
+total.
 
 Las laminas 1+ no crean mesh propia y no crean solido nuevo.
 
-En esta fase inicial solo tintan el material visual final sobre la superficie
-generada por Marching Cubes.
+Las laminas de material se evaluan antes de escribir los triangulos de Marching
+Cubes. El triangulo conserva la sustancia dominante calculada para la cell.
 
-Ejemplos iniciales en escena:
+No se materializa un buffer de sustancias para el planeta completo. La receta
+define `planetMaterial(point)` y el dato solo se calcula para chunks visibles,
+interactuables o consultados.
+
+`Air` no es una sustancia de pintado. Una caverna cambia `density` y pertenece a
+la composicion de cavidades, fuera de la lista de materiales.
+
+## Estados visuales por exposicion
+
+La sustancia base no cambia cuando reacciona visualmente al entorno. Tierra con
+cesped sigue siendo tierra; cobre oxidado sigue siendo cobre. El vertice conserva
+la sustancia, la capa que la eligio y un estado visual compacto.
+
+Estados iniciales:
 
 ```text
-Lamina 0: tierra basica rosa, cobertura total.
-Lamina 1: cesped verde, manto general de superficie.
-Lamina 2: arena, orillas y zonas bajo/cerca del agua, masas grandes conectadas.
-Lamina 3: roca gris, aparece por masas, aumenta con altura y usa OverlayMaterial.
+Base       -> atlasColor
+Underwater -> underwaterAtlasColor si el behaviour y su probabilidad aplican
+Surface    -> surfaceAtlasColor si el behaviour y su probabilidad aplican
+```
+
+`Surface` aplica ademas su propio rango radial `0..255`. Esto permite detener
+cesped, oxidacion u otras reacciones antes de las cotas extremas sin modificar el
+rango donde existe la sustancia base. Fuera del rango se conserva `atlasColor`.
+
+Clasificacion:
+
+```text
+Surface    -> superficie exterior expuesta y a nivel o por encima del oceano
+Underwater -> superficie exterior expuesta por debajo de la esfera del oceano
+Cueva      -> no es Surface ni Underwater por el mero hecho de limitar con aire
+```
+
+La exposicion exterior se contrasta con la superficie base procedural. Asi una
+futura resta de densidad de cueva no convierte automaticamente sus paredes en
+suelo con cesped. La probabilidad de cada behaviour es independiente de
+`abundance` y cada behaviour tiene su propia coherencia para controlar el tamano
+de sus manchas sin depender de la distribucion del material base.
+
+Ejemplos conceptuales:
+
+```text
+Lamina 0: roca como material base.
+Lamina 1: tierra en un rango radial, con abundancia y masas coherentes;
+          su estado Surface usa color de cesped.
+Lamina 2: cobre en profundidad; su estado Surface usa color oxidado.
+Lamina 3: arena en cotas altas/bajas definidas por receta;
+          su estado Underwater usa color mojado.
 ```
 
 ## Lamina Cavidades
@@ -358,6 +471,63 @@ El grid no debe decidir por indice.
 La lista ordenada de chunks renderizables es una vista derivada del grid y del
 presupuesto actual, no la fuente de verdad.
 
+## Flujo compartido de Shell y LOD
+
+La Shell no debe clasificar el planeta por una ruta distinta a Base/LOD.
+
+Cada chunk conserva una identidad canonica independiente de su resolucion:
+
+```text
+recipeHash + chunkCoordinates + LOD + compositionVersion
+```
+
+La generacion de Shell LOD2 produce tambien la ocupacion por chunk. Ese resultado
+alimenta `PlanetGrid` y evita un barrido anterior con un readback GPU->CPU por
+chunk. Los LOD mas finos reutilizan identidad, clasificacion y cache; no intentan
+reutilizar vertices porque la topologia de Marching Cubes cambia con el LOD.
+
+Regla de publicacion:
+
+```text
+Mantener el LOD anterior visible.
+Generar solo los chunks que requieren refinamiento.
+Publicar el reemplazo cuando este completo.
+Liberar despues el contenido sustituido.
+```
+
+Los planetas lejanos no fuerzan una Shell completa durante la entrada al sistema
+estelar. Usan impostor/proxy y la generacion se agenda por prioridad y presupuesto.
+
+## Presupuesto de VRAM
+
+El sistema no aumenta buffers automaticamente para incorporar sustancias.
+
+Decision inicial:
+
+```text
+PlanetMarchingCubesVertex mantiene stride de 32 bytes.
+substanceId reutiliza/compacta un canal diagnostico existente.
+No existe buffer volumetrico global de materiales.
+Cada celda de superficie evalua una vez su material logico en el centro y todos
+sus triangulos heredan ese identificador. Las celdas interiores o vacias no
+materializan ni conservan material en memoria.
+La Shell hace pase de conteo y reserva solo los vertices que necesita hasta el presupuesto maximo.
+La cache de Shell guarda vertices usados, no capacidad vacia.
+```
+
+La evolucion a streaming por paginas debe usar un presupuesto fijo compartido
+entre Shell y chunks locales. Si no hay espacio para un refinamiento, se conserva
+el LOD anterior y se expulsa primero trabajo invisible o de menor prioridad.
+
+Cada carga de Shell informa como minimo:
+
+```text
+chunks con informacion
+vertices usados
+capacidad real reservada
+bytes de vertex buffer
+```
+
 ## Relacion con el render actual
 
 El render no debe saber cuantas laminas existen.
@@ -400,25 +570,23 @@ Las cavidades no autorizan por si solas a llenar el buffer con todo el interior.
 Queda por definir:
 
 ```text
-Formato exacto de cache en disco.
-Hash exacto de receta + version de laminas.
-API C# de Lamina.
-Representacion GPU de material compuesto.
-Como se invalida cache si cambia una lamina.
 Como se integran patches de terraformado con prioridad superior.
+Politica exacta del pool/paginas GPU y dibujo indirecto por segmentos.
 ```
 
 ## Primer paso de implementacion recomendado
 
-Antes de tocar render:
+Antes de ampliar operaciones de laminas:
 
 ```text
-Crear un evaluador conceptual de composicion:
-  LaminaSuperficie
-  LaminaCavidades
+Eliminar la clasificacion con readback sincronico por chunk.
+Hacer que Shell produzca ocupacion reutilizable por PlanetGrid/LOD.
 
-Hacer que PlanetShapeDensity tenga una funcion clara:
-  EvaluateComposedPlanet(point)
+Crear un evaluador de composicion:
+  EvaluateComposedDensity(point)
+  EvaluateComposedMaterial(point)
+
+Propagar substanceId en el vertice actual sin aumentar su stride.
 
 Mantener el render actual consumiendo el resultado igual que ahora.
 ```

@@ -46,11 +46,14 @@ namespace MarchingCubesPlanet.MarchingCubes
                     shape,
                     PlanetGpuBufferMode.ComputeBuffer);
 
-                PlanetGrid grid = new PlanetGrid(extractor.CandidateChunkCount);
+                int candidateCount = extractor.CandidateChunkCount;
+                uint[] occupancy = new uint[candidateCount];
+                extractor.ClassifyCandidateChunkSurfaces(occupancy);
+
+                PlanetGrid grid = new PlanetGrid(candidateCount);
                 for (int i = 0; i < extractor.CandidateChunkCount; i++)
                 {
-                    PlanetMarchingCubesState state = extractor.CountCandidateChunkSurface(i);
-                    if (state.triangleCountAttempted == 0u)
+                    if (occupancy[i] == 0u)
                     {
                         continue;
                     }

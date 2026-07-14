@@ -1,6 +1,7 @@
 using System;
 using System.Reflection;
 using MarchingCubesPlanet.Coordinates;
+using MarchingCubesPlanet.MarchingCubes;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -133,6 +134,159 @@ namespace MarchingCubesPlanet.Tests
 
             Assert.AreEqual(originalGridRadius, recipe.GridRadius);
             Assert.AreEqual(originalWorldScale, recipe.WorldScale);
+        }
+
+        [Test]
+        public void BaseLayerCanDefineThePlanetsMainSubstance()
+        {
+            PlanetMaterialLayer layer = PlanetMaterialLayer.Base(
+                "Hierro",
+                PlanetLayerMaterial.Iron,
+                Color.gray);
+
+            Assert.AreEqual(PlanetLayerOperation.BaseMaterial, layer.Operation);
+            Assert.AreEqual(PlanetLayerMaterial.Iron, layer.Material);
+            Assert.AreEqual(0, layer.MinAppearance);
+            Assert.AreEqual(255, layer.MaxAppearance);
+            Assert.AreEqual(100, layer.Abundance);
+        }
+
+        [Test]
+        public void AirCannotBeUsedAsMaterialReplacement()
+        {
+            PlanetRecipe recipe = PlanetRecipe.Default();
+            recipe.MaterialLayers = new[]
+            {
+                PlanetMaterialLayer.Base("Aire", PlanetLayerMaterial.Air, Color.clear)
+            };
+
+            Assert.IsFalse(PlanetRecipeValidator.Validate(in recipe, out string message));
+            StringAssert.Contains("Air is a density operation", message);
+        }
+
+        [Test]
+        public void ReplaceCreatesCompactMaterialAuthoring()
+        {
+            PlanetMaterialLayer layer = PlanetMaterialLayer.Replace(
+                "Silicio alto",
+                PlanetLayerMaterial.Silicon,
+                Color.white,
+                180,
+                230,
+                42,
+                75);
+
+            Assert.AreEqual(PlanetLayerOperation.ReplaceMaterial, layer.Operation);
+            Assert.AreEqual(PlanetLayerMaterial.Silicon, layer.Material);
+            Assert.AreEqual(180, layer.MinAppearance);
+            Assert.AreEqual(230, layer.MaxAppearance);
+            Assert.AreEqual(42, layer.Abundance);
+            Assert.AreEqual(75, layer.Coherence);
+        }
+
+        [Test]
+        public void SurfaceAndUnderwaterAppearancesKeepLogicalSubstance()
+        {
+            PlanetMaterialLayer layer = PlanetMaterialLayer.Replace(
+                    "Cobre",
+                    PlanetLayerMaterial.Copper,
+                    new Color(0.72f, 0.35f, 0.16f),
+                    20,
+                    220,
+                    30,
+                    80)
+                .WithSurfaceAppearance(Color.green, 65, 61, 90, 210)
+                .WithUnderwaterAppearance(Color.black, 40, 37);
+
+            Assert.AreEqual(PlanetLayerMaterial.Copper, layer.Material);
+            Assert.AreEqual(PlanetMaterialEnvironmentBehaviour.OverrideColor, layer.SurfaceBehaviour);
+            Assert.AreEqual(65, layer.SurfaceProbability);
+            Assert.AreEqual(61, layer.SurfaceCoherence);
+            Assert.AreEqual(90, layer.SurfaceMinAppearance);
+            Assert.AreEqual(210, layer.SurfaceMaxAppearance);
+            Assert.AreEqual(Color.green, layer.SurfaceAtlasColor);
+            Assert.AreEqual(PlanetMaterialEnvironmentBehaviour.OverrideColor, layer.UnderwaterBehaviour);
+            Assert.AreEqual(40, layer.UnderwaterProbability);
+            Assert.AreEqual(37, layer.UnderwaterCoherence);
+            Assert.AreEqual(Color.black, layer.UnderwaterAtlasColor);
+        }
+
+        [Test]
+        public void VisualColorDoesNotInvalidateGeometryCacheIdentity()
+        {
+            PlanetRecipe redRecipe = PlanetRecipe.Default();
+            redRecipe.MaterialLayers = new[]
+            {
+                PlanetMaterialLayer.Base("Hierro", PlanetLayerMaterial.Iron, Color.red)
+            };
+            PlanetRecipe blueRecipe = PlanetRecipe.Default();
+            blueRecipe.MaterialLayers = new[]
+            {
+                PlanetMaterialLayer.Base("Hierro", PlanetLayerMaterial.Iron, Color.blue)
+            };
+
+            Assert.AreEqual(
+                PlanetChunkMeshCache.BuildPlanetId(in redRecipe),
+                PlanetChunkMeshCache.BuildPlanetId(in blueRecipe));
+        }
+
+        [Test]
+        public void LogicalSubstanceInvalidatesGeometryCacheIdentity()
+        {
+            PlanetRecipe ironRecipe = PlanetRecipe.Default();
+            ironRecipe.MaterialLayers = new[]
+            {
+                PlanetMaterialLayer.Base("Principal", PlanetLayerMaterial.Iron, Color.gray)
+            };
+            PlanetRecipe siliconRecipe = PlanetRecipe.Default();
+            siliconRecipe.MaterialLayers = new[]
+            {
+                PlanetMaterialLayer.Base("Principal", PlanetLayerMaterial.Silicon, Color.gray)
+            };
+
+            Assert.AreNotEqual(
+                PlanetChunkMeshCache.BuildPlanetId(in ironRecipe),
+                PlanetChunkMeshCache.BuildPlanetId(in siliconRecipe));
+        }
+
+        [Test]
+        public void AppearanceProbabilityInvalidatesGeometryCacheButColorDoesNot()
+        {
+            PlanetRecipe first = PlanetRecipe.Default();
+            first.MaterialLayers = new[]
+            {
+                PlanetMaterialLayer.Base("Tierra", PlanetLayerMaterial.BasicTerrain, Color.gray)
+                    .WithSurfaceAppearance(Color.green, 25)
+            };
+            PlanetRecipe second = PlanetRecipe.Default();
+            second.MaterialLayers = new[]
+            {
+                PlanetMaterialLayer.Base("Tierra", PlanetLayerMaterial.BasicTerrain, Color.gray)
+                    .WithSurfaceAppearance(Color.red, 25)
+            };
+            PlanetRecipe third = PlanetRecipe.Default();
+            third.MaterialLayers = new[]
+            {
+                PlanetMaterialLayer.Base("Tierra", PlanetLayerMaterial.BasicTerrain, Color.gray)
+                    .WithSurfaceAppearance(Color.red, 75)
+            };
+            PlanetRecipe fourth = PlanetRecipe.Default();
+            fourth.MaterialLayers = new[]
+            {
+                PlanetMaterialLayer.Base("Tierra", PlanetLayerMaterial.BasicTerrain, Color.gray)
+                    .WithSurfaceAppearance(Color.red, 75, 90)
+            };
+            PlanetRecipe fifth = PlanetRecipe.Default();
+            fifth.MaterialLayers = new[]
+            {
+                PlanetMaterialLayer.Base("Tierra", PlanetLayerMaterial.BasicTerrain, Color.gray)
+                    .WithSurfaceAppearance(Color.red, 75, 90, 0, 200)
+            };
+
+            Assert.AreEqual(PlanetChunkMeshCache.BuildPlanetId(in first), PlanetChunkMeshCache.BuildPlanetId(in second));
+            Assert.AreNotEqual(PlanetChunkMeshCache.BuildPlanetId(in second), PlanetChunkMeshCache.BuildPlanetId(in third));
+            Assert.AreNotEqual(PlanetChunkMeshCache.BuildPlanetId(in third), PlanetChunkMeshCache.BuildPlanetId(in fourth));
+            Assert.AreNotEqual(PlanetChunkMeshCache.BuildPlanetId(in fourth), PlanetChunkMeshCache.BuildPlanetId(in fifth));
         }
 
         [Test]

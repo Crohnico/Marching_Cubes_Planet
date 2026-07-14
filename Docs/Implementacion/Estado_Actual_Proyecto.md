@@ -24,7 +24,7 @@ El planeta no es una mesh guardada ni un volumen completo en memoria.
 La fuente de verdad sigue siendo:
 
 ```text
-PlanetRecipe + density(point)
+PlanetRecipe + composedDensity(point) + composedMaterial(point)
 ```
 
 La representacion visible se genera cuando hace falta.
@@ -109,25 +109,27 @@ oceano, continente y montanas.
 
 ## Laminas de composicion
 
-La siguiente evolucion del calculo del terreno se documenta en:
+El contrato y la implementacion inicial se documentan en:
 
 ```text
 Docs/Implementacion/04_Laminas_Composicion_Terreno.md
 ```
 
-La idea vigente es no crear caminos de render especiales para cuevas, minerales o
-modificadores. En su lugar, el terreno local se calculara como composicion de
-laminas:
+No se crean caminos de render especiales para minerales o modificadores. La
+primera implementacion funcional compone una sustancia base y sustituciones
+ordenadas por altura/mascara:
 
 ```text
 Lamina Superficie
-Lamina Cavidades
 Laminas de minerales / sustancias / modificaciones futuras
 ```
 
-El render GPU-resident actual debe seguir consumiendo chunks renderizables como
-hasta ahora. Las laminas modifican el campo compuesto que se entrega a Marching
-Cubes, no el contrato de render.
+Marching Cubes evalua material solo para cells que cruzan superficie y escribe un
+`substanceId` discreto por triangulo. El shader visual resuelve el color desde ese
+ID; ya no recalcula la distribucion de layers por pixel.
+
+`Air` y las operaciones de densidad viven fuera de la lista de materiales. El
+contrato de cavidades se cierra en su sistema propio.
 
 ## Marching Cubes
 
@@ -137,6 +139,17 @@ La ruta canonica es cartesiana:
 Chunk canonico = 64 x 64 x 64 celdas.
 Micro cell logica = 1 x 1 x 1 en GridCoordinates.
 Cada celda evalua 8 esquinas reales.
+Cada celda de superficie evalua una vez su material logico en el centro y lo
+propaga a todos los triangulos que emite, sin volumen persistente de materiales.
+La autoria de material usa rango radial `0..255`, `Abundance` y `Coherence`.
+Puede adjuntar estados visuales `Surface` y `Underwater` con color, probabilidad
+y coherencia propios sin cambiar la sustancia logica de la cell.
+`Surface` incluye un rango radial propio `0..255`, independiente del rango de la
+sustancia, para limitar reacciones como cesped en cotas de montana.
+El material volumetrico usa dominio 3D rotado y los behaviours exteriores usan
+dominio esferico para evitar patrones alineados con chunks y pendientes.
+La version de composicion forma parte del hash de cache; cambiar el algoritmo
+invalida una vez la geometria generada con el dominio anterior.
 Marching Cubes usa edgeTable/triTable estandar.
 ```
 
@@ -159,7 +172,10 @@ Marching Cubes no reimplementa la forma.
 Incluye PlanetShapeDensity.hlsl.
 No usa cubemap, shell radial ni esfera parametrica.
 Los vertices salen no indexados.
-El stride de vertice visible es 32 bytes.
+El stride de vertice visible sigue siendo 32 bytes.
+`positionAndMaterial.w` empaqueta sin perdida `substanceId`, indice de capa y
+estado visual Base/Underwater/Surface; el case diagnostico deja de persistirse en
+el vertice visible.
 ```
 
 ## PlanetGrid
@@ -183,6 +199,11 @@ Las coordenadas son coordenadas de chunk canonico compartidas entre LODs.
 
 Para iteracion manual o carga secuencial puede existir una vista ordenada de las celdas
 confirmadas, pero esa vista no cambia la semantica del grid.
+
+La Shell produce la ocupacion de chunks durante su propio pase de conteo. Ese
+resultado construye `PlanetGrid` y se guarda en la cache de Shell. La ruta fallback
+clasifica todos los candidatos en un unico paquete GPU y hace un solo readback, no
+un dispatch/readback sincronico por chunk.
 
 ## Render visual GPU-resident
 
@@ -407,6 +428,9 @@ Budgets por LOD para chunks individuales.
 Shell mantiene su presupuesto propio.
 Base usa presupuesto recortado y ventana activa.
 Doble slot de Base solo durante recarga.
+Shell cuenta primero y reserva capacidad igual a los vertices usados hasta su
+presupuesto maximo.
+La cache Shell v2 guarda vertices usados y PlanetGrid, no capacidad GPU vacia.
 ```
 
 ## Player y pruebas VR
@@ -474,7 +498,8 @@ Cerrar Transvoxel de verdad o decidir abandonarlo si no aporta suficiente.
 Definir el siguiente sistema antes de tocar codigo.
 Definir ruta de chunks locales/interactuables.
 Definir colision local real.
-Definir sustancias/material logico si entra.
+Medir coste y estabilidad de la composicion de sustancias por altura en Quest 3.
+Cerrar cavidades/aire como operacion de densidad.
 Definir terraformado/persistencia si toca.
 Definir oclusion/visibilidad real si se ataca antes que interaccion.
 Medir en Quest 3 cada cambio grande.

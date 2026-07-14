@@ -15,6 +15,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private const string CreateColor = "#FFD400";
         private const string DeleteColor = "#FF4040";
         private const string LoadColor = "#37D67A";
+        private const int MaterialCompositionVersion = 3;
         public const string DefaultFolderName = "PlanetChunkCache";
         public const string PlanetIdFileName = "planet_id";
         public const string ChunksFolderName = "chunks";
@@ -614,6 +615,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private static string BuildRecipeSignature(in PlanetRecipe recipe, in PlanetChunkLodActivationConfig activationConfig)
         {
             StringBuilder builder = new StringBuilder(1024);
+            Append(builder, "MaterialCompositionVersion", MaterialCompositionVersion);
             Append(builder, "BaseRecipeLod", (int)PlanetChunkLodUtility.BaseRecipeLod);
             Append(builder, "InitialFallbackLod", (int)PlanetChunkLodUtility.InitialFallbackLod);
             Append(builder, "Lod0GridMultiplier", 2f);
@@ -665,21 +667,18 @@ namespace MarchingCubesPlanet.MarchingCubes
                     Append(builder, "LayerEnabled", layer.Enabled ? 1 : 0);
                     Append(builder, "LayerOperation", (int)layer.Operation);
                     Append(builder, "LayerMaterial", (int)layer.Material);
-                    Append(builder, "LayerColorR", layer.AtlasColor.r);
-                    Append(builder, "LayerColorG", layer.AtlasColor.g);
-                    Append(builder, "LayerColorB", layer.AtlasColor.b);
-                    Append(builder, "LayerColorA", layer.AtlasColor.a);
-                    Append(builder, "LayerHeightMin01", layer.HeightMin01);
-                    Append(builder, "LayerHeightMax01", layer.HeightMax01);
-                    Append(builder, "LayerFalloffMin01", layer.FalloffMin01);
-                    Append(builder, "LayerFalloffMax01", layer.FalloffMax01);
-                    Append(builder, "LayerCoverage01", layer.Coverage01);
-                    Append(builder, "LayerMassScaleMinMeters", layer.MassScaleMinMeters);
-                    Append(builder, "LayerMassScaleMaxMeters", layer.MassScaleMaxMeters);
-                    Append(builder, "LayerMassCoherence01", layer.MassCoherence01);
-                    Append(builder, "LayerStrength01", layer.Strength01);
-                    Append(builder, "LayerAltitudeBias", layer.AltitudeBias);
-                    Append(builder, "LayerSeedOffset", layer.SeedOffset);
+                    Append(builder, "LayerMinAppearance", layer.MinAppearance);
+                    Append(builder, "LayerMaxAppearance", layer.MaxAppearance);
+                    Append(builder, "LayerAbundance", layer.Abundance);
+                    Append(builder, "LayerCoherence", layer.Coherence);
+                    Append(builder, "LayerUnderwaterBehaviour", (int)layer.UnderwaterBehaviour);
+                    Append(builder, "LayerUnderwaterProbability", layer.UnderwaterProbability);
+                    Append(builder, "LayerUnderwaterCoherence", layer.UnderwaterCoherence);
+                    Append(builder, "LayerSurfaceBehaviour", (int)layer.SurfaceBehaviour);
+                    Append(builder, "LayerSurfaceProbability", layer.SurfaceProbability);
+                    Append(builder, "LayerSurfaceCoherence", layer.SurfaceCoherence);
+                    Append(builder, "LayerSurfaceMinAppearance", layer.SurfaceMinAppearance);
+                    Append(builder, "LayerSurfaceMaxAppearance", layer.SurfaceMaxAppearance);
                 }
             }
 

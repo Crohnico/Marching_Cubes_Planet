@@ -185,24 +185,41 @@ namespace MarchingCubesPlanet.Coordinates
                 return false;
             }
 
-            if (layers[0].Operation != PlanetLayerOperation.BaseSurface)
+            if (layers[0].Operation != PlanetLayerOperation.BaseMaterial)
             {
-                message = "PlanetRecipe material layer zero must be the required base surface layer.";
+                message = "PlanetRecipe material layer zero must be the required base material layer.";
                 return false;
             }
 
             for (int i = 0; i < layers.Length; i++)
             {
                 PlanetMaterialLayer layer = layers[i];
-                if (layer.HeightMax01 < layer.HeightMin01)
+                if (layer.Material == PlanetLayerMaterial.Air)
                 {
-                    message = "PlanetRecipe material layer height range is invalid at index " + i + ".";
+                    message = "Air is a density operation and cannot be used as a material at layer index " + i + ".";
                     return false;
                 }
 
-                if (layer.MassScaleMinMeters <= 0f || layer.MassScaleMaxMeters < layer.MassScaleMinMeters)
+                if (layer.MaxAppearance < layer.MinAppearance)
                 {
-                    message = "PlanetRecipe material layer mass scale is invalid at index " + i + ".";
+                    message = "PlanetRecipe material appearance range is invalid at index " + i + ".";
+                    return false;
+                }
+
+                if (layer.Abundance < 0 || layer.Abundance > 100 ||
+                    layer.Coherence < 0 || layer.Coherence > 100 ||
+                    layer.UnderwaterProbability < 0 || layer.UnderwaterProbability > 100 ||
+                    layer.UnderwaterCoherence < 0 || layer.UnderwaterCoherence > 100 ||
+                    layer.SurfaceProbability < 0 || layer.SurfaceProbability > 100 ||
+                    layer.SurfaceCoherence < 0 || layer.SurfaceCoherence > 100)
+                {
+                    message = "PlanetRecipe material percentage is invalid at index " + i + ".";
+                    return false;
+                }
+
+                if (layer.SurfaceMaxAppearance < layer.SurfaceMinAppearance)
+                {
+                    message = "PlanetRecipe surface behaviour appearance range is invalid at index " + i + ".";
                     return false;
                 }
             }

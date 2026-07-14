@@ -416,62 +416,42 @@ namespace MarchingCubesPlanet.Coordinates
         {
             return new[]
             {
-                PlanetMaterialLayer.Base("Tierra basica", new Color(0.78f, 0.36f, 0.55f, 1f)),
-                PlanetMaterialLayer.Paint(
-                    "Cesped",
-                    PlanetLayerMaterial.Grass,
-                    new Color(0.24f, 0.58f, 0.20f, 1f),
-                    0.78f,
-                    1.5f,
-                    0.08f,
-                    0.22f,
-                    0.92f,
-                    18f,
-                    260f,
-                    0.72f,
-                    1f,
-                    0.05f,
-                    23),
-                PlanetMaterialLayer.Paint(
+                PlanetMaterialLayer.Base(
+                        "Tierra basica",
+                        PlanetLayerMaterial.BasicTerrain,
+                        new Color(0.42f, 0.24f, 0.12f, 1f))
+                    .WithSurfaceAppearance(new Color(0.24f, 0.58f, 0.20f, 1f), 85, 78, 0, 225),
+                PlanetMaterialLayer.Replace(
                     "Arena",
                     PlanetLayerMaterial.Sand,
                     new Color(0.78f, 0.68f, 0.42f, 1f),
-                    0.70f,
-                    1.01f,
-                    0.12f,
-                    0.06f,
-                    0.72f,
-                    160f,
-                    1400f,
-                    0.9f,
-                    0.95f,
-                    -0.65f,
-                    37),
-                PlanetMaterialLayer.Overlay(
+                    150,
+                    235,
+                    35,
+                    82)
+                    .WithUnderwaterAppearance(new Color(0.58f, 0.48f, 0.28f, 1f), 100, 72),
+                PlanetMaterialLayer.Replace(
                     "Roca",
                     PlanetLayerMaterial.Rock,
                     new Color(0.46f, 0.46f, 0.43f, 1f),
-                    0f,
-                    1.5f,
-                    0.08f,
-                    0.08f,
-                    0.34f,
-                    1f,
-                    1000f,
-                    0.52f,
-                    0.82f,
-                    0.85f,
-                    11)
+                    0,
+                    245,
+                    34,
+                    65)
             };
         }
     }
 
     public enum PlanetLayerOperation
     {
-        BaseSurface = 0,
-        PaintMaterial = 1,
-        OverlayMaterial = 2,
-        SubtractDensity = 3
+        BaseMaterial = 0,
+        ReplaceMaterial = 1
+    }
+
+    public enum PlanetMaterialEnvironmentBehaviour
+    {
+        None = 0,
+        OverrideColor = 1
     }
 
     public enum PlanetLayerMaterial
@@ -483,182 +463,275 @@ namespace MarchingCubesPlanet.Coordinates
         Marble = 4,
         Iron = 5,
         Copper = 6,
+        Silicon = 7,
+        Ice = 8,
         Air = 100
     }
 
     [Serializable]
     public struct PlanetMaterialLayer
     {
+        public const int AppearanceMaximum = 255;
+        private const int CurrentAuthoringVersion = 3;
+
         [SerializeField] private string name;
         [SerializeField] private bool enabled;
         [SerializeField] private PlanetLayerOperation operation;
         [SerializeField] private PlanetLayerMaterial material;
         [SerializeField] private Color atlasColor;
-        [SerializeField] private float heightMin01;
-        [SerializeField] private float heightMax01;
-        [SerializeField] private float falloffMin01;
-        [SerializeField] private float falloffMax01;
-        [SerializeField] private float coverage01;
-        [SerializeField] private float massScaleMinMeters;
-        [SerializeField] private float massScaleMaxMeters;
-        [SerializeField] private float massCoherence01;
-        [SerializeField] private float strength01;
-        [SerializeField] private float altitudeBias;
-        [SerializeField] private int seedOffset;
+
+        [SerializeField, Range(0, AppearanceMaximum)] private int minAppearance;
+        [SerializeField, Range(0, AppearanceMaximum)] private int maxAppearance;
+        [SerializeField, Range(0, 100)] private int abundance;
+        [SerializeField, Range(0, 100)] private int coherence;
+
+        [SerializeField] private PlanetMaterialEnvironmentBehaviour underwaterBehaviour;
+        [SerializeField] private Color underwaterAtlasColor;
+        [SerializeField, Range(0, 100)] private int underwaterProbability;
+        [SerializeField, Range(0, 100)] private int underwaterCoherence;
+
+        [SerializeField] private PlanetMaterialEnvironmentBehaviour surfaceBehaviour;
+        [SerializeField] private Color surfaceAtlasColor;
+        [SerializeField, Range(0, 100)] private int surfaceProbability;
+        [SerializeField, Range(0, 100)] private int surfaceCoherence;
+        [SerializeField, Range(0, AppearanceMaximum)] private int surfaceMinAppearance;
+        [SerializeField, Range(0, AppearanceMaximum)] private int surfaceMaxAppearance;
+
+        [SerializeField, HideInInspector] private int authoringVersion;
+
+        // Serialized only to migrate recipes authored before the compact material contract.
+        [SerializeField, HideInInspector] private float heightMin01;
+        [SerializeField, HideInInspector] private float heightMax01;
+        [SerializeField, HideInInspector] private float falloffMin01;
+        [SerializeField, HideInInspector] private float falloffMax01;
+        [SerializeField, HideInInspector] private float coverage01;
+        [SerializeField, HideInInspector] private float massScaleMinMeters;
+        [SerializeField, HideInInspector] private float massScaleMaxMeters;
+        [SerializeField, HideInInspector] private float massCoherence01;
+        [SerializeField, HideInInspector] private float strength01;
+        [SerializeField, HideInInspector] private float altitudeBias;
+        [SerializeField, HideInInspector] private int seedOffset;
 
         public string Name => name;
         public bool Enabled => enabled;
         public PlanetLayerOperation Operation => operation;
         public PlanetLayerMaterial Material => material;
         public Color AtlasColor => atlasColor;
-        public float HeightMin01 => heightMin01;
-        public float HeightMax01 => heightMax01;
-        public float FalloffMin01 => falloffMin01;
-        public float FalloffMax01 => falloffMax01;
-        public float Coverage01 => coverage01;
-        public float MassScaleMinMeters => massScaleMinMeters;
-        public float MassScaleMaxMeters => massScaleMaxMeters;
-        public float MassCoherence01 => massCoherence01;
-        public float Strength01 => strength01;
-        public float AltitudeBias => altitudeBias;
-        public int SeedOffset => seedOffset;
+        public int MinAppearance => minAppearance;
+        public int MaxAppearance => maxAppearance;
+        public int Abundance => abundance;
+        public int Coherence => coherence;
+        public PlanetMaterialEnvironmentBehaviour UnderwaterBehaviour => underwaterBehaviour;
+        public Color UnderwaterAtlasColor => underwaterAtlasColor;
+        public int UnderwaterProbability => underwaterProbability;
+        public int UnderwaterCoherence => underwaterCoherence;
+        public PlanetMaterialEnvironmentBehaviour SurfaceBehaviour => surfaceBehaviour;
+        public Color SurfaceAtlasColor => surfaceAtlasColor;
+        public int SurfaceProbability => surfaceProbability;
+        public int SurfaceCoherence => surfaceCoherence;
+        public int SurfaceMinAppearance => surfaceMinAppearance;
+        public int SurfaceMaxAppearance => surfaceMaxAppearance;
 
         public static PlanetMaterialLayer Base(string name, Color color)
         {
-            return Paint(
-                name,
-                PlanetLayerMaterial.BasicTerrain,
-                color,
-                0f,
-                1.5f,
-                0f,
-                0f,
-                1f,
-                1f,
-                1f,
-                1f,
-                1f,
-                0f,
-                0).AsRequiredBaseLayer();
+            return Base(name, PlanetLayerMaterial.BasicTerrain, color);
         }
 
-        public static PlanetMaterialLayer Paint(
+        public static PlanetMaterialLayer Base(string name, PlanetLayerMaterial material, Color color)
+        {
+            return Create(name, PlanetLayerOperation.BaseMaterial, material, color, 0, AppearanceMaximum, 100, 100)
+                .AsRequiredBaseLayer();
+        }
+
+        public static PlanetMaterialLayer Replace(
             string name,
             PlanetLayerMaterial material,
             Color color,
-            float heightMin01,
-            float heightMax01,
-            float falloffMin01,
-            float falloffMax01,
-            float coverage01,
-            float massScaleMinMeters,
-            float massScaleMaxMeters,
-            float massCoherence01,
-            float strength01,
-            float altitudeBias,
-            int seedOffset)
+            int minAppearance,
+            int maxAppearance,
+            int abundance,
+            int coherence)
         {
-            PlanetMaterialLayer layer = new PlanetMaterialLayer
-            {
-                name = name,
-                enabled = true,
-                operation = PlanetLayerOperation.PaintMaterial,
-                material = material,
-                atlasColor = color,
-                heightMin01 = heightMin01,
-                heightMax01 = heightMax01,
-                falloffMin01 = falloffMin01,
-                falloffMax01 = falloffMax01,
-                coverage01 = coverage01,
-                massScaleMinMeters = massScaleMinMeters,
-                massScaleMaxMeters = massScaleMaxMeters,
-                massCoherence01 = massCoherence01,
-                strength01 = strength01,
-                altitudeBias = altitudeBias,
-                seedOffset = seedOffset
-            };
-            layer.EnsureValid();
-            return layer;
-        }
-
-        public static PlanetMaterialLayer Overlay(
-            string name,
-            PlanetLayerMaterial material,
-            Color color,
-            float heightMin01,
-            float heightMax01,
-            float falloffMin01,
-            float falloffMax01,
-            float coverage01,
-            float massScaleMinMeters,
-            float massScaleMaxMeters,
-            float massCoherence01,
-            float strength01,
-            float altitudeBias,
-            int seedOffset)
-        {
-            PlanetMaterialLayer layer = Paint(
+            return Create(
                 name,
+                PlanetLayerOperation.ReplaceMaterial,
                 material,
                 color,
-                heightMin01,
-                heightMax01,
-                falloffMin01,
-                falloffMax01,
-                coverage01,
-                massScaleMinMeters,
-                massScaleMaxMeters,
-                massCoherence01,
-                strength01,
-                altitudeBias,
-                seedOffset);
-            layer.operation = PlanetLayerOperation.OverlayMaterial;
-            return layer;
+                minAppearance,
+                maxAppearance,
+                abundance,
+                coherence);
+        }
+
+        public PlanetMaterialLayer WithUnderwaterAppearance(Color color, int probability, int coherence = 50)
+        {
+            underwaterBehaviour = PlanetMaterialEnvironmentBehaviour.OverrideColor;
+            underwaterAtlasColor = color;
+            underwaterProbability = probability;
+            underwaterCoherence = coherence;
+            EnsureValid();
+            return this;
+        }
+
+        public PlanetMaterialLayer WithSurfaceAppearance(
+            Color color,
+            int probability,
+            int coherence = 50,
+            int minAppearance = 0,
+            int maxAppearance = AppearanceMaximum)
+        {
+            surfaceBehaviour = PlanetMaterialEnvironmentBehaviour.OverrideColor;
+            surfaceAtlasColor = color;
+            surfaceProbability = probability;
+            surfaceCoherence = coherence;
+            surfaceMinAppearance = minAppearance;
+            surfaceMaxAppearance = maxAppearance;
+            EnsureValid();
+            return this;
         }
 
         public PlanetMaterialLayer AsRequiredBaseLayer()
         {
+            MigrateLegacyAuthoring();
             enabled = true;
-            operation = PlanetLayerOperation.BaseSurface;
+            operation = PlanetLayerOperation.BaseMaterial;
             if (atlasColor.a <= 0f)
             {
                 atlasColor = new Color(0.78f, 0.36f, 0.55f, 1f);
             }
 
-            heightMin01 = 0f;
-            heightMax01 = 1.5f;
-            falloffMin01 = 0f;
-            falloffMax01 = 0f;
-            coverage01 = 1f;
-            massScaleMinMeters = 1f;
-            massScaleMaxMeters = 1f;
-            massCoherence01 = 1f;
-            strength01 = 1f;
-            altitudeBias = 0f;
+            minAppearance = 0;
+            maxAppearance = AppearanceMaximum;
+            abundance = 100;
             return this;
         }
 
         public void EnsureValid()
         {
+            MigrateLegacyAuthoring();
             if (string.IsNullOrWhiteSpace(name))
             {
                 name = material.ToString();
             }
 
-            heightMin01 = Mathf.Clamp(heightMin01, 0f, 1.5f);
-            heightMax01 = Mathf.Clamp(heightMax01, heightMin01, 1.5f);
-            falloffMin01 = Mathf.Clamp01(falloffMin01);
-            falloffMax01 = Mathf.Clamp01(falloffMax01);
-            coverage01 = Mathf.Clamp01(coverage01);
-            massScaleMinMeters = Mathf.Max(0.01f, massScaleMinMeters);
-            massScaleMaxMeters = Mathf.Max(massScaleMinMeters, massScaleMaxMeters);
-            massCoherence01 = Mathf.Clamp01(massCoherence01);
-            strength01 = Mathf.Clamp01(strength01);
-            altitudeBias = Mathf.Clamp(altitudeBias, -1f, 1f);
+            operation = operation == PlanetLayerOperation.BaseMaterial
+                ? PlanetLayerOperation.BaseMaterial
+                : PlanetLayerOperation.ReplaceMaterial;
+            minAppearance = Mathf.Clamp(minAppearance, 0, AppearanceMaximum);
+            maxAppearance = Mathf.Clamp(maxAppearance, minAppearance, AppearanceMaximum);
+            abundance = Mathf.Clamp(abundance, 0, 100);
+            coherence = Mathf.Clamp(coherence, 0, 100);
+            underwaterProbability = Mathf.Clamp(underwaterProbability, 0, 100);
+            underwaterCoherence = Mathf.Clamp(underwaterCoherence, 0, 100);
+            surfaceProbability = Mathf.Clamp(surfaceProbability, 0, 100);
+            surfaceCoherence = Mathf.Clamp(surfaceCoherence, 0, 100);
+            surfaceMinAppearance = Mathf.Clamp(surfaceMinAppearance, 0, AppearanceMaximum);
+            surfaceMaxAppearance = Mathf.Clamp(
+                surfaceMaxAppearance,
+                surfaceMinAppearance,
+                AppearanceMaximum);
             if (atlasColor.a <= 0f)
             {
                 atlasColor.a = 1f;
             }
+
+            if (underwaterAtlasColor.a <= 0f)
+            {
+                underwaterAtlasColor = atlasColor;
+            }
+
+            if (surfaceAtlasColor.a <= 0f)
+            {
+                surfaceAtlasColor = atlasColor;
+            }
+        }
+
+        private static PlanetMaterialLayer Create(
+            string name,
+            PlanetLayerOperation operation,
+            PlanetLayerMaterial material,
+            Color color,
+            int minAppearance,
+            int maxAppearance,
+            int abundance,
+            int coherence)
+        {
+            PlanetMaterialLayer layer = new PlanetMaterialLayer
+            {
+                name = name,
+                enabled = true,
+                operation = operation,
+                material = material,
+                atlasColor = color,
+                minAppearance = minAppearance,
+                maxAppearance = maxAppearance,
+                abundance = abundance,
+                coherence = coherence,
+                underwaterAtlasColor = color,
+                underwaterCoherence = 50,
+                surfaceAtlasColor = color,
+                surfaceCoherence = 50,
+                surfaceMaxAppearance = AppearanceMaximum,
+                authoringVersion = CurrentAuthoringVersion
+            };
+            layer.EnsureValid();
+            return layer;
+        }
+
+        private void MigrateLegacyAuthoring()
+        {
+            if (authoringVersion >= CurrentAuthoringVersion)
+            {
+                return;
+            }
+
+            if (authoringVersion == 2)
+            {
+                surfaceMinAppearance = 0;
+                surfaceMaxAppearance = AppearanceMaximum;
+                authoringVersion = CurrentAuthoringVersion;
+                return;
+            }
+
+            if (authoringVersion == 1)
+            {
+                underwaterCoherence = coherence;
+                surfaceCoherence = coherence;
+                surfaceMinAppearance = 0;
+                surfaceMaxAppearance = AppearanceMaximum;
+                authoringVersion = CurrentAuthoringVersion;
+                return;
+            }
+
+            bool hasLegacyAuthoring = heightMax01 > 0f || coverage01 > 0f ||
+                                      massScaleMinMeters > 0f || massScaleMaxMeters > 0f;
+            if (hasLegacyAuthoring)
+            {
+                minAppearance = Mathf.RoundToInt(Mathf.Clamp01(heightMin01 / 1.5f) * AppearanceMaximum);
+                maxAppearance = Mathf.RoundToInt(Mathf.Clamp01(heightMax01 / 1.5f) * AppearanceMaximum);
+                abundance = Mathf.RoundToInt(Mathf.Clamp01(coverage01) * 100f);
+                coherence = Mathf.RoundToInt(Mathf.Clamp01(massCoherence01) * 100f);
+            }
+            else
+            {
+                minAppearance = 0;
+                maxAppearance = AppearanceMaximum;
+                abundance = 100;
+                coherence = 50;
+            }
+
+            operation = operation == PlanetLayerOperation.BaseMaterial
+                ? PlanetLayerOperation.BaseMaterial
+                : PlanetLayerOperation.ReplaceMaterial;
+            underwaterAtlasColor = atlasColor;
+            surfaceAtlasColor = atlasColor;
+            underwaterProbability = 100;
+            underwaterCoherence = coherence;
+            surfaceProbability = 100;
+            surfaceCoherence = coherence;
+            surfaceMinAppearance = 0;
+            surfaceMaxAppearance = AppearanceMaximum;
+            authoringVersion = CurrentAuthoringVersion;
         }
     }
 }

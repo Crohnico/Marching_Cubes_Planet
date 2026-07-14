@@ -655,7 +655,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                     ? targetTransform.InverseTransformDirection(worldNormal).normalized
                     : worldNormal.normalized;
                 int triangleIndex = i / 3;
-                int caseIndex = Mathf.RoundToInt(source.positionAndCase.w);
+                int materialId = PlanetMaterialVertexEncoding.DecodeMaterialId(source.positionAndMaterial.w);
                 float radiusValue = gridPosition.magnitude;
                 Vector2 uv = EvaluateSurfaceAtlasUv(radiusValue, in recipe);
                 float height01 = EvaluateHeight01(radiusValue, minRadius, maxRadius);
@@ -663,7 +663,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                 nativeUploadPositions[i] = localPosition;
                 nativeUploadNormals[i] = localNormal.sqrMagnitude > 0.0001f ? localNormal : Vector3.up;
                 nativeUploadUvs[i] = uv;
-                nativeUploadColors[i] = EvaluateColor(settings, gridPosition, normal, caseIndex, triangleIndex, minRadius, maxRadius, height01);
+                nativeUploadColors[i] = EvaluateColor(settings, gridPosition, normal, materialId, triangleIndex, minRadius, maxRadius, height01);
                 nativeUploadIndices[i] = i;
             }
 
@@ -1396,7 +1396,7 @@ namespace MarchingCubesPlanet.MarchingCubes
 
         private static Vector3 ReadGridPosition(PlanetMarchingCubesVertex vertex)
         {
-            Vector4 packedPosition = vertex.positionAndCase;
+            Vector4 packedPosition = vertex.positionAndMaterial;
             return new Vector3(packedPosition.x, packedPosition.y, packedPosition.z);
         }
 
@@ -1439,7 +1439,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             PlanetMarchingCubesPaintSettings settings,
             Vector3 position,
             Vector3 normal,
-            int caseIndex,
+            int materialId,
             int triangleIndex,
             float minRadius,
             float maxRadius,
@@ -1461,7 +1461,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                 case PlanetMarchingCubesPaintColorMode.HeightColor:
                     return Color.Lerp(new Color(0.1f, 0.35f, 1f, 1f), new Color(0.95f, 1f, 0.35f, 1f), height01);
                 case PlanetMarchingCubesPaintColorMode.CaseIndexPalette:
-                    return Palette(caseIndex);
+                    return Palette(materialId);
                 case PlanetMarchingCubesPaintColorMode.TrianglePalette:
                     return Palette(triangleIndex);
                 case PlanetMarchingCubesPaintColorMode.SolidColor:

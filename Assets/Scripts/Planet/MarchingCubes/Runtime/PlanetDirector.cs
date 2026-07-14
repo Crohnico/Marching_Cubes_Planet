@@ -86,7 +86,6 @@ namespace MarchingCubesPlanet.MarchingCubes
                 yield break;
             }
 
-            GenerateGrid();
             yield return new WaitForSeconds(0.1f);
         
             LoadShell(shellLod, () => isSetUp = false);
@@ -170,12 +169,13 @@ namespace MarchingCubesPlanet.MarchingCubes
             chunkLoadIndex = -1;
 
             ClearLegacyMesh();
-            GetGpuSurface().GenerateShell(
+            grid = GetGpuSurface().GenerateShell(
                 recipe,
                 placement,
                 lod,
                 meshRenderer,
                 keepBaseVisibleUntilComplete);
+            LogShellBudget();
             EnsureOceanSphere();
             onComplete?.Invoke();
         }
@@ -193,21 +193,24 @@ namespace MarchingCubesPlanet.MarchingCubes
             ClearLegacyMesh();
 
             PlanetGpuMarchingCubesSurface surface = GetGpuSurface();
-            if (surface.TryLoadShellCache(shellCachePath, recipe, placement, lod, meshRenderer))
+            if (surface.TryLoadShellCache(shellCachePath, recipe, placement, lod, meshRenderer, out PlanetGrid cachedGrid))
             {
+                grid = cachedGrid;
                 Debug.Log("<color=#37D67A>[Shell Cache] Loaded from disk: " + Path.GetFileName(shellCachePath) + "</color>", this);
+                LogShellBudget();
                 EnsureOceanSphere();
                 onComplete?.Invoke();
                 return;
             }
 
             Debug.Log("<color=#FFD400>[Shell Cache] Missing. Generating shell: " + Path.GetFileName(shellCachePath) + "</color>", this);
-            surface.GenerateShell(
+            grid = surface.GenerateShell(
                 recipe,
                 placement,
                 lod,
                 meshRenderer,
                 keepBaseVisibleUntilComplete);
+            LogShellBudget();
             EnsureOceanSphere();
             bool saved = surface.TrySaveShellCache(shellCachePath, recipe, lod);
             if (saved)
@@ -220,6 +223,17 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
 
             onComplete?.Invoke();
+        }
+
+        private void LogShellBudget()
+        {
+            PlanetGpuMarchingCubesSurface surface = GetGpuSurface();
+            Debug.Log(
+                "[Shell GPU] chunks=" + (grid != null ? grid.InformationCount : 0) +
+                " vertices=" + surface.ShellVertexCount +
+                " capacity=" + surface.ShellVertexCapacity +
+                " bytes=" + surface.ShellVertexBytes,
+                this);
         }
 
         public void SetAutoLoadShellOnStart(bool enabled)

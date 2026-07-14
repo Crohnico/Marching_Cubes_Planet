@@ -140,7 +140,7 @@ namespace MarchingCubesPlanet.Preview
         private void GenerateShell(PlanetChunkLod lod)
         {
             ClearLegacyMesh();
-            GetGpuSurface().GenerateShell(
+            planetGrid = GetGpuSurface().GenerateShell(
                 recipe,
                 placement,
                 lod,

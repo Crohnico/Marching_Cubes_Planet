@@ -6,7 +6,7 @@
 
 struct PlanetMarchingCubesVertex
 {
-    float4 positionAndCase;
+    float4 positionAndMaterial;
     float4 normalAndDiagnostic;
 };
 
@@ -38,6 +38,7 @@ StructuredBuffer<int4> _MarchingCubesChunkOrigins;
 RWStructuredBuffer<PlanetMarchingCubesVertex> _MarchingCubesVertices;
 RWStructuredBuffer<PlanetMarchingCubesStateGpu> _MarchingCubesState;
 RWStructuredBuffer<uint> _MarchingCubesDrawArgs;
+RWStructuredBuffer<uint> _MarchingCubesChunkOccupancy;
 StructuredBuffer<uint> _MarchingCubesEdgeTable;
 StructuredBuffer<int> _MarchingCubesTriTable;
 StructuredBuffer<PlanetTransvoxelFaceDescriptor> _TransvoxelFaceDescriptors;
@@ -59,7 +60,190 @@ uint _MarchingCubesOutputPrimitiveLimit;
 uint _MarchingCubesOutputVertexLimit;
 uint _MarchingCubesWriteEnabled;
 uint _MarchingCubesDrawArgsEnabled;
+uint _MarchingCubesChunkOccupancyEnabled;
 float _MarchingCubesOutputGridScale;
+
+float _PlanetGridRadius;
+float _PlanetMaterialOuterRadius;
+float _PlanetWorldScale;
+float _PlanetSeed;
+int _PlanetLayerCount;
+float4 _PlanetLayerHeights[16];
+float4 _PlanetLayerNoise[16];
+float4 _PlanetLayerFlags[16];
+float4 _PlanetLayerSeeds[16];
+
+float PlanetMaterialHash13(float3 p)
+{
+    p = frac(p * 0.1031);
+    p += dot(p, p.yzx + 33.33);
+    return frac((p.x + p.y) * p.z);
+}
+
+float PlanetMaterialValueNoise3D(float3 p)
+{
+    float3 cell = floor(p);
+    float3 local = frac(p);
+    float3 u = local * local * (3.0 - 2.0 * local);
+    float n000 = PlanetMaterialHash13(cell + float3(0.0, 0.0, 0.0));
+    float n100 = PlanetMaterialHash13(cell + float3(1.0, 0.0, 0.0));
+    float n010 = PlanetMaterialHash13(cell + float3(0.0, 1.0, 0.0));
+    float n110 = PlanetMaterialHash13(cell + float3(1.0, 1.0, 0.0));
+    float n001 = PlanetMaterialHash13(cell + float3(0.0, 0.0, 1.0));
+    float n101 = PlanetMaterialHash13(cell + float3(1.0, 0.0, 1.0));
+    float n011 = PlanetMaterialHash13(cell + float3(0.0, 1.0, 1.0));
+    float n111 = PlanetMaterialHash13(cell + float3(1.0, 1.0, 1.0));
+    float n00 = lerp(n000, n100, u.x);
+    float n10 = lerp(n010, n110, u.x);
+    float n01 = lerp(n001, n101, u.x);
+    float n11 = lerp(n011, n111, u.x);
+    return lerp(lerp(n00, n10, u.y), lerp(n01, n11, u.y), u.z);
+}
+
+float3 PlanetMaterialRotateDomain(float3 position)
+{
+    return float3(
+        dot(position, float3(0.36, 0.48, -0.80)),
+        dot(position, float3(-0.80, 0.60, 0.00)),
+        dot(position, float3(0.48, 0.64, 0.60)));
+}
+
+float PlanetMaterialSpatialSample(
+    float3 gridPosition,
+    int layerIndex,
+    float coherence,
+    float salt,
+    bool surfaceProjected)
+{
+    float layerSeed = _PlanetSeed * 0.754877666 + (float)layerIndex * 17.173 + salt;
+    float3 samplePosition = surfaceProjected
+        ? normalize(gridPosition) * _PlanetMaterialOuterRadius
+        : gridPosition;
+    float3 rotatedPosition = PlanetMaterialRotateDomain(samplePosition);
+    float3 seedOffset = float3(layerSeed, layerSeed * 1.37, layerSeed * 2.11);
+    if (coherence <= 0.0001)
+    {
+        return PlanetMaterialHash13(floor(rotatedPosition) + seedOffset);
+    }
+
+    float maximumScale = max(2.0, _PlanetMaterialOuterRadius * 0.12);
+    float scale = lerp(1.0, maximumScale, coherence * coherence);
+    float3 primaryPosition = rotatedPosition / scale + seedOffset;
+    float warp = PlanetMaterialHash13(
+        floor(rotatedPosition / (scale * 1.91)) + seedOffset.yzx + 31.7);
+    primaryPosition += (warp - 0.5) * float3(1.45, -1.10, 0.85);
+    return PlanetMaterialValueNoise3D(primaryPosition);
+}
+
+bool PlanetMaterialProbabilityPasses(
+    float3 gridPosition,
+    int layerIndex,
+    float probability,
+    float coherence,
+    float salt,
+    bool surfaceProjected)
+{
+    probability = saturate(probability);
+    return probability >= 0.9999 ||
+           PlanetMaterialSpatialSample(
+               gridPosition,
+               layerIndex,
+               coherence,
+               salt,
+               surfaceProjected) <= probability;
+}
+
+bool PlanetMaterialLayerApplies(float3 gridPosition, float appearance, int layerIndex)
+{
+    float4 heightParams = _PlanetLayerHeights[layerIndex];
+    if (appearance < heightParams.x || appearance > heightParams.y)
+    {
+        return false;
+    }
+
+    float4 probabilityParams = _PlanetLayerNoise[layerIndex];
+    return PlanetMaterialProbabilityPasses(
+        gridPosition,
+        layerIndex,
+        probabilityParams.x,
+        probabilityParams.y,
+        0.0,
+        false);
+}
+
+float PlanetPackMaterial(int materialId, int layerIndex, int appearanceState)
+{
+    return (float)(16384 + materialId + layerIndex * 256 + appearanceState * 4096);
+}
+
+float PlanetEvaluateComposedMaterial(
+    float3 gridPosition,
+    float minimumSurfaceRadius,
+    float maximumSurfaceRadius,
+    float representativeSurfaceRadius)
+{
+    int layerCount = clamp(_PlanetLayerCount, 1, 16);
+    int materialId = (int)round(_PlanetLayerSeeds[0].y);
+    materialId = materialId < 100 ? materialId : 0;
+    int selectedLayer = 0;
+    float distanceFromCenter = length(gridPosition);
+    float appearance = saturate(distanceFromCenter / max(0.0001, _PlanetMaterialOuterRadius)) * 255.0;
+    [loop]
+    for (int i = 1; i < layerCount; i++)
+    {
+        float4 flags = _PlanetLayerFlags[i];
+        bool replacesMaterial = abs(flags.y - 1.0) < 0.5;
+        int candidateMaterialId = (int)round(_PlanetLayerSeeds[i].y);
+        if (flags.x > 0.5 &&
+            replacesMaterial &&
+            candidateMaterialId < 100 &&
+            PlanetMaterialLayerApplies(gridPosition, appearance, i))
+        {
+            materialId = candidateMaterialId;
+            selectedLayer = i;
+        }
+    }
+
+    int appearanceState = 0;
+    bool isExteriorSurface =
+        distanceFromCenter >= minimumSurfaceRadius - 2.0 &&
+        distanceFromCenter <= maximumSurfaceRadius + 2.0;
+    if (isExteriorSurface)
+    {
+        float4 selectedFlags = _PlanetLayerFlags[selectedLayer];
+        float4 selectedProbability = _PlanetLayerNoise[selectedLayer];
+        float4 selectedAppearance = _PlanetLayerHeights[selectedLayer];
+        float4 selectedSeed = _PlanetLayerSeeds[selectedLayer];
+        bool isUnderwater = representativeSurfaceRadius < _PlanetGridRadius;
+        if (isUnderwater && selectedFlags.z > 0.5 &&
+            PlanetMaterialProbabilityPasses(
+                gridPosition,
+                selectedLayer,
+                selectedProbability.z,
+                selectedAppearance.z,
+                41.0,
+                true))
+        {
+            appearanceState = 1;
+        }
+        else if (!isUnderwater &&
+                 appearance >= selectedSeed.z &&
+                 appearance <= selectedSeed.w &&
+                 selectedFlags.w > 0.5 &&
+                 PlanetMaterialProbabilityPasses(
+                     gridPosition,
+                     selectedLayer,
+                     selectedProbability.w,
+                     selectedAppearance.w,
+                     83.0,
+                     true))
+        {
+            appearanceState = 2;
+        }
+    }
+
+    return PlanetPackMaterial(materialId, selectedLayer, appearanceState);
+}
 
 float3 PlanetMcInterpolate(float3 a, float3 b, float densityA, float densityB)
 {
@@ -87,15 +271,22 @@ uint PlanetMcTriangleCount(uint caseIndex)
     return count;
 }
 
-void PlanetMcWriteVertex(uint vertexIndex, float3 position, float3 normal, uint caseIndex, uint chunkIndex)
+void PlanetMcWriteVertex(uint vertexIndex, float3 position, float3 normal, float materialId, uint chunkIndex)
 {
     PlanetMarchingCubesVertex vertex;
-    vertex.positionAndCase = float4(position * _MarchingCubesOutputGridScale, (float)caseIndex);
+    vertex.positionAndMaterial = float4(position * _MarchingCubesOutputGridScale, materialId);
     vertex.normalAndDiagnostic = float4(normal, (float)chunkIndex);
     _MarchingCubesVertices[vertexIndex] = vertex;
 }
 
-void PlanetMcEmitCube(uint cellIndex, float3 cornerPositions[8], float cornerDensities[8], uint caseIndex, uint chunkIndex)
+void PlanetMcEmitCube(
+    uint cellIndex,
+    float3 cornerPositions[8],
+    float cornerDensities[8],
+    float cornerEffectiveRadii[8],
+    uint caseIndex,
+    uint chunkIndex,
+    uint occupancyIndex)
 {
     if (caseIndex > 255u)
     {
@@ -132,6 +323,12 @@ void PlanetMcEmitCube(uint cellIndex, float3 cornerPositions[8], float cornerDen
     if (triangleCount == 0u)
     {
         return;
+    }
+
+    if (_MarchingCubesChunkOccupancyEnabled != 0u)
+    {
+        uint previousOccupancy;
+        InterlockedExchange(_MarchingCubesChunkOccupancy[occupancyIndex], 1u, previousOccupancy);
     }
 
     uint attemptedStart;
@@ -176,6 +373,24 @@ void PlanetMcEmitCube(uint cellIndex, float3 cornerPositions[8], float cornerDen
     uint previousVertexCount;
     InterlockedAdd(_MarchingCubesState[0].vertexCountWritten, vertexCountToAdd, previousVertexCount);
 
+    float3 cellCenter = 0.0;
+    float minimumSurfaceRadius = cornerEffectiveRadii[0];
+    float maximumSurfaceRadius = cornerEffectiveRadii[0];
+    float representativeSurfaceRadius = 0.0;
+    [unroll]
+    for (int cornerIndex = 0; cornerIndex < 8; cornerIndex++)
+    {
+        cellCenter += cornerPositions[cornerIndex];
+        minimumSurfaceRadius = min(minimumSurfaceRadius, cornerEffectiveRadii[cornerIndex]);
+        maximumSurfaceRadius = max(maximumSurfaceRadius, cornerEffectiveRadii[cornerIndex]);
+        representativeSurfaceRadius += cornerEffectiveRadii[cornerIndex];
+    }
+    float materialId = PlanetEvaluateComposedMaterial(
+        cellCenter * 0.125,
+        minimumSurfaceRadius,
+        maximumSurfaceRadius,
+        representativeSurfaceRadius * 0.125);
+
     int rowOffset = (int)caseIndex * 16;
 
     [unroll]
@@ -196,9 +411,9 @@ void PlanetMcEmitCube(uint cellIndex, float3 cornerPositions[8], float cornerDen
         float3 normal = normalize(cross(b - a, c - a));
 
         uint outputVertex = vertexStart + (uint)(triIndex * 3);
-        PlanetMcWriteVertex(outputVertex, a, normal, caseIndex, chunkIndex);
-        PlanetMcWriteVertex(outputVertex + 1u, b, normal, caseIndex, chunkIndex);
-        PlanetMcWriteVertex(outputVertex + 2u, c, normal, caseIndex, chunkIndex);
+        PlanetMcWriteVertex(outputVertex, a, normal, materialId, chunkIndex);
+        PlanetMcWriteVertex(outputVertex + 1u, b, normal, materialId, chunkIndex);
+        PlanetMcWriteVertex(outputVertex + 2u, c, normal, materialId, chunkIndex);
     }
 }
 
@@ -297,6 +512,7 @@ float3 PlanetTxDecodeVertex(uint vertexCode, float3 samplePositions[13], float s
 void PlanetTxEmitTransitionCell(
     float3 samplePositions[13],
     float sampleDensities[13],
+    float sampleEffectiveRadii[13],
     uint caseIndex,
     uint outputChunkIndex)
 {
@@ -358,6 +574,19 @@ void PlanetTxEmitTransitionCell(
     bool inverted = (classEntry & 0x80u) != 0u;
     uint indexBase = classIndex * 36u;
     uint vertexDataBase = caseIndex * 12u;
+    float minimumSurfaceRadius = sampleEffectiveRadii[0];
+    float maximumSurfaceRadius = sampleEffectiveRadii[0];
+    [unroll]
+    for (int radiusIndex = 1; radiusIndex < 9; radiusIndex++)
+    {
+        minimumSurfaceRadius = min(minimumSurfaceRadius, sampleEffectiveRadii[radiusIndex]);
+        maximumSurfaceRadius = max(maximumSurfaceRadius, sampleEffectiveRadii[radiusIndex]);
+    }
+    float materialId = PlanetEvaluateComposedMaterial(
+        samplePositions[4],
+        minimumSurfaceRadius,
+        maximumSurfaceRadius,
+        sampleEffectiveRadii[4]);
 
     for (uint triIndex = 0u; triIndex < triangleCount; triIndex++)
     {
@@ -398,9 +627,9 @@ void PlanetTxEmitTransitionCell(
         }
 
         uint outputVertex = vertexStart + triIndex * 3u;
-        PlanetMcWriteVertex(outputVertex, a, normal, caseIndex, outputChunkIndex);
-        PlanetMcWriteVertex(outputVertex + 1u, b, normal, caseIndex, outputChunkIndex);
-        PlanetMcWriteVertex(outputVertex + 2u, c, normal, caseIndex, outputChunkIndex);
+        PlanetMcWriteVertex(outputVertex, a, normal, materialId, outputChunkIndex);
+        PlanetMcWriteVertex(outputVertex + 1u, b, normal, materialId, outputChunkIndex);
+        PlanetMcWriteVertex(outputVertex + 2u, c, normal, materialId, outputChunkIndex);
     }
 }
 
@@ -430,6 +659,7 @@ void CS_ExtractChunkedCartesianSurface(uint3 dispatchThreadId : SV_DispatchThrea
 
     float3 cornerPositions[8];
     float cornerDensities[8];
+    float cornerEffectiveRadii[8];
     uint caseIndex = 0u;
 
     [unroll]
@@ -443,6 +673,7 @@ void CS_ExtractChunkedCartesianSurface(uint3 dispatchThreadId : SV_DispatchThrea
 
         cornerPositions[corner] = cornerPosition;
         cornerDensities[corner] = density;
+        cornerEffectiveRadii[corner] = effectiveRadius;
 
         if (density > 0.0)
         {
@@ -450,7 +681,14 @@ void CS_ExtractChunkedCartesianSurface(uint3 dispatchThreadId : SV_DispatchThrea
         }
     }
 
-    PlanetMcEmitCube(cellIndex, cornerPositions, cornerDensities, caseIndex, outputChunkIndex);
+    PlanetMcEmitCube(
+        cellIndex,
+        cornerPositions,
+        cornerDensities,
+        cornerEffectiveRadii,
+        caseIndex,
+        outputChunkIndex,
+        chunkIndex);
 }
 
 [numthreads(64, 1, 1)]
@@ -478,6 +716,7 @@ void CS_ExtractTransitionSurface(uint3 dispatchThreadId : SV_DispatchThreadID)
 
     float3 samplePositions[13];
     float sampleDensities[13];
+    float sampleEffectiveRadii[13];
     uint caseIndex = 0u;
 
     [unroll]
@@ -490,6 +729,7 @@ void CS_ExtractTransitionSurface(uint3 dispatchThreadId : SV_DispatchThreadID)
         float density = PlanetShapeEvaluateDensity(samplePosition, surfaceOffset, effectiveRadius, continentFlag);
         samplePositions[sampleIndex] = samplePosition;
         sampleDensities[sampleIndex] = density;
+        sampleEffectiveRadii[sampleIndex] = effectiveRadius;
         if (density > 0.0)
         {
             caseIndex |= PlanetTxCaseBit(sampleIndex);
@@ -504,6 +744,15 @@ void CS_ExtractTransitionSurface(uint3 dispatchThreadId : SV_DispatchThreadID)
     sampleDensities[10] = sampleDensities[2];
     sampleDensities[11] = sampleDensities[6];
     sampleDensities[12] = sampleDensities[8];
+    sampleEffectiveRadii[9] = sampleEffectiveRadii[0];
+    sampleEffectiveRadii[10] = sampleEffectiveRadii[2];
+    sampleEffectiveRadii[11] = sampleEffectiveRadii[6];
+    sampleEffectiveRadii[12] = sampleEffectiveRadii[8];
 
-    PlanetTxEmitTransitionCell(samplePositions, sampleDensities, caseIndex, (uint)descriptor.outputChunkIndex);
+    PlanetTxEmitTransitionCell(
+        samplePositions,
+        sampleDensities,
+        sampleEffectiveRadii,
+        caseIndex,
+        (uint)descriptor.outputChunkIndex);
 }

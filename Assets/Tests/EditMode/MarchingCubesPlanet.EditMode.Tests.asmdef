@@ -3,6 +3,7 @@
     "rootNamespace": "MarchingCubesPlanet.Tests",
     "references": [
         "MarchingCubesPlanet.Coordinates",
+        "MarchingCubesPlanet.Compute",
         "MarchingCubesPlanet.MarchingCubes",
         "MarchingCubesPlanet.Shape"
     ],
