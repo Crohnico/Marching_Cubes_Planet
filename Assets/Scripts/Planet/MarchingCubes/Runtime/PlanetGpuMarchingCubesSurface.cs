@@ -108,6 +108,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private PlanetGridCoordinates[] candidateCoordinates = Array.Empty<PlanetGridCoordinates>();
         private readonly PlanetMarchingCubesChunkOrigin[] singleChunkOrigins = new PlanetMarchingCubesChunkOrigin[1];
         private readonly GpuSurfaceSlot shellSlot = new GpuSurfaceSlot("Shell");
+        private PlanetPlacement currentPlacement = PlanetPlacement.Default();
         private readonly GpuSurfaceSlot[] chunkAggregateSlots =
         {
             new GpuSurfaceSlot("Chunks A"),
@@ -160,11 +161,11 @@ namespace MarchingCubesPlanet.MarchingCubes
 
         public void SetPlacement(PlanetPlacement placement)
         {
-            bool materialUpdated = false;
-            ApplySlotPlacement(shellSlot, in placement, ref materialUpdated);
+            currentPlacement = placement;
+            ApplySlotPlacement(shellSlot, in placement);
             for (int i = 0; i < chunkAggregateSlots.Length; i++)
             {
-                ApplySlotPlacement(chunkAggregateSlots[i], in placement, ref materialUpdated);
+                ApplySlotPlacement(chunkAggregateSlots[i], in placement);
             }
         }
 
@@ -949,6 +950,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                 return;
             }
 
+            ApplyMaterialProperties(in slot.renderRecipe, in currentPlacement);
             properties.SetBuffer(PlanetMarchingVerticesId, slot.vertexBuffer);
             properties.SetBuffer(PlanetTriangleVerticesId, slot.vertexBuffer);
             Graphics.DrawProceduralIndirect(
@@ -964,17 +966,11 @@ namespace MarchingCubesPlanet.MarchingCubes
                 gameObject.layer);
         }
 
-        private void ApplySlotPlacement(GpuSurfaceSlot slot, in PlanetPlacement placement, ref bool materialUpdated)
+        private void ApplySlotPlacement(GpuSurfaceSlot slot, in PlanetPlacement placement)
         {
             if (slot == null || !slot.hasDrawable || !slot.hasRenderRecipe)
             {
                 return;
-            }
-
-            if (!materialUpdated && runtimeMaterial != null)
-            {
-                ApplyMaterialProperties(in slot.renderRecipe, in placement);
-                materialUpdated = true;
             }
 
             slot.drawBounds = CalculateDrawBounds(in slot.renderRecipe, in placement);

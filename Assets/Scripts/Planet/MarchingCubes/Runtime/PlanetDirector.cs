@@ -19,6 +19,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         [SerializeField] private PlanetPlacement placement = PlanetPlacement.Default();
         [SerializeField] private Transform player;
         [SerializeField] private float activationRange = 10000f;
+        [SerializeField] private float baseGridPrewarmRange = 15000f;
         [SerializeField] private PlanetChunkLod shellLod = PlanetChunkLod.LOD2;
         [SerializeField] private PlanetChunkLod baseLod = PlanetChunkLod.LOD0;
         [SerializeField] private bool standaloneLoadShellOnStart;
@@ -101,7 +102,13 @@ namespace MarchingCubesPlanet.MarchingCubes
                 return;
             }
 
-            bool nextAlive = Vector3.Distance(player.position, transform.position) <= activationRange;
+            float playerDistance = Vector3.Distance(player.position, transform.position);
+            if (grid == null && playerDistance <= Mathf.Max(activationRange, baseGridPrewarmRange))
+            {
+                GenerateGrid();
+            }
+
+            bool nextAlive = playerDistance <= activationRange;
             if (nextAlive != isAlive)
             {
                 isAlive = nextAlive;

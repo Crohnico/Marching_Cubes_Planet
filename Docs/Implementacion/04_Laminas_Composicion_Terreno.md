@@ -161,6 +161,15 @@ altitudeBias
 seedOffset
 ```
 
+Operaciones iniciales:
+
+```text
+BaseSurface     -> lamina 0 obligatoria, material base de todo solido.
+PaintMaterial   -> tinta/mezcla sobre lo anterior, para cesped y arena.
+OverlayMaterial -> sobrescribe visualmente sobre lo anterior, para masas tipo roca.
+SubtractDensity -> resta densidad, reservado para cavidades/cuevas.
+```
+
 `heightMin01` y `heightMax01` usan radio normalizado:
 
 ```text
@@ -179,7 +188,7 @@ Ejemplos iniciales en escena:
 Lamina 0: tierra basica rosa, cobertura total.
 Lamina 1: cesped verde, manto general de superficie.
 Lamina 2: arena, orillas y zonas bajo/cerca del agua, masas grandes conectadas.
-Lamina 3: roca gris, aparece por masas y aumenta con altura.
+Lamina 3: roca gris, aparece por masas, aumenta con altura y usa OverlayMaterial.
 ```
 
 ## Lamina Cavidades

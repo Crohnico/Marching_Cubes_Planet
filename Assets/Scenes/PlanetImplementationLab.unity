@@ -1456,7 +1456,7 @@ MonoBehaviour:
       seedOffset: 37
     - name: Roca
       enabled: 1
-      operation: 1
+      operation: 2
       material: 1
       atlasColor: {r: 0.46, g: 0.46, b: 0.43, a: 1}
       heightMin01: 0

@@ -171,9 +171,19 @@ Shader "MarchingCubesPlanet/Planet/SurfaceGpu"
                 for (int i = 1; i < layerCount; i++)
                 {
                     float4 flags = _PlanetLayerFlags[i];
-                    if (flags.x > 0.5 && abs(flags.y - 1.0) < 0.5)
+                    if (flags.x > 0.5 && (abs(flags.y - 1.0) < 0.5 || abs(flags.y - 2.0) < 0.5))
                     {
                         float mask = LayerMassMask(gridPosition, height01, i);
+                        if (abs(flags.y - 2.0) < 0.5)
+                        {
+                            float contactMask = smoothstep(0.02, 0.16, mask);
+                            float coreMask = smoothstep(0.22, 0.42, mask);
+                            float contactBand = saturate(contactMask - coreMask);
+                            color = lerp(color, color * 0.72, contactBand);
+                            color = lerp(color, _PlanetLayerColors[i].rgb, coreMask);
+                            continue;
+                        }
+
                         color = lerp(color, _PlanetLayerColors[i].rgb, mask);
                     }
                 }

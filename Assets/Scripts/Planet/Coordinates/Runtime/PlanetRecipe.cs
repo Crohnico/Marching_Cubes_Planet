@@ -447,7 +447,7 @@ namespace MarchingCubesPlanet.Coordinates
                     0.95f,
                     -0.65f,
                     37),
-                PlanetMaterialLayer.Paint(
+                PlanetMaterialLayer.Overlay(
                     "Roca",
                     PlanetLayerMaterial.Rock,
                     new Color(0.46f, 0.46f, 0.43f, 1f),
@@ -470,7 +470,8 @@ namespace MarchingCubesPlanet.Coordinates
     {
         BaseSurface = 0,
         PaintMaterial = 1,
-        SubtractDensity = 2
+        OverlayMaterial = 2,
+        SubtractDensity = 3
     }
 
     public enum PlanetLayerMaterial
@@ -577,6 +578,41 @@ namespace MarchingCubesPlanet.Coordinates
                 seedOffset = seedOffset
             };
             layer.EnsureValid();
+            return layer;
+        }
+
+        public static PlanetMaterialLayer Overlay(
+            string name,
+            PlanetLayerMaterial material,
+            Color color,
+            float heightMin01,
+            float heightMax01,
+            float falloffMin01,
+            float falloffMax01,
+            float coverage01,
+            float massScaleMinMeters,
+            float massScaleMaxMeters,
+            float massCoherence01,
+            float strength01,
+            float altitudeBias,
+            int seedOffset)
+        {
+            PlanetMaterialLayer layer = Paint(
+                name,
+                material,
+                color,
+                heightMin01,
+                heightMax01,
+                falloffMin01,
+                falloffMax01,
+                coverage01,
+                massScaleMinMeters,
+                massScaleMaxMeters,
+                massCoherence01,
+                strength01,
+                altitudeBias,
+                seedOffset);
+            layer.operation = PlanetLayerOperation.OverlayMaterial;
             return layer;
         }
 
