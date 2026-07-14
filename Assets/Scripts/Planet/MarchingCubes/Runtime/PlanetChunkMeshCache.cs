@@ -656,6 +656,21 @@ namespace MarchingCubesPlanet.MarchingCubes
             Append(builder, "MountainBiomePeakFalloff", recipe.MountainBiomePeakFalloff);
             Append(builder, "MinRoughness", recipe.MinRoughness);
             Append(builder, "MaxRoughness", recipe.MaxRoughness);
+            PlanetCaveSettings caves = recipe.CaveSystem;
+            Append(builder, "CavesEnabled", caves.Enabled ? 1 : 0);
+            Append(builder, "CavesMinAppearance", caves.MinAppearance);
+            Append(builder, "CavesMaxAppearance", caves.MaxAppearance);
+            Append(builder, "CavesPorosity", caves.Porosity);
+            Append(builder, "CavesConnectivity", caves.Connectivity);
+            Append(builder, "CavesCavernScale", caves.CavernScale);
+            Append(builder, "CavesPassageScale", caves.PassageScale);
+            Append(builder, "CavesTortuosity", caves.Tortuosity);
+            Append(builder, "CavesCavernAbundance", caves.CavernAbundance);
+            Append(builder, "CavesPassageAbundance", caves.PassageAbundance);
+            Append(builder, "CavesFractureAbundance", caves.FractureAbundance);
+            Append(builder, "CavesEntranceAbundance", caves.EntranceAbundance);
+            Append(builder, "CavesWallDetail", caves.WallDetail);
+            Append(builder, "CavesSeedOffset", caves.SeedOffset);
             PlanetMaterialLayer[] layers = recipe.MaterialLayers;
             Append(builder, "MaterialLayerCount", layers == null ? 0 : layers.Length);
             if (layers != null)

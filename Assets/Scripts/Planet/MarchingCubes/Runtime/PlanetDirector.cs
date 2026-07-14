@@ -14,6 +14,8 @@ namespace MarchingCubesPlanet.MarchingCubes
         private const string DefaultOceanMaterialResourceName = "PlanetOcean";
         private const int OceanLongitudeSegments = 96;
         private const int OceanLatitudeSegments = 48;
+        private const float ThreeOverFourPi = 0.23873242f;
+        private const float HalfSqrtThree = 0.8660254f;
 
         [SerializeField] private PlanetRecipe recipe = PlanetRecipe.Default();
         [SerializeField] private PlanetPlacement placement = PlanetPlacement.Default();
@@ -41,6 +43,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private Mesh oceanMesh;
         private PlanetGrid grid;
         private readonly List<PlanetGridCoordinates> baseChunkCoordinates = new List<PlanetGridCoordinates>(256);
+        private readonly HashSet<PlanetGridCoordinates> baseChunkCoordinateSet = new HashSet<PlanetGridCoordinates>();
         private readonly Dictionary<PlanetGridCoordinates, PlanetChunkLod> activeBaseChunkLods = new Dictionary<PlanetGridCoordinates, PlanetChunkLod>(256);
         private readonly PlanetTransvoxelFaceDescriptor[] transitionFaceScratch = new PlanetTransvoxelFaceDescriptor[6];
         private int chunkLoadIndex = -1;
@@ -394,18 +397,78 @@ namespace MarchingCubesPlanet.MarchingCubes
 
         private void PrepareBaseOctree()
         {
+            baseFocusGrid = CalculateBaseFocusGrid();
+            AddCaveVolumeCandidates();
+
             if (!useBaseOctree)
             {
                 return;
             }
 
-            baseFocusGrid = CalculateBaseFocusGrid();
             baseChunkCoordinates.Sort(CompareBaseChunkDistance);
 
             int maxChunks = Mathf.Max(0, baseOctreeMaxChunks);
             if (maxChunks > 0 && baseChunkCoordinates.Count > maxChunks)
             {
                 baseChunkCoordinates.RemoveRange(maxChunks, baseChunkCoordinates.Count - maxChunks);
+            }
+        }
+
+        private void AddCaveVolumeCandidates()
+        {
+            PlanetCaveSettings caves = recipe.CaveSystem;
+            if (!caves.Enabled || caves.Porosity <= 0)
+            {
+                return;
+            }
+
+            baseChunkCoordinateSet.Clear();
+            for (int i = 0; i < baseChunkCoordinates.Count; i++)
+            {
+                baseChunkCoordinateSet.Add(baseChunkCoordinates[i]);
+            }
+
+            int maxChunks = baseOctreeMaxChunks > 0 ? baseOctreeMaxChunks : 256;
+            int budgetRadius = Mathf.Max(1, Mathf.CeilToInt(Mathf.Pow(maxChunks * ThreeOverFourPi, 1f / 3f)));
+            int radiusChunks = Mathf.Max(1, Mathf.Min(Mathf.Max(1, baseOctreeLod1RadiusChunks), budgetRadius));
+            float chunkSize = PlanetMarchingCubesChunkRange.CanonicalChunkSize;
+            PlanetGridCoordinates center = new PlanetGridCoordinates(
+                Mathf.FloorToInt(baseFocusGrid.x / chunkSize),
+                Mathf.FloorToInt(baseFocusGrid.y / chunkSize),
+                Mathf.FloorToInt(baseFocusGrid.z / chunkSize));
+            float outerRadius = recipe.GridRadius *
+                                (1f + Mathf.Max(0f, recipe.MaxLandElevation) * Mathf.Max(0f, recipe.MaxHeightModifier) +
+                                 Mathf.Max(0f, recipe.MountainBiomeHeight) + Mathf.Max(0f, recipe.SurfaceNoiseAmplitude));
+            float chunkHalfDiagonal = chunkSize * HalfSqrtThree;
+            float maximumCenterDistance = outerRadius + chunkHalfDiagonal;
+            float maximumCenterDistanceSquared = maximumCenterDistance * maximumCenterDistance;
+            int radiusSquared = radiusChunks * radiusChunks;
+
+            for (int z = -radiusChunks; z <= radiusChunks; z++)
+            {
+                for (int y = -radiusChunks; y <= radiusChunks; y++)
+                {
+                    for (int x = -radiusChunks; x <= radiusChunks; x++)
+                    {
+                        if (x * x + y * y + z * z > radiusSquared)
+                        {
+                            continue;
+                        }
+
+                        PlanetGridCoordinates candidate = new PlanetGridCoordinates(
+                            center.x + x,
+                            center.y + y,
+                            center.z + z);
+                        if (baseChunkCoordinateSet.Contains(candidate) ||
+                            CalculateBaseChunkCenterGrid(candidate).sqrMagnitude > maximumCenterDistanceSquared)
+                        {
+                            continue;
+                        }
+
+                        baseChunkCoordinateSet.Add(candidate);
+                        baseChunkCoordinates.Add(candidate);
+                    }
+                }
             }
         }
 

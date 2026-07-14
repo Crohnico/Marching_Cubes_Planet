@@ -32,6 +32,11 @@ namespace MarchingCubesPlanet.Tests
             Assert.AreEqual(0.45f, recipe.MountainBiomePeakSpread);
             Assert.AreEqual(0.18f, recipe.MountainBiomeEdgeBlend);
             Assert.AreEqual(2.25f, recipe.MountainBiomePeakFalloff);
+            Assert.IsTrue(recipe.CaveSystem.Enabled);
+            Assert.AreEqual(42, recipe.CaveSystem.Porosity);
+            Assert.AreEqual(74, recipe.CaveSystem.Connectivity);
+            Assert.AreEqual(24f, recipe.CaveSystem.PassageScale);
+            Assert.AreEqual(72f, recipe.CaveSystem.CavernScale);
             Assert.IsTrue(PlanetRecipeValidator.Validate(in recipe, out _));
         }
 
@@ -225,6 +230,72 @@ namespace MarchingCubesPlanet.Tests
         }
 
         [Test]
+        public void RecipeRejectsInvalidCaveValues()
+        {
+            PlanetRecipe recipe = PlanetRecipe.Default();
+            PlanetCaveSettings caves = recipe.CaveSystem;
+            caves.MaxAppearance = caves.MinAppearance - 1;
+            recipe.CaveSystem = caves;
+
+            Assert.IsFalse(PlanetRecipeValidator.Validate(in recipe, out string appearanceMessage));
+            StringAssert.Contains("Cave System appearance", appearanceMessage);
+
+            recipe = PlanetRecipe.Default();
+            caves = recipe.CaveSystem;
+            caves.Porosity = 101;
+            recipe.CaveSystem = caves;
+
+            Assert.IsFalse(PlanetRecipeValidator.Validate(in recipe, out string percentageMessage));
+            StringAssert.Contains("Cave System percentages", percentageMessage);
+
+            recipe = PlanetRecipe.Default();
+            caves = recipe.CaveSystem;
+            caves.CavernScale = 0f;
+            recipe.CaveSystem = caves;
+
+            Assert.IsFalse(PlanetRecipeValidator.Validate(in recipe, out string scaleMessage));
+            StringAssert.Contains("Cave System scale", scaleMessage);
+        }
+
+        [Test]
+        public void GpuParametersPackCaveValues()
+        {
+            PlanetRecipe recipe = PlanetRecipe.Default();
+            PlanetCaveSettings caves = recipe.CaveSystem;
+            caves.MinAppearance = 12;
+            caves.MaxAppearance = 240;
+            caves.Porosity = 67;
+            caves.Connectivity = 43;
+            caves.CavernScale = 39f;
+            caves.PassageScale = 11f;
+            caves.Tortuosity = 61;
+            caves.CavernAbundance = 52;
+            caves.PassageAbundance = 81;
+            caves.FractureAbundance = 23;
+            caves.EntranceAbundance = 29;
+            caves.WallDetail = 47;
+            caves.SeedOffset = 901;
+            recipe.CaveSystem = caves;
+
+            PlanetGpuShapeParameters parameters = PlanetGpuShapeParameters.FromRecipe(in recipe);
+
+            Assert.AreEqual(1f, parameters.caveRange.x);
+            Assert.AreEqual(12f, parameters.caveRange.y);
+            Assert.AreEqual(240f, parameters.caveRange.z);
+            Assert.That(parameters.caveRange.w, Is.EqualTo(0.67f).Within(0.000001f));
+            Assert.That(parameters.caveTopology.x, Is.EqualTo(0.43f).Within(0.000001f));
+            Assert.AreEqual(39f, parameters.caveTopology.y);
+            Assert.AreEqual(11f, parameters.caveTopology.z);
+            Assert.That(parameters.caveTopology.w, Is.EqualTo(0.61f).Within(0.000001f));
+            Assert.That(parameters.caveFormations.x, Is.EqualTo(0.52f).Within(0.000001f));
+            Assert.That(parameters.caveFormations.y, Is.EqualTo(0.81f).Within(0.000001f));
+            Assert.That(parameters.caveFormations.z, Is.EqualTo(0.23f).Within(0.000001f));
+            Assert.That(parameters.caveFormations.w, Is.EqualTo(0.29f).Within(0.000001f));
+            Assert.That(parameters.caveSurface.x, Is.EqualTo(0.47f).Within(0.000001f));
+            Assert.AreEqual(901f, parameters.caveSurface.y);
+        }
+
+        [Test]
         public void BuildIsDeterministicForSameRecipe()
         {
             PlanetRecipe recipe = PlanetRecipe.Default();
@@ -257,7 +328,7 @@ namespace MarchingCubesPlanet.Tests
         public void CellStrideIsThirtyTwoBytes()
         {
             Assert.AreEqual(32, PlanetGpuShapeCell.Stride);
-            Assert.AreEqual(128, PlanetGpuShapeParameters.Stride);
+            Assert.AreEqual(192, PlanetGpuShapeParameters.Stride);
         }
     }
 }

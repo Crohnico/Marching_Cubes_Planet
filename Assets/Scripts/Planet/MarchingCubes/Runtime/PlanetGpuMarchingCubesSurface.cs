@@ -73,6 +73,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private static readonly int PlanetLayerNoiseId = Shader.PropertyToID("_PlanetLayerNoise");
         private static readonly int PlanetLayerFlagsId = Shader.PropertyToID("_PlanetLayerFlags");
         private static readonly int PlanetLayerSeedsId = Shader.PropertyToID("_PlanetLayerSeeds");
+        private static readonly int CaveEvaluationEnabledId = Shader.PropertyToID("_PlanetCaveEvaluationEnabled");
         private static readonly int SurfaceAtlasTextureId = Shader.PropertyToID("_PlanetSurfaceAtlas");
         private static readonly int UseSurfaceAtlasId = Shader.PropertyToID("_UsePlanetSurfaceAtlas");
         private static readonly int BaseMapId = Shader.PropertyToID("_BaseMap");
@@ -269,7 +270,8 @@ namespace MarchingCubesPlanet.MarchingCubes
                 in lodRecipe,
                 1f,
                 true,
-                true);
+                true,
+                false);
             return lastShellGrid;
         }
 
@@ -301,7 +303,8 @@ namespace MarchingCubesPlanet.MarchingCubes
                 in lodRecipe,
                 1f,
                 false,
-                false);
+                false,
+                true);
             chunkAggregatePublished = BuildChunkAggregateSlot.hasDrawable;
         }
 
@@ -338,6 +341,7 @@ namespace MarchingCubesPlanet.MarchingCubes
                 outputGridScale,
                 false,
                 false,
+                true,
                 transitionFaces,
                 transitionFaceCount);
         }
@@ -606,6 +610,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             float outputGridScale,
             bool captureChunkOccupancy,
             bool sizeOutputToCount,
+            bool evaluateCaves,
             PlanetTransvoxelFaceDescriptor[] transitionFaces = null,
             int transitionFaceCount = 0)
         {
@@ -650,6 +655,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             marchingShader.SetInt(ChunkSizeId, Mathf.Max(1, chunkSize));
             marchingShader.SetInt(ChunkIndexBaseId, Mathf.Max(0, chunkIndexBase));
             marchingShader.SetInt(TransvoxelFaceCountId, safeTransitionFaceCount);
+            marchingShader.SetInt(CaveEvaluationEnabledId, evaluateCaves ? 1 : 0);
             marchingShader.SetFloat(OutputGridScaleId, Mathf.Max(0.000001f, outputGridScale));
 
             PlanetGrid generatedGrid = null;

@@ -55,6 +55,7 @@ namespace MarchingCubesPlanet.Coordinates
         [SerializeField] private float mountainBiomePeakFalloff;
         [SerializeField] private float minRoughness;
         [SerializeField] private float maxRoughness;
+        [SerializeField] private PlanetCaveSettings caveSystem;
         [SerializeField] private PlanetMaterialLayer[] materialLayers;
 
         public int GridRadius
@@ -249,6 +250,12 @@ namespace MarchingCubesPlanet.Coordinates
             set => maxRoughness = value;
         }
 
+        public PlanetCaveSettings CaveSystem
+        {
+            get => caveSystem;
+            set => caveSystem = value;
+        }
+
         public PlanetMaterialLayer[] MaterialLayers
         {
             get
@@ -274,6 +281,7 @@ namespace MarchingCubesPlanet.Coordinates
 
         public void OnBeforeSerialize()
         {
+            caveSystem.EnsureInitialized();
             EnsureMaterialLayers();
         }
 
@@ -349,6 +357,7 @@ namespace MarchingCubesPlanet.Coordinates
                 mountainBiomeHeight = DefaultMountainBiomeHeight;
             }
 
+            caveSystem.EnsureInitialized();
             EnsureMaterialLayers();
         }
 
@@ -388,6 +397,7 @@ namespace MarchingCubesPlanet.Coordinates
                 mountainBiomePeakFalloff = DefaultMountainBiomePeakFalloff,
                 minRoughness = 0.6f,
                 maxRoughness = 0.8f,
+                caveSystem = PlanetCaveSettings.Default(),
                 materialLayers = CreateDefaultMaterialLayers()
             };
         }

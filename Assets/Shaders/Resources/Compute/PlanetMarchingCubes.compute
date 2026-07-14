@@ -662,7 +662,7 @@ void CS_ExtractChunkedCartesianSurface(uint3 dispatchThreadId : SV_DispatchThrea
     float cornerEffectiveRadii[8];
     uint caseIndex = 0u;
 
-    [unroll]
+    [loop]
     for (int corner = 0; corner < 8; corner++)
     {
         float surfaceOffset;
@@ -719,7 +719,7 @@ void CS_ExtractTransitionSurface(uint3 dispatchThreadId : SV_DispatchThreadID)
     float sampleEffectiveRadii[13];
     uint caseIndex = 0u;
 
-    [unroll]
+    [loop]
     for (int sampleIndex = 0; sampleIndex < 9; sampleIndex++)
     {
         float surfaceOffset;

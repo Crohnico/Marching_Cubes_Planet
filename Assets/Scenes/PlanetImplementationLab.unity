@@ -1303,7 +1303,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 504e6e8234fa46849c943f5f0635be6f, type: 3}
   m_Name:
   m_EditorClassIdentifier: MarchingCubesPlanet.MarchingCubes::MarchingCubesPlanet.MarchingCubes.StellarSystemDirector
-  stellarSystemSeedId: 15062
+  stellarSystemSeedId: 14092
   planets:
   - {fileID: 2000400002}
   shellLod: 2
@@ -1405,6 +1405,22 @@ MonoBehaviour:
     mountainBiomePeakFalloff: 2
     minRoughness: 0.6
     maxRoughness: 1.48
+    caveSystem:
+      enabled: 1
+      minAppearance: 0
+      maxAppearance: 255
+      porosity: 63
+      connectivity: 74
+      cavernScale: 32
+      passageScale: 24
+      tortuosity: 68
+      cavernAbundance: 58
+      passageAbundance: 88
+      fractureAbundance: 24
+      entranceAbundance: 89
+      wallDetail: 34
+      seedOffset: 1709
+      authoringVersion: 2
     materialLayers:
     - name: Tierra basica
       enabled: 1

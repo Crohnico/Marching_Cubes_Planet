@@ -44,7 +44,8 @@ namespace MarchingCubesPlanet.MarchingCubes
                     in lodRecipe,
                     in extractSettings,
                     shape,
-                    PlanetGpuBufferMode.ComputeBuffer);
+                    PlanetGpuBufferMode.ComputeBuffer,
+                    false);
 
                 int candidateCount = extractor.CandidateChunkCount;
                 uint[] occupancy = new uint[candidateCount];
@@ -93,7 +94,13 @@ namespace MarchingCubesPlanet.MarchingCubes
             PlanetMarchingCubesPaintSettings paintSettings = PlanetMarchingCubesPaintSettings.Default();
 
             shape.Initialize(LoadShader(ShapeShaderResource, ShapeShaderAsset), in lodRecipe, cells, PlanetGpuBufferMode.ComputeBuffer);
-            extractor.Initialize(LoadShader(MarchingShaderResource, MarchingShaderAsset), in lodRecipe, in extractSettings, shape, PlanetGpuBufferMode.ComputeBuffer);
+            extractor.Initialize(
+                LoadShader(MarchingShaderResource, MarchingShaderAsset),
+                in lodRecipe,
+                in extractSettings,
+                shape,
+                PlanetGpuBufferMode.ComputeBuffer,
+                false);
 
             PlanetMarchingCubesExtractionResult extraction = extractor.ExtractPlanetSurface();
             PlanetMarchingCubesPaintResult paint = Painter.Paint(

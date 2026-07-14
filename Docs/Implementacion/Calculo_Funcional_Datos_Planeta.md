@@ -406,6 +406,28 @@ effectiveRadius(point) = radius + surfaceOffset(point)
 
 La forma del planeta es el conjunto de puntos cuya distancia al centro coincide con ese radio efectivo.
 
+## Composicion de cuevas
+
+La formula radial anterior produce la forma base. En Base/local, el sistema de
+cuevas compone despues un campo continuo de ruido 3D antes de Marching Cubes:
+
+```text
+baseDensity = effectiveRadius(point) - distance(point, center) - isoLevel
+warpedPoint = point + simplexWarp3D(point)
+cavernField = simplexMultiescala(warpedPoint)
+passageField = interseccionDeDosBandasSimplex(warpedPoint)
+fractureField = bandaSimplex(warpedPoint)
+caveField = min(cavernField, passageField, fractureField)
+finalDensity = min(baseDensity, caveField + resistenciaSuperficial)
+```
+
+La Shell usa `baseDensity` sin resolver el interior. El contrato completo del
+campo subterraneo vive en:
+
+```text
+Docs/Implementacion/01_Grutas_Y_Cuevas.md
+```
+
 ## Extraccion de superficie
 
 Una vez existe el campo escalar, la superficie se puede extraer muestreando el espacio en celdas.

@@ -156,6 +156,9 @@ namespace MarchingCubesPlanet.Tests
             recipe.ContinentCells = 8;
             recipe.MountainBiomeCells = 2;
             recipe.SurfaceNoiseAmplitude = 0f;
+            PlanetCaveSettings caves = recipe.CaveSystem;
+            caves.Enabled = false;
+            recipe.CaveSystem = caves;
             recipe.MaterialLayers = new[]
             {
                 PlanetMaterialLayer.Base("Hierro", PlanetLayerMaterial.Iron, Color.gray)

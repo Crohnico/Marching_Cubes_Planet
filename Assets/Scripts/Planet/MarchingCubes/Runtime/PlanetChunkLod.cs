@@ -41,6 +41,7 @@ namespace MarchingCubesPlanet.MarchingCubes
 
             result.GridRadius = targetGridRadius;
             result.WorldScale = lod1WorldRadius / targetGridRadius;
+            result.CaveSystem = lod1Recipe.CaveSystem.Scaled(targetGridRadius / (float)lod1GridRadius);
             return result;
         }
 

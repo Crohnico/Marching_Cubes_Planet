@@ -42,6 +42,7 @@ Receta procedural
 -> Base local mixta con ventana octree
 -> agua temporal por esfera
 -> Transvoxel inicial experimental
+-> Cave System GPU determinista y separado de materiales
 ```
 
 El runtime visual caliente ya no depende de publicar `Mesh` CPU para terreno.
@@ -105,7 +106,13 @@ Ruido Perlin/fBm de detalle.
 ```
 
 La receta conserva parametros de radio, escala, seed, isoLevel, Voronoi, ruido,
-oceano, continente y montanas.
+oceano, continente, montanas y un `Cave System` propio.
+
+La densidad local puede componerse con un campo subterraneo continuo basado en
+Simplex 3D deformado en dominio. Cavernas de baja frecuencia, intersecciones de
+dos bandas para galerias y bandas simples para fracturas deciden la topologia.
+Shell desactiva esta etapa; Base y chunks locales la activan antes de Marching
+Cubes.
 
 ## Laminas de composicion
 
@@ -282,6 +289,10 @@ Asigna LOD1 al anillo medio.
 Asigna LOD2 a extremos.
 Genera todo dentro de un slot agregado de Base.
 ```
+
+Cuando `Cave System` esta activo, la lista de superficie se amplia con una ventana
+volumetrica acotada alrededor del foco. Esto permite continuar bajo tierra sin
+cargar ni confirmar el interior completo del planeta.
 
 La Base se recalcula cuando el foco del jugador se mueve lo suficiente:
 
@@ -499,7 +510,7 @@ Definir el siguiente sistema antes de tocar codigo.
 Definir ruta de chunks locales/interactuables.
 Definir colision local real.
 Medir coste y estabilidad de la composicion de sustancias por altura en Quest 3.
-Cerrar cavidades/aire como operacion de densidad.
+Medir y ajustar Cave System en Quest 3, especialmente coste por sample y vertices.
 Definir terraformado/persistencia si toca.
 Definir oclusion/visibilidad real si se ataca antes que interaccion.
 Medir en Quest 3 cada cambio grande.

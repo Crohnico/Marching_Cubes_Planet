@@ -36,6 +36,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private static readonly int PlanetLayerNoiseId = Shader.PropertyToID("_PlanetLayerNoise");
         private static readonly int PlanetLayerFlagsId = Shader.PropertyToID("_PlanetLayerFlags");
         private static readonly int PlanetLayerSeedsId = Shader.PropertyToID("_PlanetLayerSeeds");
+        private static readonly int CaveEvaluationEnabledId = Shader.PropertyToID("_PlanetCaveEvaluationEnabled");
 
         private const string ExtractChunkedCartesianSurfaceKernelName = "CS_ExtractChunkedCartesianSurface";
         private const int MaxThreadGroupsPerDispatchAxis = 65535;
@@ -75,6 +76,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         private long incrementalCountCellStart;
         private long incrementalWriteCellStart;
         private bool incrementalCountFinished;
+        private bool caveEvaluationEnabled;
 
         public bool IsInitialized => vertexBuffer != null && vertexBuffer.IsAlive &&
                                      stateBuffer != null && stateBuffer.IsAlive &&
@@ -98,7 +100,8 @@ namespace MarchingCubesPlanet.MarchingCubes
             in PlanetRecipe sourceRecipe,
             in PlanetMarchingCubesSettings extractionSettings,
             PlanetGpuShapeEvaluator initializedShapeEvaluator,
-            PlanetGpuBufferMode requestedBufferMode)
+            PlanetGpuBufferMode requestedBufferMode,
+            bool evaluateCaves = true)
         {
             PlanetMarchingCubesSettings sanitizedSettings = extractionSettings;
             sanitizedSettings.EnsureDefaults();
@@ -113,7 +116,8 @@ namespace MarchingCubesPlanet.MarchingCubes
                 requestedBufferMode,
                 candidates,
                 buildStats,
-                false);
+                false,
+                evaluateCaves);
         }
 
         public void InitializeSingleChunk(
@@ -122,7 +126,8 @@ namespace MarchingCubesPlanet.MarchingCubes
             in PlanetMarchingCubesSettings extractionSettings,
             PlanetGpuShapeEvaluator initializedShapeEvaluator,
             PlanetGpuBufferMode requestedBufferMode,
-            PlanetMarchingCubesChunkOrigin chunkOrigin)
+            PlanetMarchingCubesChunkOrigin chunkOrigin,
+            bool evaluateCaves = true)
         {
             PlanetMarchingCubesSettings sanitizedSettings = extractionSettings;
             sanitizedSettings.EnsureDefaults();
@@ -144,7 +149,8 @@ namespace MarchingCubesPlanet.MarchingCubes
                 requestedBufferMode,
                 candidates,
                 buildStats,
-                false);
+                false,
+                evaluateCaves);
         }
 
         public void InitializeReusableSingleChunk(
@@ -153,7 +159,8 @@ namespace MarchingCubesPlanet.MarchingCubes
             in PlanetMarchingCubesSettings extractionSettings,
             PlanetGpuShapeEvaluator initializedShapeEvaluator,
             PlanetGpuBufferMode requestedBufferMode,
-            PlanetMarchingCubesChunkOrigin chunkOrigin)
+            PlanetMarchingCubesChunkOrigin chunkOrigin,
+            bool evaluateCaves = true)
         {
             PlanetMarchingCubesSettings sanitizedSettings = extractionSettings;
             sanitizedSettings.EnsureDefaults();
@@ -175,7 +182,8 @@ namespace MarchingCubesPlanet.MarchingCubes
                 requestedBufferMode,
                 reusableSingleChunkCandidate,
                 buildStats,
-                true);
+                true,
+                evaluateCaves);
         }
 
         private void InitializeWithCandidates(
@@ -186,7 +194,8 @@ namespace MarchingCubesPlanet.MarchingCubes
             PlanetGpuBufferMode requestedBufferMode,
             PlanetMarchingCubesChunkOrigin[] candidates,
             PlanetMarchingCubesChunkBuildStats buildStats,
-            bool reuseBuffers)
+            bool reuseBuffers,
+            bool evaluateCaves)
         {
             if (shader == null)
             {
@@ -222,6 +231,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             settings = extractionSettings;
             shapeEvaluator = initializedShapeEvaluator;
             bufferMode = requestedBufferMode;
+            caveEvaluationEnabled = evaluateCaves;
             chunkOrigins = candidates;
             chunkBuildStats = buildStats;
             if (CandidateCellCount > uint.MaxValue)
@@ -615,6 +625,7 @@ namespace MarchingCubesPlanet.MarchingCubes
         {
             shapeEvaluator.ParameterBuffer.BindTo(computeShader, kernel, ShapeParametersId);
             shapeEvaluator.CellBuffer.BindTo(computeShader, kernel, ShapeCellsId);
+            computeShader.SetInt(CaveEvaluationEnabledId, caveEvaluationEnabled ? 1 : 0);
             chunkOriginBuffer.BindTo(computeShader, kernel, ChunkOriginsId);
             vertexBuffer.BindTo(computeShader, kernel, VerticesId);
             stateBuffer.BindTo(computeShader, kernel, StateId);

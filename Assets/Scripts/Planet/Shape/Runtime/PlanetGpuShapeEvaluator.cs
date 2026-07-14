@@ -12,6 +12,7 @@ namespace MarchingCubesPlanet.Shape
         private static readonly int ShapeSamplePositionsId = Shader.PropertyToID("_ShapeSamplePositions");
         private static readonly int DensitySamplesId = Shader.PropertyToID("_DensitySamples");
         private static readonly int ShapeSampleCountId = Shader.PropertyToID("_ShapeSampleCount");
+        private static readonly int CaveEvaluationEnabledId = Shader.PropertyToID("_PlanetCaveEvaluationEnabled");
 
         private const string EvaluateKernelName = "CS_EvaluateDensitySamples";
 
@@ -74,6 +75,7 @@ namespace MarchingCubesPlanet.Shape
             computeShader = shader;
             evaluateKernel = computeShader.FindKernel(EvaluateKernelName);
             computeShader.GetKernelThreadGroupSizes(evaluateKernel, out threadGroupSizeX, out _, out _);
+            computeShader.SetInt(CaveEvaluationEnabledId, 1);
             bufferMode = requestedBufferMode;
 
             parameterUpload[0] = PlanetGpuShapeParameters.FromRecipe(in recipe);

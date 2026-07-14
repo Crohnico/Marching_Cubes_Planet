@@ -172,6 +172,34 @@ namespace MarchingCubesPlanet.Coordinates
                 return false;
             }
 
+            PlanetCaveSettings caves = recipe.CaveSystem;
+            if (caves.MinAppearance < 0 ||
+                caves.MaxAppearance > PlanetCaveSettings.AppearanceMaximum ||
+                caves.MaxAppearance < caves.MinAppearance)
+            {
+                message = "Cave System appearance range is invalid.";
+                return false;
+            }
+
+            if (!IsPercentage(caves.Porosity) ||
+                !IsPercentage(caves.Connectivity) ||
+                !IsPercentage(caves.Tortuosity) ||
+                !IsPercentage(caves.CavernAbundance) ||
+                !IsPercentage(caves.PassageAbundance) ||
+                !IsPercentage(caves.FractureAbundance) ||
+                !IsPercentage(caves.EntranceAbundance) ||
+                !IsPercentage(caves.WallDetail))
+            {
+                message = "Cave System percentages must be between zero and one hundred.";
+                return false;
+            }
+
+            if (caves.CavernScale <= 0f || caves.PassageScale <= 0f)
+            {
+                message = "Cave System scales must be greater than zero.";
+                return false;
+            }
+
             PlanetMaterialLayer[] layers = recipe.MaterialLayers;
             if (layers == null || layers.Length == 0)
             {
@@ -226,6 +254,11 @@ namespace MarchingCubesPlanet.Coordinates
 
             message = "PlanetRecipe is valid.";
             return true;
+        }
+
+        private static bool IsPercentage(int value)
+        {
+            return value >= 0 && value <= 100;
         }
     }
 }

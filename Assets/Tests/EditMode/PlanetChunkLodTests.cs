@@ -36,6 +36,28 @@ namespace MarchingCubesPlanet.Tests
         }
 
         [Test]
+        public void LodRecipesKeepCaveScaleConstantInWorldSpace()
+        {
+            PlanetRecipe lod1 = PlanetRecipe.Default();
+            lod1.GridRadius = 1000;
+            lod1.WorldScale = 4f;
+            PlanetCaveSettings caves = lod1.CaveSystem;
+            caves.PassageScale = 20f;
+            caves.CavernScale = 80f;
+            lod1.CaveSystem = caves;
+
+            PlanetRecipe lod0 = PlanetChunkLodUtility.BuildRecipeForLod(in lod1, PlanetChunkLod.LOD0);
+            PlanetRecipe lod2 = PlanetChunkLodUtility.BuildRecipeForLod(in lod1, PlanetChunkLod.LOD2);
+
+            Assert.AreEqual(40f, lod0.CaveSystem.PassageScale);
+            Assert.AreEqual(160f, lod0.CaveSystem.CavernScale);
+            Assert.AreEqual(10f, lod2.CaveSystem.PassageScale);
+            Assert.AreEqual(40f, lod2.CaveSystem.CavernScale);
+            Assert.AreEqual(lod1.CaveSystem.PassageScale * lod1.WorldScale, lod0.CaveSystem.PassageScale * lod0.WorldScale);
+            Assert.AreEqual(lod1.CaveSystem.CavernScale * lod1.WorldScale, lod2.CaveSystem.CavernScale * lod2.WorldScale);
+        }
+
+        [Test]
         public void ActivationConfigOverridesCanonicalChunkSize()
         {
             PlanetChunkLodActivationConfig config = PlanetChunkLodActivationConfig.Default();

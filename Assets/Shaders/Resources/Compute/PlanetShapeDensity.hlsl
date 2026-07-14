@@ -8,6 +8,10 @@ struct PlanetShapeParameters
     float4 continentEdgeShape;
     float4 biomeShape;
     float4 mountainBiome;
+    float4 caveRange;
+    float4 caveTopology;
+    float4 caveFormations;
+    float4 caveSurface;
 };
 
 struct PlanetShapeCell
@@ -18,6 +22,7 @@ struct PlanetShapeCell
 
 StructuredBuffer<PlanetShapeParameters> _PlanetShapeParameters;
 StructuredBuffer<PlanetShapeCell> _PlanetShapeCells;
+int _PlanetCaveEvaluationEnabled;
 
 static const uint PlanetShapeBiomeMeadow = 0u;
 static const uint PlanetShapeBiomeMountain = 1u;
@@ -134,6 +139,8 @@ float PlanetShapeFbmPerlin3D(float3 position, uint seed, int octaves, float lacu
     return amplitudeSum > 0.00001 ? value / amplitudeSum : 0.0;
 }
 
+#include "PlanetCaveDensity.hlsl"
+
 float PlanetShapeApplyMeadowBiome()
 {
     return 0.0;
@@ -231,7 +238,8 @@ float PlanetShapeEvaluateDensity(float3 gridPosition, out float surfaceOffset, o
         surfaceOffset = 0.0;
         effectiveRadius = radius;
         continentFlag = 1.0;
-        return effectiveRadius - distanceFromCenter - isoLevel;
+        float baseDensity = effectiveRadius - distanceFromCenter - isoLevel;
+        return PlanetShapeApplyCaves(gridPosition, baseDensity, radius, seed, parameters);
     }
 
     float3 direction = gridPosition / distanceFromCenter;
@@ -345,5 +353,6 @@ float PlanetShapeEvaluateDensity(float3 gridPosition, out float surfaceOffset, o
 
     effectiveRadius = radius + surfaceOffset;
     continentFlag = landMask;
-    return effectiveRadius - distanceFromCenter - isoLevel;
+    float baseDensity = effectiveRadius - distanceFromCenter - isoLevel;
+    return PlanetShapeApplyCaves(gridPosition, baseDensity, radius, seed, parameters);
 }

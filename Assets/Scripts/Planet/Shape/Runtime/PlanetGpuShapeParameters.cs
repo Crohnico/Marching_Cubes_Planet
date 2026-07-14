@@ -7,7 +7,7 @@ namespace MarchingCubesPlanet.Shape
     [StructLayout(LayoutKind.Sequential)]
     public struct PlanetGpuShapeParameters
     {
-        public const int Stride = 128;
+        public const int Stride = 192;
 
         public Vector4 radiusIsoSeedCellCount;
         public Vector4 elevation;
@@ -17,9 +17,14 @@ namespace MarchingCubesPlanet.Shape
         public Vector4 continentEdgeShape;
         public Vector4 biomeShape;
         public Vector4 mountainBiome;
+        public Vector4 caveRange;
+        public Vector4 caveTopology;
+        public Vector4 caveFormations;
+        public Vector4 caveSurface;
 
         public static PlanetGpuShapeParameters FromRecipe(in PlanetRecipe recipe)
         {
+            PlanetCaveSettings caves = recipe.CaveSystem;
             return new PlanetGpuShapeParameters
             {
                 radiusIsoSeedCellCount = new Vector4(
@@ -61,6 +66,26 @@ namespace MarchingCubesPlanet.Shape
                     recipe.MountainBiomeMinPeaks,
                     recipe.MountainBiomeMaxPeaks,
                     recipe.MountainBiomePeakFalloff,
+                    0f),
+                caveRange = new Vector4(
+                    caves.Enabled ? 1f : 0f,
+                    caves.MinAppearance,
+                    caves.MaxAppearance,
+                    caves.Porosity * 0.01f),
+                caveTopology = new Vector4(
+                    caves.Connectivity * 0.01f,
+                    caves.CavernScale,
+                    caves.PassageScale,
+                    caves.Tortuosity * 0.01f),
+                caveFormations = new Vector4(
+                    caves.CavernAbundance * 0.01f,
+                    caves.PassageAbundance * 0.01f,
+                    caves.FractureAbundance * 0.01f,
+                    caves.EntranceAbundance * 0.01f),
+                caveSurface = new Vector4(
+                    caves.WallDetail * 0.01f,
+                    caves.SeedOffset,
+                    0f,
                     0f)
             };
         }
