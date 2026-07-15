@@ -288,6 +288,13 @@ La clasificacion previa y la oclusion interior avanzada quedan `TBD` despues de
 medir el vertical slice. No se incrementara VRAM antes de disponer de esas
 medidas.
 
+El orden de admision, lookahead, estados Exterior/Transicion/Interior y la
+oclusion conservadora se definen en:
+
+```text
+Docs/Implementacion/02_Streaming_Visibilidad_Y_Oclusion.md
+```
+
 ## Profundidad extrema
 
 No existe un nucleo geometrico artificialmente solido. El campo puede actuar en
@@ -339,8 +346,8 @@ Medir GPU, vertices y memoria en Quest 3.
 ## Pendiente despues del vertical slice
 
 ```text
-Clasificacion coarse previa a Marching Cubes.
-Oclusion interior jerarquica y priorizacion por visibilidad.
+Implementar la clasificacion coarse y la admision priorizada definidas en `02`.
+Implementar la oclusion interior jerarquica conservadora definida en `02`.
 Herramienta de analisis de componentes conectados.
 Presets Sparse, Network, Caverns, Fractured, Hollow y Custom.
 Integracion con calor, gameplay, colisiones y terraformado.

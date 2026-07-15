@@ -119,7 +119,7 @@ Cubes.
 El contrato y la implementacion inicial se documentan en:
 
 ```text
-Docs/Implementacion/04_Laminas_Composicion_Terreno.md
+Docs/Implementacion/00_Laminas_Composicion_Terreno.md
 ```
 
 No se crean caminos de render especiales para minerales o modificadores. La
@@ -512,7 +512,8 @@ Definir colision local real.
 Medir coste y estabilidad de la composicion de sustancias por altura en Quest 3.
 Medir y ajustar Cave System en Quest 3, especialmente coste por sample y vertices.
 Definir terraformado/persistencia si toca.
-Definir oclusion/visibilidad real si se ataca antes que interaccion.
+Implementar por fases el contrato de streaming, visibilidad y oclusion definido
+en `Docs/Implementacion/02_Streaming_Visibilidad_Y_Oclusion.md`.
 Medir en Quest 3 cada cambio grande.
 ```
 

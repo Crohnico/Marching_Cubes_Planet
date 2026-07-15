@@ -316,15 +316,16 @@ Convertir partes de ese solido en aire.
 Crear grutas, cuevas y posibles entradas naturales.
 ```
 
-Primera version funcional:
+La topologia, autoria y evaluacion vigente de cavidades se definen exclusivamente
+en:
 
 ```text
-Voronoi 3D determinista.
-8 regiones por chunk canonico.
-Porcentaje de cavidades por receta.
-Radio + falloff smoothstep.
-Nucleo solido intocable.
+Docs/Implementacion/01_Grutas_Y_Cuevas.md
 ```
+
+Actualmente se usa un campo continuo de Simplex 3D deformado. Este documento no
+duplica sus reglas: `00` define el orden de composicion y `01` define como la
+operacion de cavidades modifica `density(point)`.
 
 La lamina solo debe restar densidad si el estado acumulado ya era solido.
 
@@ -333,8 +334,8 @@ si estado anterior es aire -> no hace nada
 si estado anterior es solido y region hueca afecta -> puede convertir a aire
 ```
 
-Las entradas no se fuerzan. Si una cavidad intersecta superficie, aparece una
-entrada. Si no intersecta, no aparece.
+Las entradas, el acceso a cualquier profundidad y la ausencia de un nucleo
+geometrico artificial pertenecen al contrato de `01`.
 
 ## Laminas de minerales
 
