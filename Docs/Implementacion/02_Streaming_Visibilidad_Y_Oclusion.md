@@ -12,6 +12,8 @@ El orden de dependencias queda:
 00 Laminas de composicion -> define el campo compuesto
 01 Grutas y cuevas        -> crea interior explorable
 02 Streaming/visibilidad  -> mantiene visible la zona necesaria con VRAM fija
+03 Colisiones             -> permite locomocion e interaccion fisica real
+04 Agua                   -> sistema volumetrico avanzado todavia abierto
 ```
 
 ## Objetivo
