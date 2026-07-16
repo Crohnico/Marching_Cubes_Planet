@@ -166,5 +166,113 @@ namespace MarchingCubesPlanet.Tests
             Assert.AreEqual(0u, grid[chunk]);
             Assert.AreEqual(0, grid.InformationCount);
         }
+
+        [Test]
+        public void TopologyDebugBuildsOneComponentForAnAirChunk()
+        {
+            Vector4[] density = new Vector4[PlanetChunkTopologyDebugData.CellCount];
+            for (int index = 0; index < density.Length; index++)
+            {
+                density[index] = new Vector4(-1f, 0f, 0f, 0f);
+            }
+
+            PlanetChunkTopologyDebugData topology = PlanetChunkTopologyDebugBuilder.Build(
+                new PlanetGridCoordinates(0, 0, 0),
+                density,
+                0f);
+
+            Assert.That(topology.IsCompletelyAir, Is.True);
+            Assert.That(topology.ContainsSurface, Is.False);
+            Assert.That(topology.ComponentCount, Is.EqualTo(1));
+            for (int face = 0; face < 6; face++)
+            {
+                Assert.That(topology.GetBoundaryComponent((PlanetChunkFace)face, 8, 8), Is.EqualTo(0));
+            }
+        }
+
+        [Test]
+        public void TopologyDebugKeepsSeparatedFaceGroupsInDifferentComponents()
+        {
+            Vector4[] density = new Vector4[PlanetChunkTopologyDebugData.CellCount];
+            for (int index = 0; index < density.Length; index++)
+            {
+                density[index] = new Vector4(-1f, 0f, 0f, 0f);
+            }
+
+            for (int z = 0; z < PlanetChunkTopologyDebugData.ChunkSize; z++)
+            {
+                for (int y = 0; y < PlanetChunkTopologyDebugData.ChunkSize; y++)
+                {
+                    int wall = CellIndex(8, y, z);
+                    density[wall] = new Vector4(1f, 0f, 0f, 0f);
+                }
+            }
+
+            PlanetChunkTopologyDebugData topology = PlanetChunkTopologyDebugBuilder.Build(
+                new PlanetGridCoordinates(0, 0, 0),
+                density,
+                0f);
+
+            int negativeX = topology.GetBoundaryComponent(PlanetChunkFace.NegativeX, 8, 8);
+            int positiveX = topology.GetBoundaryComponent(PlanetChunkFace.PositiveX, 8, 8);
+            Assert.That(topology.ComponentCount, Is.EqualTo(2));
+            Assert.That(topology.ContainsSurface, Is.True);
+            Assert.That(negativeX, Is.GreaterThanOrEqualTo(0));
+            Assert.That(positiveX, Is.GreaterThanOrEqualTo(0));
+            Assert.That(negativeX, Is.Not.EqualTo(positiveX));
+        }
+
+        [Test]
+        public void TopologyDebugDoesNotConnectDiagonalAirCells()
+        {
+            Vector4[] density = new Vector4[PlanetChunkTopologyDebugData.CellCount];
+            for (int index = 0; index < density.Length; index++)
+            {
+                density[index] = new Vector4(1f, 0f, 0f, 0f);
+            }
+
+            density[CellIndex(0, 0, 0)] = new Vector4(-1f, 0f, 0f, 0f);
+            density[CellIndex(1, 1, 0)] = new Vector4(-1f, 0f, 0f, 0f);
+
+            PlanetChunkTopologyDebugData topology = PlanetChunkTopologyDebugBuilder.Build(
+                new PlanetGridCoordinates(0, 0, 0),
+                density,
+                0f);
+
+            Assert.That(topology.ComponentCount, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void TopologyDebugCachesOneBidirectionalLinkForAnOpenSharedFace()
+        {
+            Vector4[] density = new Vector4[PlanetChunkTopologyDebugData.CellCount];
+            for (int index = 0; index < density.Length; index++)
+            {
+                density[index] = new Vector4(-1f, 0f, 0f, 0f);
+            }
+
+            PlanetChunkTopologyDebugData left = PlanetChunkTopologyDebugBuilder.Build(
+                new PlanetGridCoordinates(0, 0, 0),
+                density,
+                0f);
+            PlanetChunkTopologyDebugData right = PlanetChunkTopologyDebugBuilder.Build(
+                new PlanetGridCoordinates(1, 0, 0),
+                density,
+                0f);
+
+            PlanetChunkTopologyDebugLinker.LinkOppositeFaces(
+                left,
+                right,
+                PlanetChunkFace.PositiveX);
+
+            Assert.That(left.GetLinkCount(0), Is.EqualTo(1));
+            Assert.That(right.GetLinkCount(0), Is.EqualTo(1));
+        }
+
+        private static int CellIndex(int x, int y, int z)
+        {
+            int size = PlanetChunkTopologyDebugData.ChunkSize;
+            return x + size * (y + size * z);
+        }
     }
 }

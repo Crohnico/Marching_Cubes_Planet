@@ -575,7 +575,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalCameraData
   m_RenderShadows: 1
   m_RequiresDepthTextureOption: 2
@@ -845,7 +845,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c5ba60977a5042229dce9830d8a41da8, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: MarchingCubesPlanet.Preview::MarchingCubesPlanet.Preview.PlanetMinimalXrRig
   head: {fileID: 629667606}
   headCamera: {fileID: 629667604}
@@ -1301,7 +1301,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 504e6e8234fa46849c943f5f0635be6f, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: MarchingCubesPlanet.MarchingCubes::MarchingCubesPlanet.MarchingCubes.StellarSystemDirector
   stellarSystemSeedId: 14092
   planets:
@@ -1375,7 +1375,7 @@ MonoBehaviour:
   recipe:
     gridRadius: 130
     worldScale: 54
-    seed: 3345
+    seed: 14092
     isoLevel: 0
     voronoiDivision: 80
     continentCells: 51
@@ -1519,7 +1519,7 @@ MonoBehaviour:
     planetStellarCenter:
       x: 0
       y: 0
-      z: 0
+      z: 15000
     activeOrigin:
       x: 0
       y: 0
@@ -1531,7 +1531,7 @@ MonoBehaviour:
   shellLod: 2
   baseLod: 0
   standaloneLoadShellOnStart: 0
-  oceanMaterial: {fileID: 0}
+  oceanMaterial: {fileID: 2100000, guid: c1dd27f7bbaa45598efad3400dd1e9aa, type: 2}
   useBaseOctree: 1
   baseOctreeLod0RadiusChunks: 3
   baseOctreeLod1RadiusChunks: 8
@@ -1539,6 +1539,20 @@ MonoBehaviour:
   baseOctreeOutputVertexCapacity: 1500000
   baseRebuildDistanceChunks: 2
   baseTransvoxelWidthCells: 0.5
+  drawChunkPathCostGizmos: 1
+  topologyDebugChunksPerFrame: 1
+  topologyDebugUseBaseBufferLimit: 0
+  topologyDebugMaxChunks: 100
+  topologyDebugStraightRadiusChunks: 2
+  topologyDebugSearchExpansionMultiplier: 8
+  topologyDebugCatalogBatchSize: 16
+  topologyDebugAirTraversalCost: 0.15
+  topologyDebugMixedTraversalCost: 2
+  topologyDebugStepHeuristicCost: 1
+  topologyDebugAirDensityThreshold: 0
+  topologyDebugMaxPathCost: 13
+  topologyDebugLowCostColor: {r: 0.1, g: 1, b: 0.15, a: 0.7}
+  topologyDebugHighCostColor: {r: 1, g: 0.1, b: 0.05, a: 0.7}
   meshFilter: {fileID: 2000400004}
   meshRenderer: {fileID: 2000400003}
   gpuSurface: {fileID: 2000400005}

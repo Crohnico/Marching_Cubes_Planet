@@ -4,7 +4,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using MarchingCubesPlanet.Coordinates;
+using Unity.Profiling;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace MarchingCubesPlanet.MarchingCubes
 {
@@ -16,6 +18,8 @@ namespace MarchingCubesPlanet.MarchingCubes
         private const int OceanLatitudeSegments = 48;
         private const float ThreeOverFourPi = 0.23873242f;
         private const float HalfSqrtThree = 0.8660254f;
+        private static readonly ProfilerMarker TopologySearchMarker =
+            new ProfilerMarker("Planet.Topology.SearchRebuild");
 
         [SerializeField] private PlanetRecipe recipe = PlanetRecipe.Default();
         [SerializeField] private PlanetPlacement placement = PlanetPlacement.Default();
@@ -34,6 +38,47 @@ namespace MarchingCubesPlanet.MarchingCubes
         [SerializeField] private int baseRebuildDistanceChunks = 2;
         [SerializeField] private float baseTransvoxelWidthCells = 0.5f;
 
+        [Header("Chunk path cost debug")]
+        [InspectorName("Draw Cost Gizmos")]
+        [SerializeField] private bool drawChunkPathCostGizmos = true;
+        [Tooltip("Allows one asynchronous topology request in flight. Zero pauses the catalogue.")]
+        [InspectorName("Async Catalogue Enabled")]
+        [SerializeField] [Range(0, 1)] private int topologyDebugChunksPerFrame = 1;
+        [Tooltip("Use the current Base chunk limit as the maximum number of coloured chunks.")]
+        [InspectorName("Use Base Chunk Limit")]
+        [SerializeField] private bool topologyDebugUseBaseBufferLimit = true;
+        [InspectorName("Max Coloured Chunks")]
+        [SerializeField] [Min(1)] private int topologyDebugMaxChunks = 256;
+        [Tooltip("Radius, in chunks, whose directly reachable air is admitted before path-cost candidates.")]
+        [InspectorName("Straight Radius (Chunks)")]
+        [SerializeField] [Range(0, 12)] private int topologyDebugStraightRadiusChunks = 2;
+        [Tooltip("Maximum component nodes explored per requested chunk. Raise it only when the graph is visibly cut short.")]
+        [InspectorName("Search Expansion Multiplier")]
+        [SerializeField] [Range(1, 32)] private int topologyDebugSearchExpansionMultiplier = 8;
+        [Tooltip("Rebuild an incomplete selection only after this many additional chunks have been catalogued.")]
+        [InspectorName("Catalogue Batch / Rebuild")]
+        [SerializeField] [Range(1, 128)] private int topologyDebugCatalogBatchSize = 16;
+        [Tooltip("Cost of entering a chunk made entirely of air.")]
+        [InspectorName("Air Chunk Cost")]
+        [SerializeField] [Min(0f)] private float topologyDebugAirTraversalCost = 0.1f;
+        [Tooltip("Cost of entering a chunk containing both solid and traversable air.")]
+        [InspectorName("Mixed Chunk Cost")]
+        [SerializeField] [Min(0f)] private float topologyDebugMixedTraversalCost = 1f;
+        [Tooltip("Uniform six-neighbour step cost. It does not penalise a world or radial Y axis.")]
+        [InspectorName("Step Cost")]
+        [SerializeField] [Min(0f)] private float topologyDebugStepHeuristicCost;
+        [Tooltip("Density values at or below this threshold are considered traversable air by the debug catalogue.")]
+        [InspectorName("Air Density Threshold")]
+        [SerializeField] private float topologyDebugAirDensityThreshold;
+        [FormerlySerializedAs("topologyDebugRedCost")]
+        [Tooltip("Chunks above this accumulated path cost are rejected. The limit is also the red end of the gizmo gradient.")]
+        [InspectorName("Max Path Cost")]
+        [SerializeField] [Min(0.0001f)] private float topologyDebugMaxPathCost = 10f;
+        [InspectorName("Low Cost Colour")]
+        [SerializeField] private Color topologyDebugLowCostColor = new Color(0.1f, 1f, 0.15f, 0.7f);
+        [InspectorName("High Cost Colour")]
+        [SerializeField] private Color topologyDebugHighCostColor = new Color(1f, 0.1f, 0.05f, 0.7f);
+
         [SerializeField] private MeshFilter meshFilter;
         [SerializeField] private MeshRenderer meshRenderer;
         [SerializeField] private PlanetGpuMarchingCubesSurface gpuSurface;
@@ -46,6 +91,10 @@ namespace MarchingCubesPlanet.MarchingCubes
         private readonly HashSet<PlanetGridCoordinates> baseChunkCoordinateSet = new HashSet<PlanetGridCoordinates>();
         private readonly Dictionary<PlanetGridCoordinates, PlanetChunkLod> activeBaseChunkLods = new Dictionary<PlanetGridCoordinates, PlanetChunkLod>(256);
         private readonly PlanetTransvoxelFaceDescriptor[] transitionFaceScratch = new PlanetTransvoxelFaceDescriptor[6];
+        private readonly PlanetChunkTopologyDebugCatalog topologyDebugCatalog = new PlanetChunkTopologyDebugCatalog();
+        private readonly PlanetChunkPathDebugSearch topologyDebugSearch = new PlanetChunkPathDebugSearch();
+        private readonly HashSet<PlanetGridCoordinates> topologyDebugSelectedChunks =
+            new HashSet<PlanetGridCoordinates>();
         private int chunkLoadIndex = -1;
         private int loadVersion;
         private bool isAlive;
@@ -55,6 +104,10 @@ namespace MarchingCubesPlanet.MarchingCubes
         private Vector3 loadedBaseFocusGrid;
         private bool hasLoadedBaseFocus;
         private int baseTransitionFaceCount;
+        private PlanetGridCoordinates topologyDebugPlayerChunk;
+        private bool hasTopologyDebugPlayerChunk;
+        private int topologyDebugSettingsHash;
+        private int topologyDebugCatalogCountAtLastSearch;
 
         public PlanetGrid Grid => grid;
         public bool IsAlive => isAlive;
@@ -68,6 +121,7 @@ namespace MarchingCubesPlanet.MarchingCubes
             {
                 recipe = value;
                 grid = null;
+                ResetTopologyDebug();
                 UpdateOceanSphere();
             }
         }
@@ -109,6 +163,13 @@ namespace MarchingCubesPlanet.MarchingCubes
             {
                 GenerateGrid();
             }
+
+            #if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (drawChunkPathCostGizmos && playerDistance <= activationRange)
+            {
+                UpdateTopologyDebug();
+            }
+            #endif
 
             bool nextAlive = playerDistance <= activationRange;
             if (nextAlive != isAlive)
@@ -253,6 +314,7 @@ namespace MarchingCubesPlanet.MarchingCubes
 
             recipe.Seed = seed;
             grid = null;
+            ResetTopologyDebug();
             UpdateOceanSphere();
         }
 
@@ -840,14 +902,163 @@ namespace MarchingCubesPlanet.MarchingCubes
             }
         }
 
+        private void UpdateTopologyDebug()
+        {
+            SyncPlacementFromTransform();
+            Vector3 playerGrid = PlanetCoordinateConverter.WorldToGrid(
+                player.position,
+                in recipe,
+                in placement);
+            int chunkSize = PlanetChunkTopologyDebugData.ChunkSize;
+            PlanetGridCoordinates playerChunk = new PlanetGridCoordinates(
+                Mathf.FloorToInt(playerGrid.x / chunkSize),
+                Mathf.FloorToInt(playerGrid.y / chunkSize),
+                Mathf.FloorToInt(playerGrid.z / chunkSize));
+            topologyDebugCatalog.EnsureRecipe(in recipe, topologyDebugAirDensityThreshold);
+            bool playerChunkChanged = !hasTopologyDebugPlayerChunk ||
+                                      !topologyDebugPlayerChunk.Equals(playerChunk);
+            if (playerChunkChanged)
+            {
+                topologyDebugPlayerChunk = playerChunk;
+                hasTopologyDebugPlayerChunk = true;
+            }
+
+            topologyDebugCatalog.Prioritize(playerChunk);
+
+            bool catalogChanged = topologyDebugCatalog.Tick(
+                in recipe,
+                topologyDebugChunksPerFrame,
+                topologyDebugAirDensityThreshold);
+            int settingsHash = CalculateTopologyDebugSettingsHash();
+            int maxChunks = topologyDebugUseBaseBufferLimit
+                ? Mathf.Max(1, baseOctreeMaxChunks)
+                : Mathf.Max(1, topologyDebugMaxChunks);
+            bool settingsChanged = topologyDebugSettingsHash != settingsHash;
+            bool selectionIncomplete = topologyDebugSearch.Results.Count < maxChunks;
+            bool playerTopologyAvailable = topologyDebugCatalog.TryGet(playerChunk, out _);
+            bool canPublishFirstSelection = topologyDebugSearch.Results.Count == 0 && playerTopologyAvailable;
+            bool catalogueBatchReady = topologyDebugCatalog.Count - topologyDebugCatalogCountAtLastSearch >=
+                                       Mathf.Max(1, topologyDebugCatalogBatchSize);
+            bool incompleteSelectionNeedsRefresh = catalogChanged &&
+                                                   selectionIncomplete &&
+                                                   (canPublishFirstSelection || catalogueBatchReady);
+            if (!playerChunkChanged && !settingsChanged && !incompleteSelectionNeedsRefresh)
+            {
+                return;
+            }
+
+            int maxExpandedComponents = (int)Mathf.Min(
+                int.MaxValue,
+                (long)maxChunks * Mathf.Max(1, topologyDebugSearchExpansionMultiplier));
+            using (TopologySearchMarker.Auto())
+            {
+                topologyDebugSearch.Rebuild(
+                    topologyDebugCatalog,
+                    playerGrid,
+                    maxChunks,
+                    maxExpandedComponents,
+                    topologyDebugStraightRadiusChunks,
+                    topologyDebugAirTraversalCost,
+                    topologyDebugMixedTraversalCost,
+                    topologyDebugStepHeuristicCost,
+                    topologyDebugMaxPathCost,
+                    !playerChunkChanged && !settingsChanged);
+            }
+            topologyDebugSettingsHash = settingsHash;
+            topologyDebugCatalogCountAtLastSearch = topologyDebugCatalog.Count;
+        }
+
+        private int CalculateTopologyDebugSettingsHash()
+        {
+            unchecked
+            {
+                int hash = topologyDebugUseBaseBufferLimit ? 1 : 0;
+                hash = (hash * 397) ^ topologyDebugMaxChunks;
+                hash = (hash * 397) ^ baseOctreeMaxChunks;
+                hash = (hash * 397) ^ topologyDebugStraightRadiusChunks;
+                hash = (hash * 397) ^ topologyDebugSearchExpansionMultiplier;
+                hash = (hash * 397) ^ topologyDebugCatalogBatchSize;
+                hash = (hash * 397) ^ topologyDebugAirTraversalCost.GetHashCode();
+                hash = (hash * 397) ^ topologyDebugMixedTraversalCost.GetHashCode();
+                hash = (hash * 397) ^ topologyDebugStepHeuristicCost.GetHashCode();
+                hash = (hash * 397) ^ topologyDebugAirDensityThreshold.GetHashCode();
+                hash = (hash * 397) ^ topologyDebugMaxPathCost.GetHashCode();
+                return hash;
+            }
+        }
+
+        private void ResetTopologyDebug()
+        {
+            topologyDebugCatalog.Reset();
+            topologyDebugSearch.Rebuild(null, Vector3.zero, 0, 0, 0, 0f, 0f, 0f, 0f, false);
+            topologyDebugSettingsHash = 0;
+            topologyDebugCatalogCountAtLastSearch = 0;
+            hasTopologyDebugPlayerChunk = false;
+        }
+
         private void OnDrawGizmos()
         {
             Gizmos.color = new Color(0.1f, 0.7f, 1f, 0.35f);
             Gizmos.DrawWireSphere(transform.position, Mathf.Max(0f, activationRange));
+            DrawTopologyDebugGizmos();
+        }
+
+        private void DrawTopologyDebugGizmos()
+        {
+            if (!drawChunkPathCostGizmos || !Application.isPlaying)
+            {
+                return;
+            }
+
+            IReadOnlyList<PlanetChunkPathDebugResult> results = topologyDebugSearch.Results;
+            if (results.Count == 0)
+            {
+                return;
+            }
+
+            Matrix4x4 previousMatrix = Gizmos.matrix;
+            Color previousColor = Gizmos.color;
+            Gizmos.matrix = Matrix4x4.TRS(
+                transform.position,
+                transform.rotation,
+                Vector3.one * Mathf.Max(0.0001f, recipe.WorldScale));
+            float chunkSize = PlanetChunkTopologyDebugData.ChunkSize;
+            float maxPathCost = Mathf.Max(0.0001f, topologyDebugMaxPathCost);
+            topologyDebugSelectedChunks.Clear();
+            for (int index = 0; index < results.Count; index++)
+            {
+                topologyDebugSelectedChunks.Add(results[index].Coordinates);
+            }
+
+            for (int index = 0; index < results.Count; index++)
+            {
+                PlanetChunkPathDebugResult result = results[index];
+                float normalizedCost = Mathf.Clamp01(result.Cost / maxPathCost);
+                Color color = Color.Lerp(
+                    topologyDebugLowCostColor,
+                    topologyDebugHighCostColor,
+                    normalizedCost);
+                Vector3 center = PlanetChunkPathDebugSearch.CalculateChunkCenterGrid(result.Coordinates);
+                Color fillColor = color;
+                fillColor.a *= 0.25f;
+                Gizmos.color = fillColor;
+                Gizmos.DrawCube(center, Vector3.one * chunkSize);
+                Gizmos.color = color;
+                Gizmos.DrawWireCube(center, Vector3.one * chunkSize);
+                if (result.HasParent && topologyDebugSelectedChunks.Contains(result.Parent))
+                {
+                    Vector3 parentCenter = PlanetChunkPathDebugSearch.CalculateChunkCenterGrid(result.Parent);
+                    Gizmos.DrawLine(parentCenter, center);
+                }
+            }
+
+            Gizmos.matrix = previousMatrix;
+            Gizmos.color = previousColor;
         }
 
         private void OnDestroy()
         {
+            topologyDebugCatalog.Dispose();
             if (oceanMesh != null)
             {
                 Destroy(oceanMesh);

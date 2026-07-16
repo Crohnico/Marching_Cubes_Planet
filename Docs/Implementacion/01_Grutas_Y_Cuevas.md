@@ -62,6 +62,11 @@ Esta decision sustituye el planteamiento anterior basado en grafo/SDF. Las
 primitivas `Tunnel`, `Chamber`, `Fault`, `Shaft` y `Column` dejan de ser la base
 del sistema.
 
+Esto solo prohibe usar un grafo como fuente de la forma de las cuevas. El sistema
+de streaming puede hornear despues un catalogo de conectividad derivado del campo
+final. Ese catalogo no modifica la densidad ni materializa el volumen del planeta;
+se define en `02_Streaming_Visibilidad_Y_Oclusion.md`.
+
 ## Sistema propio dentro de PlanetRecipe
 
 Las cuevas no son una `Material Layer`.
@@ -105,6 +110,9 @@ misma receta + misma seed + misma coordenada -> misma densidad
 
 Esto garantiza continuidad entre chunks sin almacenar nodos, descriptores ni un
 buffer global de cuevas.
+
+La conectividad cacheada para streaming se calcula posteriormente y queda fuera
+de la evaluacion de densidad por sample.
 
 ### Deformacion de dominio
 
@@ -288,8 +296,8 @@ La clasificacion previa y la oclusion interior avanzada quedan `TBD` despues de
 medir el vertical slice. No se incrementara VRAM antes de disponer de esas
 medidas.
 
-El orden de admision, lookahead, estados Exterior/Transicion/Interior y la
-oclusion conservadora se definen en:
+El catalogo topologico, la cache, el orden de admision, los estados
+Exterior/Transicion/Interior y la oclusion conservadora se definen en:
 
 ```text
 Docs/Implementacion/02_Streaming_Visibilidad_Y_Oclusion.md
@@ -306,7 +314,8 @@ mecanicas como temperatura, que pertenecen a su futuro sistema y quedan `TBD`.
 ```text
 No volumen global precalculado.
 No buffer global de cuevas.
-No grafo de nodos como topologia principal.
+No grafo de nodos como fuente primaria de la forma.
+Se permite un catalogo compacto derivado para conectividad y streaming.
 No dependencia de CPU readback para decidir la forma.
 Evaluacion por coordenada global y chunk local.
 Coste de ruido fijo y acotado por sample.
@@ -346,9 +355,9 @@ Medir GPU, vertices y memoria en Quest 3.
 ## Pendiente despues del vertical slice
 
 ```text
-Implementar la clasificacion coarse y la admision priorizada definidas en `02`.
+Implementar el bake topologico, cache y admision priorizada definidos en `02`.
 Implementar la oclusion interior jerarquica conservadora definida en `02`.
-Herramienta de analisis de componentes conectados.
+Herramienta de analisis de componentes y portales conectados.
 Presets Sparse, Network, Caverns, Fractured, Hollow y Custom.
 Integracion con calor, gameplay, colisiones y terraformado.
 Persistencia de modificaciones realizadas dentro de cuevas.

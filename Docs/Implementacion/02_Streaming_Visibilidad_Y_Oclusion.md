@@ -103,42 +103,136 @@ Meta Quest 3, 90 FPS, VRAM sin ampliar, buffers GPU-resident, sin volumen global
 sin readback bloqueante en runtime caliente y sin GC accidental.
 
 Solucion elegida:
-Planificador de admision por prioridades, foco predictivo por velocidad, estados
-Exterior/Transicion/Interior y publicacion temprana de un prefijo seguro. La
-oclusion jerarquica se aplica despues y solo a trabajo opcional.
+Catalogo topologico derivado del campo final por chunk canonico. Cada chunk
+registra sus componentes de aire, que caras conecta y con que vecinos directos
+existe paso. La admision empieza por una esfera alrededor del jugador alcanzable
+en linea recta y continua por coste de camino sobre el catalogo. La oclusion
+jerarquica se aplica despues y solo a trabajo opcional.
 
 Coste esperado:
-Mas clasificacion CPU barata por reconstruccion, el mismo limite maximo de
-vertices y trabajo GPU desplazado desde candidatos inutiles hacia prioridades
-jugables.
+Un bake incremental y presupuestado mientras el jugador esta en el planeta,
+amortizado una sola vez mediante cache. En runtime, consultas baratas sobre
+componentes y conexiones ya resueltas, con el mismo limite maximo de vertices.
 
 Riesgo:
-Reinicios continuos de cola, doble representacion demasiado prolongada, popping,
-datos de oclusion obsoletos tras terraformado o una zona segura insuficiente para
-la velocidad real del jugador.
+Catalogar como transitable una grieta sin espacio jugable, unir aperturas que no
+coinciden entre chunks, consumir demasiado tiempo de GPU durante el bake, usar
+datos obsoletos tras terraformado o activar la seleccion topologica antes de que
+el entorno inmediato este catalogado.
 
 Por que esta solucion y no otra:
-La oclusion no puede arreglar un chunk prioritario que nunca se genero. Aumentar
-buffers esconderia el problema y elevaria VRAM. La admision ordenada garantiza
-primero continuidad; la oclusion reduce despues trabajo opcional.
+La distancia euclidea no representa el coste de recorrer una cueva. El catalogo
+convierte el campo procedural en informacion de movimiento reutilizable sin
+guardar el volumen planetario ni regenerar Marching Cubes. Aumentar buffers solo
+ocultaria la seleccion incorrecta y elevaria VRAM.
 
 Que se medira para validarla:
-Tiempo de reconstruccion, distancia recorrida durante la cola, vertices
-intentados/escritos, overflow, candidatos por prioridad, tiempo hasta publicar la
-zona segura, VRAM maxima y distancia minima del jugador al borde cargado.
+Chunks catalogados por segundo, coste CPU/GPU por frame, bytes de cache, numero
+de componentes y portales, falsos enlaces entre vecinos, progreso del anillo
+local, coste de camino de los chunks admitidos, tiempo de reconstruccion,
+overflow, VRAM maxima y distancia minima del jugador al borde cargado.
 ```
 
 ## Responsabilidades separadas
 
-El sistema se divide conceptualmente en tres decisiones:
+El sistema se divide conceptualmente en cuatro decisiones:
 
 ```text
+Topologia       -> por donde se puede pasar dentro y entre chunks.
 Representacion -> Shell o Base segun estado del jugador.
 Admision        -> que chunks pueden ocupar presupuesto y en que orden.
 Oclusion        -> que trabajo opcional puede evitarse por no ser visible.
 ```
 
 No deben volver a resolverse mediante una unica lista ordenada solo por distancia.
+
+## Catalogo topologico por chunk
+
+El catalogo se construye despues de resolver todo lo que pueda modificar la
+densidad: forma, operaciones de composicion con efecto volumetrico, cuevas y
+modificaciones base aplicables. Colores y propiedades visuales que no cambian
+solido/aire no invalidan esta topologia.
+
+Cada chunk canonico es un grid 3D. El bake estudia sus seis caras y descubre los
+componentes de aire conectados:
+
+```text
+1. Escoger una cara con aire sin catalogar.
+2. Elegir una celda de aire de esa cara, priorizando las cercanas al centro.
+3. Recorrer todo el aire alcanzable desde ella dentro del chunk.
+4. Registrar que otras caras alcanza el mismo recorrido.
+5. Repetir desde el aire fronterizo que siga sin pertenecer a un componente.
+```
+
+La implementacion puede usar A* para esas consultas. Como no existe un destino
+unico y hay que descubrir el componente completo, un flood fill/BFS uniforme
+produce el mismo resultado con menos expansiones. Esta es una decision de
+implementacion; el contrato es la conectividad obtenida, no el algoritmo concreto.
+
+Ejemplo:
+
+```text
+Componente 0 -> -X, +X
+Componente 1 -> -Y, +Y, -Z, +Z
+```
+
+Ese chunk tiene dos regiones transitables independientes. Entrar por `-X` no
+permite salir por `+Y` aunque ambas caras contengan aire.
+
+Una cara puede contener varias aperturas desconectadas. Por ello el resultado no
+se reduce a seis booleanos. Cada componente conserva una mascara de caras y la
+mascara de celdas transitables que ocupa en cada cara. Dos chunks vecinos solo
+crean una conexion si las aperturas de las caras opuestas se solapan:
+
+```text
+portal A en +X
+AND portal B en -X
+AND interseccion transitable de sus mascaras distinta de cero
+```
+
+La identidad de navegacion es `(chunk, componentId)`. La admision visual sigue
+siendo por chunk: si cualquiera de sus componentes necesarios entra en la
+seleccion, se genera el chunk una sola vez.
+
+El catalogo minimo cacheado contiene:
+
+```text
+coordenada canonica del chunk
+Solid / Air / Mixed / Unknown
+componentes transitables locales
+mascara de caras por componente
+portales y mascaras de celdas de cara
+conexiones confirmadas con los seis vecinos directos
+version y hash de todo parametro que afecte a densidad o transitabilidad
+```
+
+`Surface / Entrance / Interior` no forman parte del criterio de admision. Una
+buena consulta sobre el grafo ya expresa si existe camino desde el jugador y
+cuanto cuesta alcanzarlo. Esas etiquetas solo se derivaran en el futuro si una
+mecanica o una visualizacion necesita nombrar regiones; no se guardan como una
+segunda autoridad de conectividad.
+
+## Bake incremental y cache
+
+El catalogo empieza a construirse bajo presupuesto desde que el jugador entra en
+el planeta. No bloquea la aproximacion ni ocupa todo el ancho de CPU/GPU:
+
+```text
+1. Chunk/componente actual del jugador y anillo inmediato.
+2. Esfera de seguridad y direccion prevista de movimiento.
+3. Componentes conectados de menor coste alrededor de la zona catalogada.
+4. Resto del planeta de forma incremental.
+```
+
+Los resultados terminados se guardan en cache para no repetir el bake en cargas
+posteriores. La cache admite progreso parcial y se invalida por version o por un
+hash de la receta topologica. `Unknown` significa pendiente, nunca bloqueado. El
+sistema anterior conserva cobertura hasta que el entorno local necesario este
+catalogado.
+
+El terraformado invalida el chunk modificado, sus componentes y las conexiones
+con sus seis vecinos. La cache base permanece inmutable y las modificaciones de
+partida se aplican como un overlay local reconstruible.
 
 ## Estados de representacion
 
@@ -202,33 +296,108 @@ independientes que puedan crecer simultaneamente.
 
 Cada candidato recibe una prioridad funcional antes de ordenar por distancia.
 
-### P0: volumen de seguridad
+### P0: esfera alcanzable en linea recta
 
-Esfera completa alrededor de la posicion actual del jugador.
+Primero se construye una esfera alrededor de la posicion actual del jugador. No
+entran automaticamente todos sus chunks: entran los que pueden alcanzarse
+mediante un segmento recto transitable desde el componente actual.
+
+Un DDA recorre los chunks cruzados por el segmento. En cada frontera consulta el
+portal cacheado correspondiente y exige que entrada y salida pertenezcan al mismo
+componente local. No es una prueba de frustum ni una linea de vision grafica; es
+una prueba de movimiento recto sobre la topologia horneada.
 
 ```text
 No se ocluye.
 No se elimina por frustum.
 Se genera primero.
-Debe cubrir movimiento, giro y contacto inmediato en cualquier direccion.
+Debe cubrir todo desplazamiento recto inmediato permitido dentro de su radio.
 ```
 
-### P1: lookahead de movimiento
+P0 es una garantia. Su radio debe elegirse de modo que el peor caso validado quepa
+en el presupuesto. Si no cabe, se reduce radio o LOD de forma explicita; no se
+recorta un subconjunto arbitrario de la esfera recta.
 
-Capsula entre la posicion actual y una posicion predicha:
+### P1: expansion por coste de camino
+
+Despues de P0, el resto de componentes alcanzables se expande sobre las
+conexiones cacheadas. Como se desea obtener un orden creciente y no llegar a un
+destino unico, la consulta runtime usa una cola de prioridad tipo Dijkstra. A*
+queda disponible para consultas con objetivo concreto.
+
+El coste acumulado parte del componente actual. La primera heuristica es
+deliberadamente sencilla, uniforme en los seis vecinos y sin diagonales:
 
 ```text
-predictedFocus = currentFocus + filteredGridVelocity * preloadSeconds
+edgeCost = stepCost + (neighbor.isCompletelyAir ? airCost : mixedCost)
+pathCost = parentPathCost + edgeCost
 ```
 
-La longitud se limita a un maximo de chunks para evitar que un pico de velocidad
-consuma todo el planeta local.
+El valor inicial de `airCost` es `0.1`: atravesar vacio es muy barato, pero no
+gratuito, de modo que el gradiente conserva informacion de distancia. No existe
+penalizacion especial para Y, ascenso o descenso en esta fase. Los tres costes se
+exponen en Inspector para observar el efecto antes de cerrar la heuristica. El
+`stepCost` inicial es `0`, por lo que cruzar un chunk completamente vacio cuesta
+exactamente `0.1`.
+
+`Max Path Cost` es un limite duro adicional al numero de chunks. Dijkstra deja de
+expandir cuando el menor nodo pendiente lo supera y no publica ningun candidato
+con coste mayor. El mismo valor define el extremo rojo del gradiente de gizmos:
+
+```text
+coste 0             -> verde
+coste intermedio    -> interpolacion verde/rojo
+coste Max Path Cost -> rojo
+coste superior      -> no admitido
+```
 
 ```text
 No se ocluye.
 No se elimina por frustum.
-Se genera despues de P0.
+Se genera despues de completar P0.
+Se consume en orden creciente de pathCost hasta agotar presupuesto.
 ```
+
+### Prototipo visual de coste
+
+La primera implementacion es solo diagnostica y no modifica el buffer de Base.
+En Editor o Development Build:
+
+```text
+se muestrea la densidad final con cuevas del chunk canonico 16^3
+se descubren componentes de aire mediante seis vecinos
+al catalogar vecinos se comparan sus caras una sola vez y se cachean los enlaces
+Dijkstra recorre enlaces compactos; nunca vuelve a escanear las caras 16x16
+se selecciona primero P0 recto y despues el menor pathCost
+los chunks Air participan como transiciones pero no son candidatos de render
+se detiene al alcanzar el numero de chunks Mixed o Max Path Cost
+se colorean volumen y aristas verde -> rojo usando Max Path Cost
+```
+
+El origen se recalcula cuando el jugador cambia de chunk. El dibujo tambien se
+actualiza al terminar nuevos chunks del catalogo o cambiar un coste del Inspector.
+Cuando la seleccion alcanza el limite de chunks queda congelada hasta que cambie
+el chunk del jugador o la configuracion. `Async Catalogue Enabled` permite pausar
+el catalogado y mantiene como maximo una peticion GPU en vuelo. `Air Density
+Threshold`, `Air Chunk Cost`, `Mixed Chunk Cost`, `Step Cost`, `Max Path Cost`, el
+radio P0 y el limite de expansion son parametros de diagnostico, no decisiones
+finales de gameplay.
+
+La lectura de densidad GPU -> CPU es asincrona y no bloquea el frame esperando el
+resultado. `Max Path Cost` fija admision y el coste que se representa como rojo;
+no se renormaliza el gradiente cada vez que crece el catalogo. Mientras la seleccion no
+esta llena, `Catalogue Batch / Rebuild` agrupa varios resultados antes de repetir
+Dijkstra. Al alcanzar el limite, nuevos resultados del catalogo no alteran la
+seleccion publicada hasta que el jugador cambia de chunk. Mientras se completa,
+los chunks ya publicados conservan coste, color y orden; cada lote solo puede
+anadir candidatos nuevos. El catalogo se conserva solo en memoria. Persistencia,
+clearance del jugador y compresion quedan para la fase de bake/cache; no se
+consideran resueltos por estos gizmos.
+
+El Profiler separa `Planet.Topology.CompleteChunk` del coste de
+`Planet.Topology.SearchRebuild`. Esto permite decidir con datos si el siguiente
+cuello esta en el flood fill/catalogado o en la navegacion, sin recurrir a punteros
+antes de conocer la ruta dominante.
 
 ### P2: cobertura exterior y transicion
 
@@ -264,10 +433,13 @@ vertices y tiempo, no cantidad de coordenadas.
 Orden obligatorio:
 
 ```text
-deduplicar candidatos globales
--> clasificar P0..P4
--> ordenar por prioridad
--> ordenar dentro de cada prioridad por distancia/avance
+resolver el componente actual del jugador
+-> construir la esfera P0
+-> admitir los chunks de P0 alcanzables en linea recta mediante DDA y portales
+-> iniciar expansion Dijkstra sobre las conexiones cacheadas
+-> ordenar el resto por coste acumulado de camino
+-> aplicar P2..P4 solo como responsabilidades y desempates posteriores
+-> deduplicar chunks alcanzados por varios componentes/fuentes
 -> generar hasta agotar presupuesto
 ```
 
@@ -275,8 +447,9 @@ La fuente del candidato tambien se conserva como diagnostico:
 
 ```text
 surface-confirmed
-safety-volume
-movement-lookahead
+straight-sphere
+path-cost
+topology-unknown-fallback
 frustum
 optional-expansion
 ```
@@ -297,13 +470,14 @@ Reglas:
 
 ```text
 Teleport o salto imposible -> reinicio de historial y reconstruccion urgente.
-Velocidad pequena          -> lookahead minimo o nulo.
-Velocidad alta             -> capsula mas larga, dentro del limite configurado.
-Cambio brusco de direccion -> P0 sigue protegiendo mientras cambia P1.
+Velocidad pequena          -> sin sesgo adicional dentro del mismo pathCost.
+Velocidad alta             -> priorizar catalogo y desempates hacia el avance.
+Cambio brusco de direccion -> P0 recto sigue protegiendo mientras cambia el sesgo.
 ```
 
-`preloadSeconds`, velocidad maxima jugable y radio P0 quedan `TBD` hasta medir la
-locomocion real en grid/segundo.
+La velocidad no crea conexiones ni sustituye el coste de camino. Solo ordena
+trabajo equivalente y prioriza el bake todavia pendiente. La velocidad maxima
+jugable y el radio P0 quedan `TBD` hasta medir la locomocion real en grid/segundo.
 
 ## Ciclo de reconstruccion
 
@@ -311,12 +485,14 @@ La Base deja de ser una cola indivisible.
 
 ```text
 1. Capturar foco actual, velocidad y foco predicho.
-2. Construir y ordenar candidatos P0..P4.
-3. Mantener la Base anterior visible.
-4. Cocinar P0 y P1 en el slot trasero.
-5. Publicar el prefijo seguro cuando este completo.
-6. Continuar anexando P2, P3 y P4 de forma presupuestada.
-7. Finalizar al agotar candidatos o presupuesto.
+2. Resolver componente actual y construir la esfera recta P0.
+3. Expandir el resto por coste de camino sobre el catalogo disponible.
+4. Aplicar responsabilidades P2..P4 y deduplicar chunks.
+5. Mantener la Base anterior visible.
+6. Cocinar P0 y el prefijo de menor coste en el slot trasero.
+7. Publicar el prefijo seguro cuando este completo.
+8. Continuar anexando el resto de forma presupuestada.
+9. Finalizar al agotar candidatos o presupuesto.
 ```
 
 La publicacion temprana reutiliza el doble slot existente. No crea un tercer
@@ -346,6 +522,14 @@ la cobertura restante, no solo de superar `baseRebuildDistanceChunks`.
 Antes de cambiar oclusion se exponen por reconstruccion:
 
 ```text
+progreso total y local del catalogo topologico
+chunks catalogados por segundo
+componentes y portales producidos
+tiempo CPU/GPU consumido por el bake en el frame
+bytes de cache escritos y residentes
+chunks Unknown usados mediante fallback
+chunks P0 aceptados/rechazados por la prueba recta
+coste minimo/maximo de camino admitido
 focus inicial y predicho
 velocidad filtrada
 candidatos por P0..P4
@@ -364,29 +548,30 @@ El readback de contadores debe ser asincrono o ejecutarse como diagnostico fuera
 del camino caliente. La colision y la continuidad visual no pueden esperar una
 respuesta GPU bloqueante.
 
-## Clasificacion coarse
+## Clasificacion topologica y coarse
 
-La clasificacion futura usa macro bloques:
+El catalogo exacto por chunk produce:
 
 ```text
-Air   -> no contiene superficie conocida.
-Solid -> bloque completamente oclusor.
-Mixed -> contiene o puede contener frontera.
-Unknown -> no evaluado; se trata de forma conservadora.
+Air      -> volumen transitable sin superficie conocida.
+Solid    -> no contiene volumen transitable.
+Mixed    -> contiene solido y aire; publica componentes y portales.
+Unknown  -> todavia no catalogado; se trata de forma conservadora.
 ```
 
 No se puede declarar `Solid` o `Air` muestreando pocos puntos si una galeria
-estrecha puede cruzar entre ellos. Un clasificador aproximado puede aumentar
-prioridad, pero no excluir hasta disponer de una cota conservadora o una
-clasificacion exacta reutilizable.
+estrecha puede cruzar entre ellos. El bake usa el grid 3D canonico y la misma
+densidad final que la geometria. Marching Cubes consume esa densidad, pero no es
+necesario generar triangulos para catalogar conectividad.
 
-La primera implementacion puede usar resultados ya producidos por Marching Cubes
-para futuras reconstrucciones. No se duplica inmediatamente todo el coste de
-density(point) con un pase exacto previo sin medirlo.
+La transitabilidad debe usar una regla de clearance medible. Aire matematico no
+implica que quepa el jugador; grietas diagonales o pasos inferiores al perfil
+minimo no crean portales de movimiento.
 
 ## Oclusion jerarquica
 
-La oclusion se introduce despues de estabilizar admision y lookahead.
+La oclusion se introduce despues de estabilizar el catalogo topologico, P0 recto
+y la admision por coste de camino.
 
 Capas previstas:
 
@@ -427,11 +612,14 @@ jugador. Por ello:
 
 ```text
 los patches invalidan clasificacion local
+se recalculan las conexiones con los seis vecinos
 Unknown se usa durante la reconstruccion
 P0/P1 siguen sin depender de oclusion
 ```
 
-No se precalcula una estructura de portales estatica para todo el planeta.
+El catalogo de receta es una estructura de conectividad estatica y compacta, no
+un volumen global de cuevas ni la fuente de su forma. El overlay de terraformado
+mantiene correctas solo las regiones modificadas.
 
 ## Relacion con LOD
 
@@ -440,7 +628,7 @@ resolucion se representa.
 
 ```text
 P0 -> LOD necesario para contacto/lectura inmediata.
-P1 -> LOD suficiente para movimiento predicho.
+P1 -> LOD suficiente para la expansion admitida por coste de camino.
 P2 -> LOD exterior que garantice silueta/horizonte.
 P3/P4 -> degradable por tamano aparente y presupuesto.
 ```
@@ -451,38 +639,39 @@ no esta lista.
 
 ## Fases de implementacion
 
-### Fase A: medir
+### Fase A: contrato topologico y medicion
 
 ```text
 Publicar contadores de vertices y overflow de Base.
 Medir duracion de cola y movimiento durante carga.
-Etiquetar fuente/prioridad de candidatos.
+Definir grid transitable, clearance y formato de componentes/portales.
+Medir coste de catalogar un chunk sin generar Marching Cubes.
 ```
 
-### Fase B: admision y horizonte
+### Fase B: bake incremental y cache
 
 ```text
-Separar superficie y volumen.
-Introducir P0..P4.
-Mantener Shell como autoridad exterior.
-Ordenar escritura por prioridad funcional.
+Descubrir componentes locales y mascaras de cara.
+Enlazar solo portales coincidentes de los seis vecinos.
+Presupuestar el trabajo desde el entorno local hacia el resto del planeta.
+Guardar progreso y validar version/hash de cache.
 ```
 
-### Fase C: streaming predictivo
+### Fase C: admision por esfera recta y coste
 
 ```text
-Calcular velocidad filtrada.
-Construir P1 como capsula de lookahead.
-Publicar P0/P1 antes de completar la cola.
-Reaccionar si el jugador abandona la guard band.
+Resolver el componente actual del jugador.
+Construir P0 mediante esfera + DDA recto sobre portales.
+Expandir el resto mediante Dijkstra y costes uniformes configurables.
+Rellenar el buffer hasta sus limites sin ampliar VRAM.
 ```
 
-### Fase D: estados y memoria
+### Fase D: representacion, estados y memoria
 
 ```text
 Cerrar Exterior/Transicion/Interior con hysteresis.
 Repartir la misma envolvente de VRAM entre Shell y slots Base.
-Medir transiciones en superficie, entrada y salida de cuevas.
+Publicar el prefijo seguro y reaccionar si el jugador abandona la guard band.
 ```
 
 ### Fase E: oclusion
@@ -500,8 +689,14 @@ Exterior:
 La superficie visible cubre el horizonte mientras el jugador permanezca en el
 estado Exterior o Transicion.
 
+Topologia:
+Cada apertura pertenece a un componente local. Dos vecinos solo se conectan si
+sus portales opuestos se solapan. Una bolsa de aire enterrada solo resulta
+alcanzable si el grafo contiene un camino real hasta ella.
+
 Interior:
-El jugador no alcanza el borde de P0/P1 a la velocidad maxima validada y no ve el
+Todo chunk de la esfera P0 alcanzable en linea recta se publica antes del resto.
+El jugador no alcanza el borde seguro a la velocidad maxima validada y no ve el
 skybox por geometria pendiente o descartada.
 
 Buffer:
@@ -510,7 +705,12 @@ opcionales. El limite de VRAM no aumenta.
 
 Streaming:
 Una cola obsoleta no bloquea indefinidamente una reconstruccion urgente. No hay
-asignaciones GC por frame.
+asignaciones GC por frame. Fuera de P0, el orden de admision es monotono respecto
+al coste acumulado de camino salvo responsabilidades superiores documentadas.
+
+Cache:
+Una receta sin cambios reutiliza el catalogo. Un cambio de version/densidad lo
+invalida. El terraformado invalida localmente el chunk afectado y sus seis aristas.
 
 Oclusion:
 Nunca descarta P0/P1 y nunca usa Mixed/Unknown como oclusor definitivo.
@@ -521,7 +721,11 @@ Nunca descarta P0/P1 y nunca usa Mixed/Unknown como oclusor definitivo.
 ```text
 TBD: velocidad maxima jugable en GridCoordinates/segundo.
 TBD: radio minimo de P0.
-TBD: preloadSeconds y maximo de la capsula P1.
+TBD: clearance minimo usado para declarar una celda transitable.
+TBD: presupuesto CPU/GPU por frame para el bake topologico.
+TBD: formato comprimido y version de la cache de componentes/portales.
+TBD: valores finales de airCost, mixedCost y stepCost tras validar los gizmos.
+TBD: valor final de Max Path Cost por estado de locomocion y presupuesto.
 TBD: criterio exacto Exterior/Transicion/Interior.
 TBD: presupuesto GPU por frame para la cola.
 TBD: representacion compacta de Solid/Air/Mixed/Unknown.

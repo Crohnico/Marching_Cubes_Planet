@@ -2,6 +2,7 @@ using System;
 using MarchingCubesPlanet.Compute;
 using MarchingCubesPlanet.Coordinates;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace MarchingCubesPlanet.Shape
 {
@@ -27,6 +28,9 @@ namespace MarchingCubesPlanet.Shape
         private PlanetGpuBufferHandle cellBuffer;
         private PlanetGpuBufferHandle sampleInputBuffer;
         private PlanetGpuBufferHandle sampleOutputBuffer;
+        private AsyncGPUReadbackRequest pendingReadback;
+        private int pendingReadbackSampleCount;
+        private bool hasPendingReadback;
 
         public bool IsInitialized => parameterBuffer != null && parameterBuffer.IsAlive &&
                                      cellBuffer != null && cellBuffer.IsAlive;
@@ -35,6 +39,7 @@ namespace MarchingCubesPlanet.Shape
         public PlanetGpuBufferHandle CellBuffer => cellBuffer;
         public PlanetGpuBufferHandle SampleInputBuffer => sampleInputBuffer;
         public PlanetGpuBufferHandle SampleOutputBuffer => sampleOutputBuffer;
+        public bool HasPendingReadback => hasPendingReadback;
 
         public void Initialize(
             ComputeShader shader,
@@ -88,6 +93,91 @@ namespace MarchingCubesPlanet.Shape
 
         public void EvaluateDensitySamples(Vector4[] samplePositions, Vector4[] sampleResults)
         {
+            if (sampleResults == null)
+            {
+                throw new ArgumentNullException(nameof(sampleResults));
+            }
+
+            int sampleCount = DispatchDensitySamples(samplePositions);
+            if (sampleResults.Length < sampleCount)
+            {
+                throw new ArgumentException("sampleResults must be at least as large as samplePositions.", nameof(sampleResults));
+            }
+
+            GetData(sampleOutputBuffer, sampleResults, sampleCount);
+        }
+
+        public void BeginEvaluateDensitySamplesAsync(Vector4[] samplePositions)
+        {
+            if (hasPendingReadback)
+            {
+                throw new InvalidOperationException("A density readback is already pending.");
+            }
+
+            if (!SystemInfo.supportsAsyncGPUReadback)
+            {
+                throw new NotSupportedException("Async GPU readback is required by the topology catalogue.");
+            }
+
+            pendingReadbackSampleCount = DispatchDensitySamples(samplePositions);
+            pendingReadback = sampleOutputBuffer.BufferMode == PlanetGpuBufferMode.GraphicsBuffer
+                ? AsyncGPUReadback.Request(sampleOutputBuffer.GraphicsBuffer)
+                : AsyncGPUReadback.Request(sampleOutputBuffer.ComputeBuffer);
+            hasPendingReadback = true;
+        }
+
+        public bool TryCompleteDensitySamplesAsync(Vector4[] sampleResults)
+        {
+            if (!hasPendingReadback || !pendingReadback.done)
+            {
+                return false;
+            }
+
+            if (pendingReadback.hasError)
+            {
+                ClearPendingReadback();
+                throw new InvalidOperationException("The asynchronous density readback failed.");
+            }
+
+            if (sampleResults == null || sampleResults.Length < pendingReadbackSampleCount)
+            {
+                throw new ArgumentException("sampleResults is too small for the pending readback.", nameof(sampleResults));
+            }
+
+            var data = pendingReadback.GetData<Vector4>();
+            for (int index = 0; index < pendingReadbackSampleCount; index++)
+            {
+                sampleResults[index] = data[index];
+            }
+
+            ClearPendingReadback();
+            return true;
+        }
+
+        public void Release()
+        {
+            if (hasPendingReadback)
+            {
+                pendingReadback.WaitForCompletion();
+                ClearPendingReadback();
+            }
+
+            ReleaseBuffer(ref sampleOutputBuffer);
+            ReleaseBuffer(ref sampleInputBuffer);
+            ReleaseBuffer(ref cellBuffer);
+            ReleaseBuffer(ref parameterBuffer);
+            computeShader = null;
+            evaluateKernel = 0;
+            threadGroupSizeX = 0;
+        }
+
+        private int DispatchDensitySamples(Vector4[] samplePositions)
+        {
+            if (hasPendingReadback)
+            {
+                throw new InvalidOperationException("Cannot dispatch while an asynchronous density readback is pending.");
+            }
+
             if (!IsInitialized)
             {
                 throw new InvalidOperationException("PlanetGpuShapeEvaluator must be initialized before evaluating samples.");
@@ -98,24 +188,13 @@ namespace MarchingCubesPlanet.Shape
                 throw new ArgumentNullException(nameof(samplePositions));
             }
 
-            if (sampleResults == null)
-            {
-                throw new ArgumentNullException(nameof(sampleResults));
-            }
-
             if (samplePositions.Length == 0)
             {
                 throw new ArgumentException("At least one sample is required.", nameof(samplePositions));
             }
 
-            if (sampleResults.Length < samplePositions.Length)
-            {
-                throw new ArgumentException("sampleResults must be at least as large as samplePositions.", nameof(sampleResults));
-            }
-
             EnsureSampleBuffers(samplePositions.Length);
             SetData(sampleInputBuffer, samplePositions, samplePositions.Length);
-
             parameterBuffer.BindTo(computeShader, evaluateKernel, ShapeParametersId);
             cellBuffer.BindTo(computeShader, evaluateKernel, ShapeCellsId);
             sampleInputBuffer.BindTo(computeShader, evaluateKernel, ShapeSamplePositionsId);
@@ -125,19 +204,14 @@ namespace MarchingCubesPlanet.Shape
             uint safeThreadGroupSizeX = threadGroupSizeX == 0u ? 1u : threadGroupSizeX;
             int groupCount = Mathf.CeilToInt(samplePositions.Length / (float)safeThreadGroupSizeX);
             computeShader.Dispatch(evaluateKernel, groupCount, 1, 1);
-
-            GetData(sampleOutputBuffer, sampleResults, samplePositions.Length);
+            return samplePositions.Length;
         }
 
-        public void Release()
+        private void ClearPendingReadback()
         {
-            ReleaseBuffer(ref sampleOutputBuffer);
-            ReleaseBuffer(ref sampleInputBuffer);
-            ReleaseBuffer(ref cellBuffer);
-            ReleaseBuffer(ref parameterBuffer);
-            computeShader = null;
-            evaluateKernel = 0;
-            threadGroupSizeX = 0;
+            pendingReadback = default;
+            pendingReadbackSampleCount = 0;
+            hasPendingReadback = false;
         }
 
         private void EnsureSampleBuffers(int sampleCount)
